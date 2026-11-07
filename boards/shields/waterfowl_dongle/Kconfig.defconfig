@@ -1,0 +1,17 @@
+# Waterfowl dongle: a keyless split central that both halves connect to.
+
+if SHIELD_WATERFOWL_DONGLE
+
+config ZMK_KEYBOARD_NAME
+    default "Waterfowl"
+
+config ZMK_SPLIT
+    default y
+
+config ZMK_SPLIT_ROLE_CENTRAL
+    default y
+
+config ZMK_SPLIT_BLE_CENTRAL_PERIPHERALS
+    default 2
+
+endif

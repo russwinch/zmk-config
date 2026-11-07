@@ -15,6 +15,9 @@ manifest:
       # forager
     - name: carrefinho
       url-base: https://github.com/carrefinho
+      # my forks (prospector dongle)
+    - name: russwinch
+      url-base: https://github.com/russwinch
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -27,6 +30,10 @@ manifest:
       remote: carrefinho
       # pinned: upstream main may move to newer ZMK/Zephyr board names
       revision: 3cafe6b7b26d7b538949e138fc00a148def4b2ed
+    - name: prospector-zmk-module
+      remote: russwinch
+      # pinned: Zephyr 3.5 / seeeduino_xiao_ble line, matches ZMK v0.3.0
+      revision: 0639aa9fd107e2e19a7c710aeab55b683eb1f757
     # These modules' main branches target ZMK main (Zephyr 4.1+);
     # their v0.3 refs match our pinned ZMK v0.3.0.
     - name: nice-view-gem

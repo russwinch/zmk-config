@@ -20,6 +20,16 @@ include:
   - board: nice_nano_v2
     shield: waterfowl_right
 
+  # --- Waterfowl via Prospector dongle ---
+  # The dongle is the central and runs the keymap; both halves become
+  # peripherals (the right half's normal build above is already one).
+  - board: seeeduino_xiao_ble
+    shield: waterfowl_dongle prospector_adapter
+  - board: nice_nano_v2
+    shield: waterfowl_left nice_view_adapter nice_view
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
+    artifact-name: waterfowl_left_peripheral_for_dongle
+
   # --- Forager (Seeed XIAO nRF52840, onboard RGB LED, no display) ---
   - board: seeeduino_xiao_ble
     shield: forager_left rgbled_adapter
