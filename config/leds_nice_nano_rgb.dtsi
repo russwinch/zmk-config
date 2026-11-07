@@ -1,0 +1,26 @@
+/*
+ * RGB LED wired to P1.07 / P1.02 / P1.01 on the nice!nano-style controllers
+ * used in the Urchin, Corne and Waterfowl. Used by zmk-rgbled-widget.
+ * (Forager doesn't need this: the rgbled_adapter shield covers the XIAO.)
+ */
+/ {
+    aliases {
+        led-red = &led0;
+        led-green = &led1;
+        led-blue = &led2;
+    };
+
+    leds {
+        compatible = "gpio-leds";
+        status = "okay";
+        led0: led_0 {
+            gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;  // red LED, connected to P1.07
+        };
+        led1: led_1 {
+            gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;  // green LED, connected to P1.02
+        };
+        led2: led_2 {
+            gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;  // blue LED, connected to P1.01
+        };
+    };
+};

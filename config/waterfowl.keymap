@@ -1,0 +1,29 @@
+/*
+ * Waterfowl: 40 positions + 4 encoders. Layers live in keymap.dtsi.
+ * Bottom row per side: outer encoder push, two thumb keys, inner roller push.
+ * The outer layer/space keys repeat the core thumb next to them.
+ *
+ *    0  1  2  3  4             5  6  7  8  9
+ *   10 11 12 13 14            15 16 17 18 19
+ *   20 21 22 23 24            25 26 27 28 29
+ *   30 31 32 33 34            35 36 37 38 39
+ */
+
+#include "leds_nice_nano_rgb.dtsi"
+
+#define KEYS_L  0 1 2 3 4 10 11 12 13 14 20 21 22 23 24
+#define KEYS_R  5 6 7 8 9 15 16 17 18 19 25 26 27 28 29
+#define THUMBS  30 31 32 33 34 35 36 37 38 39
+
+#define WATERFOWL(X_LO, X_LI, X_RI, X_RO, k00, k01, k02, k03, k04, k05, k06, k07, k08, k09, k10, k11, k12, k13, k14, k15, k16, k17, k18, k19, k20, k21, k22, k23, k24, k25, k26, k27, k28, k29, k30, k31, k32, k33) \
+    k00 k01 k02 k03 k04  k05 k06 k07 k08 k09 \
+    k10 k11 k12 k13 k14  k15 k16 k17 k18 k19 \
+    k20 k21 k22 k23 k24  k25 k26 k27 k28 k29 \
+    X_LO k30 k30 k31 X_LI  X_RI k32 k33 k33 X_RO
+#define KB_LAYOUT_BASE(...) WATERFOWL(&kp C_MUTE, &kp C_MUTE, XXX, &kp C_PP, __VA_ARGS__)
+#define KB_LAYOUT(...)      WATERFOWL(___, ___, ___, ___, __VA_ARGS__)
+
+#define SENSORS       sensor-bindings = <&inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp UP DOWN &inc_dec_kp LEFT RIGHT>;
+#define SENSORS_LOWER sensor-bindings = <&inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp LEFT RIGHT>;
+
+#include "keymap.dtsi"

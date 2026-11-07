@@ -1,0 +1,33 @@
+# GitHub Actions build matrix: one entry per half of every keyboard.
+# Keymaps: config/<shield>.keymap -> shared config/keymap.dtsi
+---
+include:
+  # --- Urchin (nice!nano v2, nice!view gem) ---
+  - board: nice_nano_v2
+    shield: urchin_left nice_view_adapter nice_view_gem
+  - board: nice_nano_v2
+    shield: urchin_right nice_view_adapter nice_view_gem
+
+  # --- splitkb Aurora Corne (nice!nano v2, nice!view gem, encoders) ---
+  - board: nice_nano_v2
+    shield: splitkb_aurora_corne_left nice_view_adapter nice_view_gem
+  - board: nice_nano_v2
+    shield: splitkb_aurora_corne_right nice_view_adapter nice_view_gem
+
+  # --- Waterfowl (nice!nano v2, nice!view on left, encoders) ---
+  - board: nice_nano_v2
+    shield: waterfowl_left nice_view_adapter nice_view
+  - board: nice_nano_v2
+    shield: waterfowl_right
+
+  # --- Forager (Seeed XIAO nRF52840, onboard RGB LED, no display) ---
+  - board: seeeduino_xiao_ble
+    shield: forager_left rgbled_adapter
+  - board: seeeduino_xiao_ble
+    shield: forager_right rgbled_adapter
+
+  # --- settings reset, one per controller type ---
+  - board: nice_nano_v2
+    shield: settings_reset
+  - board: seeeduino_xiao_ble
+    shield: settings_reset
