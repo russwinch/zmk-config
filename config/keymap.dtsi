@@ -188,7 +188,7 @@
 
         // Lower + Raise held together: power, OS switch, battery, Bluetooth
         tri_layer {
-            display-name = "Tri";
+            display-name = "Shit";
             bindings = <KB_LAYOUT(
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,

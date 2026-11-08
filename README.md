@@ -23,10 +23,10 @@ the Windows layer read ⌘ as Win.
 | Layer | How to get there | What's on it |
 | --- | --- | --- |
 | Mac | default | QWERTY, home-row mods Ctrl Alt Cmd Shift / Shift Cmd Alt Ctrl |
-| Windows | Tri layer → Windows | Mac layer with Ctrl and Win swapped |
+| Windows | Shit layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Tri | hold Esc + Enter | power, Mac/Windows switch, battery level, Bluetooth |
+| Shit (tri-layer) | hold Esc + Enter | power, Mac/Windows switch, battery level, Bluetooth |
 
 ### Timing
 
@@ -91,7 +91,7 @@ computer); both halves become peripherals. To switch:
 3. Power on the **left half first, then the right**: the Prospector orders its
    battery widgets by pairing order.
 
-The dongle has no RGB LED, so the Tri-layer battery key does nothing there.
+The dongle has no RGB LED, so the Shit layer's battery key does nothing there.
 To go back, flash `settings_reset` again and then the normal `waterfowl_left`.
 
 ## Adding a keyboard
