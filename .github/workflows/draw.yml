@@ -1,0 +1,49 @@
+# Redraw keymap-drawer/keymap.svg whenever the keymap changes, and commit it
+# back to the same branch. Pushes made with GITHUB_TOKEN don't start other
+# workflows, so this commit won't trigger a firmware build or loop.
+name: Draw keymap
+
+on:
+  push:
+    paths:
+      - "config/*.keymap"
+      - "config/*.dtsi"
+      - "keymap-drawer/config.yaml"
+      - "keymap-drawer/draw.sh"
+      - ".github/workflows/draw.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: draw-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  draw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install keymap-drawer
+        run: pip install keymap-drawer==0.23.0
+
+      - name: Draw
+        run: keymap-drawer/draw.sh
+
+      - name: Commit if changed
+        run: |
+          git add keymap-drawer/keymap.svg keymap-drawer/keymap.yaml
+          if git diff --cached --quiet; then
+            echo "keymap picture already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Redraw keymap picture"
+          git push
