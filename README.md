@@ -46,7 +46,7 @@ the Windows layer read ⌘ as Win.
 | --- | --- | --- |
 | Urchin, Forager | none | none |
 | Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right) |
-| Waterfowl | in ZMK's sensor order: page up/down, volume, up/down (page up/down on Lower), left/right | encoder/roller pushes, outer left → outer right: mute, mute, nothing, play/pause; the outer thumb keys repeat the thumb next to them |
+| Waterfowl | left roller (inner): page up/down; left dial (outer): volume; right dial (outer): up/down (page up/down on Lower); right roller (inner): left/right | pushes: left dial mute, left roller mute, right roller nothing, right dial play/pause; the outer thumb keys repeat the thumb next to them |
 
 ## Layout of this repo
 

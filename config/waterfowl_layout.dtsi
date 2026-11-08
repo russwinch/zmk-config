@@ -22,5 +22,6 @@
 #define KB_LAYOUT_BASE(...) WATERFOWL(&kp C_MUTE, &kp C_MUTE, XXX, &kp C_PP, __VA_ARGS__)
 #define KB_LAYOUT(...)      WATERFOWL(___, ___, ___, ___, __VA_ARGS__)
 
+// sensor order (ZMK waterfowl.dtsi): left roller, left dial, right dial, right roller
 #define SENSORS       sensor-bindings = <&inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp UP DOWN &inc_dec_kp LEFT RIGHT>;
 #define SENSORS_LOWER sensor-bindings = <&inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp LEFT RIGHT>;
