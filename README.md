@@ -1,45 +1,85 @@
 # zmk-config
 
-ZMK firmware for all my keyboards, built from **one shared keymap**.
+ZMK firmware for all my keyboards, built from **one shared keymap**
+(`config/keymap.dtsi`). Every board gets the same 34 core keys and layers;
+each board's own file only adds its extras.
 
-| Keyboard | Controller | Extras |
-| --- | --- | --- |
-| Urchin | nice!nano v2 | nice!view (gem) |
-| splitkb Aurora Corne | nice!nano v2 | nice!view (gem), 2 encoders, outer thumb keys |
-| Waterfowl | nice!nano v2 | nice!view, 4 encoders, optional Prospector dongle |
-| Forager | Seeed XIAO nRF52840 | onboard RGB LED |
+| Keyboard | Controller | Display / LEDs | Extras |
+| --- | --- | --- | --- |
+| Urchin | nice!nano v2 | nice!view gem, RGB LED widget | none |
+| splitkb Aurora Corne | nice!nano v2 | nice!view gem, RGB LED widget | 2 encoders, outer thumb keys (unused outer columns) |
+| Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side; optional Prospector dongle |
+| Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | none |
 
 ## Keymap
 
 ![All layers](keymap-drawer/keymap.svg)
 
-Home-row mods use urob's "timeless" settings (see the comment in
-`config/keymap.dtsi`). The picture is generated, not hand-drawn: the
-"Draw keymap" workflow redraws it and commits it whenever the keymap changes.
-To preview locally, run `keymap-drawer/draw.sh` (needs `pip install keymap-drawer`).
+The picture is generated: the "Draw keymap" workflow redraws it and commits it
+whenever the keymap changes. To preview locally, run `keymap-drawer/draw.sh`
+(needs `pip install keymap-drawer`). Modifiers are drawn with Mac symbols; on
+the Windows layer read ⌘ as Win.
+
+| Layer | How to get there | What's on it |
+| --- | --- | --- |
+| Mac | default | QWERTY, home-row mods Ctrl Alt Cmd Shift / Shift Cmd Alt Ctrl |
+| Windows | Tri layer → Windows | Mac layer with Ctrl and Win swapped |
+| Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
+| Raise | hold Enter | numbers, shifted numbers, brackets |
+| Tri | hold Esc + Enter | power, Mac/Windows switch, battery level, Bluetooth |
+
+### Timing
+
+- **Home-row mods** use urob's "timeless" setup: a mod only fires when the next
+  key is on the other hand or a thumb. `require-prior-idle-ms` is 100 (urob
+  uses 150), so shortcuts typed right after a word still work.
+- **Space/Shift thumb** (`&ts`) is balanced: Shift as soon as a key is pressed
+  and released while Space is held, so fast capitals work.
+- **Backspace/Cmd thumb** is tap-preferred with a 250ms term, so rolling
+  Backspace into a letter never sends Cmd+letter.
+- **Esc/Lower and Enter/Raise** are hold-preferred: any key pressed while the
+  thumb is down uses the layer.
+
+### Board extras
+
+| Board | Encoders (turn) | Extra keys |
+| --- | --- | --- |
+| Urchin, Forager | none | none |
+| Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right) |
+| Waterfowl | in ZMK's sensor order: page up/down, volume, up/down (page up/down on Lower), left/right | encoder/roller pushes, outer left → outer right: mute, mute, nothing, play/pause; the outer thumb keys repeat the thumb next to them |
 
 ## Layout of this repo
 
 | File | Purpose |
 | --- | --- |
 | `config/keymap.dtsi` | **The keymap.** All layers and behaviors, written once as 34 core keys. |
-| `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders, hardware tweaks), then includes `keymap.dtsi`. |
-| `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
+| `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
+| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep, Bluetooth power). |
 | `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
+| `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
-| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep). |
-| `config/west.yml` | ZMK version + modules. All pinned to ZMK v0.3. |
+| `config/west.yml` | ZMK version + modules, all pinned to match ZMK v0.3. |
 | `build.yaml` | Which firmware CI builds. |
-| `keymap-drawer/` | Settings and script that draw `keymap.svg` from the keymap (run by `.github/workflows/draw.yml`). |
+| `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
-### Adding a keyboard
+## Flashing
 
-1. Add its modules (if any) to `config/west.yml` and its halves to `build.yaml`.
-2. Create `config/<shield>.keymap` that defines `KEYS_L`, `KEYS_R`, `THUMBS`,
-   `KB_LAYOUT(...)` and `KB_LAYOUT_BASE(...)` (see `splitkb_aurora_corne.keymap`
-   for one with extra keys and encoders), then `#include "keymap.dtsi"`.
+Every push builds all firmware (`.github/workflows/build.yml`). Download the
+zip from the latest successful run in the Actions tab and flash each half
+(double-tap reset, then copy the `.uf2` onto the drive that appears).
 
-## Waterfowl with the Prospector dongle
+| Keyboard | Left half | Right half |
+| --- | --- | --- |
+| Urchin | `urchin_left …` | `urchin_right …` |
+| Aurora Corne | `splitkb_aurora_corne_left …` | `splitkb_aurora_corne_right …` |
+| Waterfowl | `waterfowl_left …` | `waterfowl_right …` |
+| Forager | `forager_left …` | `forager_right …` |
+
+If halves won't pair, flash `settings_reset` (one per controller type:
+`nice_nano_v2` or `seeeduino_xiao_ble`) to both halves, then the normal
+firmware again.
+
+### Waterfowl with the Prospector dongle
 
 The dongle becomes the split central (it runs the keymap and plugs into the
 computer); both halves become peripherals. To switch:
@@ -51,9 +91,13 @@ computer); both halves become peripherals. To switch:
 3. Power on the **left half first, then the right**: the Prospector orders its
    battery widgets by pairing order.
 
+The dongle has no RGB LED, so the Tri-layer battery key does nothing there.
 To go back, flash `settings_reset` again and then the normal `waterfowl_left`.
 
-## Firmware
+## Adding a keyboard
 
-Download the zip from the latest successful run in the Actions tab and flash
-each half. Flash `settings_reset` first if halves won't pair.
+1. Add its modules (if any) to `config/west.yml` and its halves to `build.yaml`.
+2. Create `config/<shield>.keymap` that defines `KEYS_L`, `KEYS_R`, `THUMBS`,
+   `KB_LAYOUT(...)` and `KB_LAYOUT_BASE(...)` (see `splitkb_aurora_corne.keymap`
+   for one with extra keys and encoders), then `#include "keymap.dtsi"`.
+3. Add a row to the tables above.
