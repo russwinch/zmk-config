@@ -57,6 +57,7 @@
 #define SENSORS_LOWER SENSORS
 #endif
 
+// thumb mod-taps (Backspace/Cmd, Space/Shift) and layer-taps (Esc, Enter)
 &mt {
     quick-tap-ms = <199>;
     tapping-term-ms = <250>;
@@ -68,30 +69,30 @@
     flavor = "hold-preferred";
 };
 
+/*
+ * "Timeless" home-row mods (urob/zmk-config, also the ZMK docs example).
+ * A mod only activates if the next key is on the opposite hand or a thumb
+ * (hold-trigger-key-positions), so same-hand rolls always type letters.
+ * Mods on the same hand can still be stacked (hold-trigger-on-release),
+ * and while typing fast they never trigger (require-prior-idle-ms).
+ */
+#define HOME_ROW_MOD(LABEL, NODE, TRIGGER_KEYS) \
+    LABEL: NODE { \
+        compatible = "zmk,behavior-hold-tap"; \
+        #binding-cells = <2>; \
+        flavor = "balanced"; \
+        require-prior-idle-ms = <150>; \
+        tapping-term-ms = <280>; \
+        quick-tap-ms = <175>; \
+        bindings = <&kp>, <&kp>; \
+        hold-trigger-key-positions = <TRIGGER_KEYS>; \
+        hold-trigger-on-release; \
+    };
+
 / {
     behaviors {
-        hml: home_row_mod_left {
-            compatible = "zmk,behavior-hold-tap";
-            #binding-cells = <2>;
-            flavor = "balanced";
-            require-prior-idle-ms = <150>;
-            tapping-term-ms = <280>;
-            quick-tap-ms = <175>;
-            bindings = <&kp>, <&kp>;
-            hold-trigger-key-positions = <KEYS_R THUMBS>; // opposite hand + thumbs
-            hold-trigger-on-release;
-        };
-        hmr: home_row_mod_right {
-            compatible = "zmk,behavior-hold-tap";
-            #binding-cells = <2>;
-            flavor = "balanced";
-            require-prior-idle-ms = <150>;
-            tapping-term-ms = <280>;
-            quick-tap-ms = <175>;
-            bindings = <&kp>, <&kp>;
-            hold-trigger-key-positions = <KEYS_L THUMBS>; // opposite hand + thumbs
-            hold-trigger-on-release;
-        };
+        HOME_ROW_MOD(hml, home_row_mod_left,  KEYS_R THUMBS)
+        HOME_ROW_MOD(hmr, home_row_mod_right, KEYS_L THUMBS)
     };
 };
 
@@ -105,61 +106,73 @@
     };
 };
 
+/*
+ * Layers. Each is a 3x10 grid plus 4 thumbs, laid out as on the keyboard.
+ * A picture of every layer: keymap-drawer/keymap.svg (see README).
+ *
+ *   ___  transparent: falls through to the layer below
+ *   XXX  does nothing
+ */
 / {
     keymap {
         compatible = "zmk,keymap";
 
+        // QWERTY with home-row mods: Ctrl Alt Cmd Shift | Shift Cmd Alt Ctrl
         mac_layer {
             display-name = "Mac";
             bindings = <KB_LAYOUT_BASE(
-    &kp Q,        &kp W,        &kp E,        &kp R,        &kp T,           &kp Y,        &kp U,        &kp I,        &kp O,        &kp P,
-    &hml LCTRL A, &hml LALT S,  &hml LGUI D,  &hml LSHFT F, &kp G,           &kp H,        &hmr RSHFT J, &hmr RGUI K,  &hmr RALT L,  &hmr RCTRL SEMI,
-    &kp Z,        &kp X,        &kp C,        &kp V,        &kp B,           &kp N,        &kp M,        &kp COMMA,    &kp DOT,      &kp FSLH,
-                                &lt L_LOW ESC, &mt LGUI BSPC,                 &mt RSHFT SPACE, &lt L_RAI RET
+    &kp Q,         &kp W,         &kp E,         &kp R,         &kp T,             &kp Y,         &kp U,         &kp I,         &kp O,         &kp P,
+    &hml LCTRL A,  &hml LALT S,   &hml LGUI D,   &hml LSHFT F,  &kp G,             &kp H,         &hmr RSHFT J,  &hmr RGUI K,   &hmr RALT L,   &hmr RCTRL SEMI,
+    &kp Z,         &kp X,         &kp C,         &kp V,         &kp B,             &kp N,         &kp M,         &kp COMMA,     &kp DOT,       &kp FSLH,
+                                                 &lt L_LOW ESC, &mt LGUI BSPC,     &mt RSHFT SPACE, &lt L_RAI RET
             )>;
             SENSORS
         };
 
+        // Mac layer with Ctrl and Win swapped: Win Alt Ctrl Shift | Shift Ctrl Alt Win
         windows_layer {
             display-name = "Windows";
             bindings = <KB_LAYOUT(
-    ___,          ___,          ___,          ___,          ___,             ___,          ___,          ___,          ___,          ___,
-    &hml LGUI A,  ___,          &hml LCTRL D, ___,          ___,             ___,          ___,          &hmr RCTRL K, ___,          &hmr RGUI SEMI,
-    ___,          ___,          ___,          ___,          ___,             ___,          ___,          ___,          ___,          ___,
-                                ___,          &mt LCTRL BSPC,                ___,          ___
+    ___,           ___,           ___,           ___,           ___,               ___,           ___,           ___,           ___,           ___,
+    &hml LGUI A,   ___,           &hml LCTRL D,  ___,           ___,               ___,           ___,           &hmr RCTRL K,  ___,           &hmr RGUI SEMI,
+    ___,           ___,           ___,           ___,           ___,               ___,           ___,           ___,           ___,           ___,
+                                                 ___,           &mt LCTRL BSPC,    ___,           ___
             )>;
             SENSORS
         };
 
+        // left: media, tabs, desktops, Mission Control | right: arrows, symbols
         lower_layer {
             display-name = "Lower";
             bindings = <KB_LAYOUT(
-    XXX,          XXX,          M_GBP,        M_PTAB,       M_NTAB,          &kp PLUS,     &kp MINUS,    &kp UNDER,    &kp PIPE,     &kp BSLH,
-    &kp C_PREV,   &kp C_PP,     &kp C_NEXT,   M_PDSK,       M_NDSK,          &kp LEFT,     &kp DOWN,     &kp UP,       &kp RIGHT,    &kp SQT,
-    XXX,          XXX,          &kp PSCRN,    M_CTRL,       M_WINS,          XXX,          XXX,          XXX,          &kp EQUAL,    &kp DQT,
-                                ___,          ___,                           &kp DEL,      ___
+    XXX,           XXX,           M_GBP,         M_PTAB,        M_NTAB,            &kp PLUS,      &kp MINUS,     &kp UNDER,     &kp PIPE,      &kp BSLH,
+    &kp C_PREV,    &kp C_PP,      &kp C_NEXT,    M_PDSK,        M_NDSK,            &kp LEFT,      &kp DOWN,      &kp UP,        &kp RIGHT,     &kp SQT,
+    XXX,           XXX,           &kp PSCRN,     M_CTRL,        M_WINS,            XXX,           XXX,           XXX,           &kp EQUAL,     &kp DQT,
+                                                 ___,           ___,               &kp DEL,       ___
             )>;
             SENSORS_LOWER
         };
 
+        // shifted numbers, numbers, brackets
         raise_layer {
             display-name = "Raise";
             bindings = <KB_LAYOUT(
-    &kp EXCL,     &kp AT,       &kp HASH,     &kp DLLR,     &kp PRCNT,       &kp CARET,    &kp AMPS,     &kp ASTRK,    &kp LPAR,     &kp RPAR,
-    &kp N1,       &kp N2,       &kp N3,       &kp N4,       &kp N5,          &kp N6,       &kp N7,       &kp N8,       &kp N9,       &kp N0,
-    &kp TILDE,    &kp GRAVE,    &kp LPAR,     &kp LBRC,     &kp LBKT,        &kp RBKT,     &kp RBRC,     &kp RPAR,     &kp DOT,      &kp RET,
-                                ___,          &kp TAB,                       ___,          ___
+    &kp EXCL,      &kp AT,        &kp HASH,      &kp DLLR,      &kp PRCNT,         &kp CARET,     &kp AMPS,      &kp ASTRK,     &kp LPAR,      &kp RPAR,
+    &kp N1,        &kp N2,        &kp N3,        &kp N4,        &kp N5,            &kp N6,        &kp N7,        &kp N8,        &kp N9,        &kp N0,
+    &kp TILDE,     &kp GRAVE,     &kp LPAR,      &kp LBRC,      &kp LBKT,          &kp RBKT,      &kp RBRC,      &kp RPAR,      &kp DOT,       &kp RET,
+                                                 ___,           &kp TAB,           ___,           ___
             )>;
             SENSORS
         };
 
+        // Lower + Raise held together: power, OS switch, battery, Bluetooth
         tri_layer {
             display-name = "Tri";
             bindings = <KB_LAYOUT(
-    XXX,          XXX,          XXX,          XXX,          XXX,             XXX,          XXX,          XXX,          XXX,          XXX,
-    XXX,          XXX,          XXX,          XXX,          XXX,             XXX,          XXX,          XXX,          XXX,          XXX,
-    &kp C_PWR,    &to L_MAC,    &to L_WIN,    XXX,          IND_BAT,         &bt BT_PRV,   &bt BT_NXT,   XXX,          XXX,          &bt BT_CLR,
-                                ___,          ___,                           ___,          ___
+    XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
+    XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
+    &kp C_PWR,     &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
+                                                 ___,           ___,               ___,           ___
             )>;
             SENSORS
         };

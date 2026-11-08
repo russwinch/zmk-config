@@ -9,6 +9,15 @@ ZMK firmware for all my keyboards, built from **one shared keymap**.
 | Waterfowl | nice!nano v2 | nice!view, 4 encoders, optional Prospector dongle |
 | Forager | Seeed XIAO nRF52840 | onboard RGB LED |
 
+## Keymap
+
+![All layers](keymap-drawer/keymap.svg)
+
+Home-row mods use urob's "timeless" settings (see the comment in
+`config/keymap.dtsi`). The picture is generated, not hand-drawn: after editing
+`config/keymap.dtsi`, run `keymap-drawer/draw.sh` (needs `pip install keymap-drawer`)
+and commit the new `keymap-drawer/keymap.svg`.
+
 ## Layout of this repo
 
 | File | Purpose |
@@ -21,6 +30,7 @@ ZMK firmware for all my keyboards, built from **one shared keymap**.
 | `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep). |
 | `config/west.yml` | ZMK version + modules. All pinned to ZMK v0.3. |
 | `build.yaml` | Which firmware CI builds. |
+| `keymap-drawer/` | Settings and script that draw `keymap.svg` from the keymap. |
 
 ### Adding a keyboard
 
