@@ -32,8 +32,9 @@ The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
 to sleep the Mac, longer for the shut-down prompt. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
-the Bluetooth connection state when it changes; that flash is shortened to
-500ms (`RGBLED_WIDGET_CONN_BLINK_MS` in each board's `.conf`).
+the Bluetooth connection state when it changes. Both flashes last 500ms
+(`RGBLED_WIDGET_BATTERY_BLINK_MS` and `RGBLED_WIDGET_CONN_BLINK_MS` in each
+board's `.conf`).
 
 ### Timing
 
