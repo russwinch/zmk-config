@@ -12,35 +12,33 @@ manifest:
       # nice-view-gem
     - name: m165437
       url-base: https://github.com/M165437
-      # forager
+      # forager, prospector
     - name: carrefinho
       url-base: https://github.com/carrefinho
-      # my forks (prospector dongle)
-    - name: russwinch
-      url-base: https://github.com/russwinch
   projects:
     - name: zmk
       remote: zmkfirmware
-      revision: v0.3.0
+      # ZMK main (Zephyr 4.1), pinned: no release has it yet (v0.4 will).
+      # Keep in step with the workflow ref in .github/workflows/build.yml.
+      revision: 4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85
       import: app/west.yml
     - name: urchin-zmk-module
       remote: duckyb
-      revision: main
+      revision: a3ab64fa7779f82675695f3d7d17f705f840da25
     - name: forager-zmk-module
       remote: carrefinho
-      # pinned: upstream main may move to newer ZMK/Zephyr board names
-      revision: 3cafe6b7b26d7b538949e138fc00a148def4b2ed
+      # pinned: tip of upstream's zephyr-4-1-update branch
+      revision: 6c5e0ce69a9c8ce2d9f68b4b609ae99a1b468749
     - name: prospector-zmk-module
-      remote: russwinch
-      # pinned: Zephyr 3.5 / seeeduino_xiao_ble line, matches ZMK v0.3.0
-      revision: 0639aa9fd107e2e19a7c710aeab55b683eb1f757
-    # These modules' main branches target ZMK main (Zephyr 4.1+);
-    # their v0.3 refs match our pinned ZMK v0.3.0.
+      remote: carrefinho
+      # pinned: tip of upstream's feat/new-status-screens branch (Zephyr 4.1)
+      revision: ed98221f3b52b7066dbb10ba3af8a29150b93a5a
+    # Pinned commits on these modules' main branches, which target ZMK main.
     - name: nice-view-gem
       remote: m165437
-      revision: v0.3.0
+      revision: 0a50fe209d929c916c5664c6affd0f4977c6b012
     - name: zmk-rgbled-widget
       remote: caksoylar
-      revision: v0.3
+      revision: e6b467792a1dabef8cfa5c9fd26bfefc9c16662b
   self:
     path: config

@@ -58,7 +58,7 @@ the Windows layer read ⌘ as Win.
 | `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
-| `config/west.yml` | ZMK version + modules, all pinned to match ZMK v0.3. |
+| `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
@@ -76,7 +76,7 @@ zip from the latest successful run in the Actions tab and flash each half
 | Forager | `forager_left …` | `forager_right …` |
 
 If halves won't pair, flash `settings_reset` (one per controller type:
-`nice_nano_v2` or `seeeduino_xiao_ble`) to both halves, then the normal
+`nice_nano` or `xiao_ble`) to both halves, then the normal
 firmware again.
 
 ### Waterfowl with the Prospector dongle
@@ -84,7 +84,7 @@ firmware again.
 The dongle becomes the split central (it runs the keymap and plugs into the
 computer); both halves become peripherals. To switch:
 
-1. Flash `settings_reset` to the dongle (`seeeduino_xiao_ble`) and both halves (`nice_nano_v2`).
+1. Flash `settings_reset` to the dongle (`xiao_ble`) and both halves (`nice_nano`).
 2. Flash `waterfowl_dongle prospector_adapter` to the dongle,
    `waterfowl_left_peripheral_for_dongle` to the left half and the normal
    `waterfowl_right` to the right half.
@@ -92,6 +92,12 @@ computer); both halves become peripherals. To switch:
    battery widgets by pairing order.
 
 The dongle has no RGB LED, so the Config layer's battery key does nothing there.
+
+The screen uses the Prospector module's **Operator** layout (layer name,
+batteries, modifiers, BLE profile, WPM). To try Classic, Radii or Field, change
+the layout line in `config/waterfowl_dongle.conf`. If one peripheral stops
+sending keys after connecting to the dongle, reset that half (a known ZMK issue,
+[zmk#3156](https://github.com/zmkfirmware/zmk/issues/3156)).
 To go back, flash `settings_reset` again and then the normal `waterfowl_left`.
 
 ## Adding a keyboard
