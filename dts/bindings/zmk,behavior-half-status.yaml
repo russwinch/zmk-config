@@ -1,0 +1,8 @@
+# Receives the dongle's status on a Waterfowl half (src/half_status.h).
+# Not meant for keymap bindings: the dongle invokes it directly.
+
+description: Status from the Prospector dongle for a half's display
+
+compatible: "zmk,behavior-half-status"
+
+include: two_param.yaml

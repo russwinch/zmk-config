@@ -6,3 +6,15 @@
 #include "leds_nice_nano_rgb.dtsi"
 #include "waterfowl_layout.dtsi"
 #include "keymap.dtsi"
+
+/ {
+    behaviors {
+        // With the Prospector dongle: the dongle sends its Bluetooth profile
+        // and the other half's battery to this, for the left half's nice!view
+        // (src/half_status_screen.c). Not bound to any key; unused otherwise.
+        half_status: half_status {
+            compatible = "zmk,behavior-half-status";
+            #binding-cells = <2>;
+        };
+    };
+};

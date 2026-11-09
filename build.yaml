@@ -32,7 +32,9 @@ include:
     cmake-args: -DCONFIG_ZMK_SLEEP=n
   - board: nice_nano//zmk
     shield: waterfowl_left nice_view_adapter nice_view
-    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
+    # peripheral; nice!view shows both batteries and the dongle's Bluetooth
+    # profile instead of ZMK's stock picture (src/half_status_screen.c)
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n -DCONFIG_NICE_VIEW_WIDGET_STATUS=n -DCONFIG_WATERFOWL_HALF_STATUS_SCREEN=y
     artifact-name: waterfowl_left_peripheral_for_dongle
 
   # --- Forager (Seeed XIAO nRF52840, onboard RGB LED, no display) ---

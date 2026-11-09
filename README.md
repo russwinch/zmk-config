@@ -78,7 +78,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
-| `src/`, `CMakeLists.txt`, `Kconfig` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle. |
+| `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, and the left half's nice!view screen when behind the dongle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
@@ -114,6 +114,22 @@ computer); both halves become peripherals. To switch:
 
 The Config layer's battery key works with the dongle too: the dongle passes it
 on and each half blinks its own battery level.
+
+The left half's nice!view (in `waterfowl_left_peripheral_for_dongle`) swaps
+ZMK's stock picture for a small status screen, read with the screen vertical:
+
+| Part | Shows |
+| --- | --- |
+| `L` / `R` rows | each half's battery (`L` is this half, a bolt when charging; `R` comes from the dongle, `--` until it has heard from the right half) |
+| Bottom-left icon | the dongle's output: Bluetooth or USB |
+| Bottom-right icon | this half's link to the dongle (✕ when not connected) |
+| Five circles | the dongle's Bluetooth profiles: filled is active, ring is connected, dashed ring is paired |
+
+The dongle sends this when the profile, output or a battery changes, and again
+every minute (`src/dongle_half_status.c`, `src/half_status_screen.c`). It uses
+ZMK's existing "run a behavior on a half" message: a `half_status` behavior in
+`config/waterfowl.keymap` that no key is bound to. The `R` battery is the
+dongle's last reading, so it can be out of date while the right half sleeps.
 
 The screen uses the Prospector module's **Operator** layout (layer name,
 batteries, modifiers, BLE profile, WPM). To try Classic, Radii or Field, change

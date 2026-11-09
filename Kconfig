@@ -22,3 +22,34 @@ config WATERFOWL_DONGLE_BACKLIGHT_OFF_MS
     default 600000
 
 endif
+
+# --- nice!view status on the left half, fed by the dongle (src/half_status.h) ---
+
+config WATERFOWL_DONGLE_HALF_STATUS
+    bool "Send the Bluetooth profile and battery levels to the halves"
+    default y
+    depends on SHIELD_WATERFOWL_DONGLE && ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
+    help
+      The dongle tells each half the active profile (and which profiles are
+      connected/paired), whether it is typing over USB, and the other half's
+      battery. Used by WATERFOWL_HALF_STATUS_SCREEN on the left half.
+
+config WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S
+    int "Seconds between repeat sends, as a catch-all"
+    default 60
+    depends on WATERFOWL_DONGLE_HALF_STATUS
+
+config WATERFOWL_HALF_STATUS_SCREEN
+    bool "nice!view screen for a Waterfowl half behind the dongle"
+    depends on SHIELD_NICE_VIEW && ZMK_DISPLAY && ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL
+    depends on !NICE_VIEW_WIDGET_STATUS
+    select LV_USE_CANVAS
+    select LV_FONT_MONTSERRAT_14
+    select LV_FONT_MONTSERRAT_16
+    select LV_FONT_MONTSERRAT_18
+    select LV_FONT_UNSCII_8
+    help
+      Replaces ZMK's stock peripheral screen with both batteries and the
+      dongle's Bluetooth profile. Needs NICE_VIEW_WIDGET_STATUS=n (the stock
+      screen) and the half_status behavior node (config/waterfowl.keymap).
+      Turned on for the dongle build of the left half in build.yaml.
