@@ -1,0 +1,24 @@
+# Options for this repo's own code (see CMakeLists.txt).
+
+config WATERFOWL_DONGLE_IDLE_BACKLIGHT
+    bool "Dim, then switch off, the Prospector screen backlight when idle"
+    default y
+    depends on SHIELD_WATERFOWL_DONGLE && ZMK_DISPLAY && !PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
+    help
+      After CONFIG_ZMK_IDLE_TIMEOUT without a key press the backlight drops to
+      WATERFOWL_DONGLE_IDLE_BRIGHTNESS; after a further
+      WATERFOWL_DONGLE_BACKLIGHT_OFF_MS it goes off. Any key or encoder brings
+      it back to CONFIG_PROSPECTOR_FIXED_BRIGHTNESS.
+
+if WATERFOWL_DONGLE_IDLE_BACKLIGHT
+
+config WATERFOWL_DONGLE_IDLE_BRIGHTNESS
+    int "Backlight brightness (%) while idle"
+    default 10
+    range 0 100
+
+config WATERFOWL_DONGLE_BACKLIGHT_OFF_MS
+    int "Milliseconds after going idle before the backlight goes off (0 = never)"
+    default 600000
+
+endif

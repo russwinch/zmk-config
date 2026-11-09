@@ -4,8 +4,9 @@
  * Layout: waterfowl_layout.dtsi. Layers: keymap.dtsi.
  */
 
-// the dongle has no zmk-rgbled-widget, so the battery-indicator key is a no-op
-#define NO_RGBLED_WIDGET
+// The battery key (&ind_bat) still works from here: the dongle has the widget
+// turned off (waterfowl_dongle.conf), but ZMK passes the key on to both halves,
+// which each blink their own battery level on their LED.
 
 #include "waterfowl_layout.dtsi"
 #include "keymap.dtsi"

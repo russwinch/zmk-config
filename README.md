@@ -26,7 +26,12 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | power, Mac/Windows switch, battery level, Bluetooth (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth (shown as "Shit" on the screens) |
+
+The Config layer's power key sends the computer's power key; it doesn't turn
+the keyboard off. macOS ignores a quick tap of it: hold it for about a second
+to sleep the Mac, longer for the shut-down prompt. The battery key blinks each
+half's battery level on its RGB LED (green, yellow, red).
 
 ### Timing
 
@@ -39,6 +44,19 @@ the Windows layer read ⌘ as Win.
   Backspace into a letter never sends Cmd+letter.
 - **Esc/Lower and Enter/Raise** are hold-preferred: any key pressed while the
   thumb is down uses the layer.
+
+### Sleep
+
+| Board | Deep sleep after | Display |
+| --- | --- | --- |
+| Urchin, Aurora Corne | 30 minutes | nice!view stays on (it uses next to no power) |
+| Forager | 30 minutes | none |
+| Waterfowl halves | 1 hour | left nice!view stays on |
+| Waterfowl dongle | never (USB powered) | backlight dims after 1 minute idle, off 10 minutes later |
+
+Deep sleep drops the Bluetooth connection: the next key press wakes the board
+(that key isn't typed) and it takes a second or so to reconnect. Nothing sleeps
+while it's on USB power. Timeouts are in each `config/<shield>.conf`.
 
 ### Board extras
 
@@ -58,6 +76,7 @@ the Windows layer read ⌘ as Win.
 | `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
+| `src/`, `CMakeLists.txt`, `Kconfig` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
@@ -91,7 +110,8 @@ computer); both halves become peripherals. To switch:
 3. Power on the **left half first, then the right**: the Prospector orders its
    battery widgets by pairing order.
 
-The dongle has no RGB LED, so the Config layer's battery key does nothing there.
+The Config layer's battery key works with the dongle too: the dongle passes it
+on and each half blinks its own battery level.
 
 The screen uses the Prospector module's **Operator** layout (layer name,
 batteries, modifiers, BLE profile, WPM). To try Classic, Radii or Field, change
