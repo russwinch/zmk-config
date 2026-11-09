@@ -1,0 +1,18 @@
+# Prospector scanner builds (see scanner/west.yml). Board names follow
+# ZMK main (Zephyr 4): xiao_ble/nrf52840/zmk, not seeeduino_xiao_ble.
+---
+include:
+  # display only
+  - board: xiao_ble/nrf52840/zmk
+    shield: prospector_scanner
+    artifact-name: prospector_scanner
+
+  # touch screen: swipe between layouts and settings (needs the touch display)
+  - board: xiao_ble/nrf52840/zmk
+    shield: prospector_scanner
+    cmake-args: -DEXTRA_CONF_FILE=../../scanner/prospector_scanner_touch.conf
+    artifact-name: prospector_scanner_touch
+
+  - board: xiao_ble/nrf52840/zmk
+    shield: settings_reset
+    artifact-name: settings_reset-xiao_ble_zephyr4

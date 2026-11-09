@@ -13,22 +13,16 @@
  *                            (fills extra keys: encoder pushes, outer thumbs...)
  *   KB_LAYOUT(34 keys)       same, for every other layer (extras usually ___)
  *   KEYS_L / KEYS_R / THUMBS  physical key positions, for home-row mods
- * and may define SENSORS / SENSORS_LOWER (encoder bindings) and
- * NO_RGBLED_WIDGET (board has no zmk-rgbled-widget).
+ * and may define SENSORS / SENSORS_LOWER (encoder bindings).
  */
 
 #include <behaviors.dtsi>
 #include <dt-bindings/zmk/keys.h>
 #include <dt-bindings/zmk/bt.h>
 
-// battery indicator key (zmk-rgbled-widget); a board without the widget
-// defines NO_RGBLED_WIDGET before including this file
-#ifdef NO_RGBLED_WIDGET
-#define IND_BAT &none
-#else
+// battery indicator key (zmk-rgbled-widget)
 #include <behaviors/rgbled_widget.dtsi>
 #define IND_BAT &ind_bat
-#endif
 
 // layers
 #define L_MAC   0

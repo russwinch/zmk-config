@@ -1,8 +1,0 @@
-file_format: "1"
-id: waterfowl_dongle
-name: Waterfowl Dongle
-type: shield
-url: https://github.com/carrefinho/prospector
-requires: [seeeduino_xiao_ble]
-features:
-  - keys

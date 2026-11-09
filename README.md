@@ -2,13 +2,15 @@
 
 ZMK firmware for all my keyboards, built from **one shared keymap**
 (`config/keymap.dtsi`). Every board gets the same 34 core keys and layers;
-each board's own file only adds its extras.
+each board's own file only adds its extras. All four keyboards broadcast
+their status for a [Prospector](https://github.com/carrefinho/prospector)
+scanner (see below).
 
 | Keyboard | Controller | Display / LEDs | Extras |
 | --- | --- | --- | --- |
 | Urchin | nice!nano v2 | nice!view gem, RGB LED widget | none |
 | splitkb Aurora Corne | nice!nano v2 | nice!view gem, RGB LED widget | 2 encoders, outer thumb keys (unused outer columns) |
-| Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side; optional Prospector dongle |
+| Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side |
 | Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | none |
 
 ## Keymap
@@ -54,12 +56,11 @@ the Windows layer read ⌘ as Win.
 | --- | --- |
 | `config/keymap.dtsi` | **The keymap.** All layers and behaviors, written once as 34 core keys. |
 | `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
-| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep, Bluetooth power). |
-| `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
+| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep, Bluetooth power, scanner name). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
-| `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
-| `config/west.yml` | ZMK version + modules, all pinned to match ZMK v0.3. |
-| `build.yaml` | Which firmware CI builds. |
+| `config/west.yml` | Keyboards: ZMK version + modules, all pinned to match ZMK v0.3. |
+| `build.yaml` | Which keyboard firmware CI builds (`.github/workflows/build.yml`). |
+| `scanner/` | Prospector scanner firmware: its own `west.yml` (ZMK main), config and `build.yaml`, built by `.github/workflows/scanner.yml`. |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
 ## Flashing
@@ -79,20 +80,29 @@ If halves won't pair, flash `settings_reset` (one per controller type:
 `nice_nano_v2` or `seeeduino_xiao_ble`) to both halves, then the normal
 firmware again.
 
-### Waterfowl with the Prospector dongle
+## Prospector scanner
 
-The dongle becomes the split central (it runs the keymap and plugs into the
-computer); both halves become peripherals. To switch:
+The Prospector runs [t-ogura's scanner firmware](https://github.com/t-ogura/zmk-config-prospector):
+it never pairs with anything, it just listens. Each keyboard keeps connecting
+to the computer as normal, and its central (left) half broadcasts layer,
+battery, modifiers and connection status for the scanner to show.
 
-1. Flash `settings_reset` to the dongle (`seeeduino_xiao_ble`) and both halves (`nice_nano_v2`).
-2. Flash `waterfowl_dongle prospector_adapter` to the dongle,
-   `waterfowl_left_peripheral_for_dongle` to the left half and the normal
-   `waterfowl_right` to the right half.
-3. Power on the **left half first, then the right**: the Prospector orders its
-   battery widgets by pairing order.
+- **Keyboards:** nothing to do beyond flashing the normal firmware above. The
+  `.conf` files turn status advertising on and set the name the scanner shows
+  (Urchin, Corne, Waterfwl, Forager: max 8 characters). That name also
+  becomes the keyboard's Bluetooth name.
+- **Scanner:** the "Build scanner" workflow builds `scanner/` and uploads a
+  `prospector-scanner` zip. Flash `prospector_scanner.uf2` to the Prospector,
+  or `prospector_scanner_touch.uf2` if yours has the touch display. If it was
+  running other firmware before (e.g. a dongle build), flash
+  `settings_reset-xiao_ble_zephyr4` first.
 
-The dongle has no RGB LED, so the Config layer's battery key does nothing there.
-To go back, flash `settings_reset` again and then the normal `waterfowl_left`.
+The module comes from the `scanner` branch of
+[russwinch/prospector-zmk-module](https://github.com/russwinch/prospector-zmk-module)
+(t-ogura v2.2.3), pinned by commit in both `config/west.yml` and
+`scanner/west.yml`. The scanner needs ZMK main (Zephyr 4), so it has its own
+manifest; the keyboards stay on ZMK v0.3. If the Prospector doesn't see a
+keyboard, power-cycle the keyboard: it sends a burst of updates at startup.
 
 ## Adding a keyboard
 
