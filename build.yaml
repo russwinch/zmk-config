@@ -1,6 +1,6 @@
 # GitHub Actions build matrix: one entry per half of every keyboard.
 # Keymaps: config/<shield>.keymap -> shared config/keymap.dtsi
-# The Prospector scanner is built separately: scanner/build.yaml.
+# The Prospector scanner is built in russwinch/zmk-prospector-scanner.
 ---
 include:
   # --- Urchin (nice!nano v2, nice!view gem) ---

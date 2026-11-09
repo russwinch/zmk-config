@@ -60,7 +60,6 @@ the Windows layer read ⌘ as Win.
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `config/west.yml` | Keyboards: ZMK version + modules, all pinned to match ZMK v0.3. |
 | `build.yaml` | Which keyboard firmware CI builds (`.github/workflows/build.yml`). |
-| `scanner/` | Prospector scanner firmware: its own `west.yml` (ZMK main), config and `build.yaml`, built by `.github/workflows/scanner.yml`. |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
 ## Flashing
@@ -91,17 +90,19 @@ battery, modifiers and connection status for the scanner to show.
   `.conf` files turn status advertising on and set the name the scanner shows
   (Urchin, Corne, Waterfwl, Forager: max 8 characters). That name also
   becomes the keyboard's Bluetooth name.
-- **Scanner:** the "Build scanner" workflow builds `scanner/` and uploads a
-  `prospector-scanner` zip. Flash `prospector_scanner.uf2` to the Prospector,
-  or `prospector_scanner_touch.uf2` if yours has the touch display. If it was
-  running other firmware before (e.g. a dongle build), flash
-  `settings_reset-xiao_ble_zephyr4` first.
+- **Scanner:** built in its own repo,
+  [russwinch/zmk-prospector-scanner](https://github.com/russwinch/zmk-prospector-scanner)
+  (fork of t-ogura's). Download its latest `firmware` zip and flash
+  `prospector_scanner.uf2` to the Prospector, or
+  `prospector_scanner_touch.uf2` if yours has the touch display. If it was
+  running other firmware before (e.g. a dongle build), flash its
+  `settings_reset` first.
 
 The module comes from the `scanner` branch of
 [russwinch/prospector-zmk-module](https://github.com/russwinch/prospector-zmk-module)
-(t-ogura v2.2.3), pinned by commit in both `config/west.yml` and
-`scanner/west.yml`. The scanner needs ZMK main (Zephyr 4), so it has its own
-manifest; the keyboards stay on ZMK v0.3. If the Prospector doesn't see a
+(t-ogura v2.2.3), pinned by the same commit here and in the scanner repo.
+The scanner needs ZMK main (Zephyr 4), which is why it lives in its own repo;
+the keyboards stay on ZMK v0.3. If the Prospector doesn't see a
 keyboard, power-cycle the keyboard: it sends a burst of updates at startup.
 
 ## Adding a keyboard
