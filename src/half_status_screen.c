@@ -10,8 +10,8 @@
  * MIT): each 68x68 canvas is drawn upright, then rotated onto the display.
  *
  *   ┌───────────┐  top canvas
- *   │ L [███] 85│  this half's battery (bolt when charging)
- *   │ R [██ ] 60│  other half's battery, from the dongle (-- = unknown)
+ *   │ L: [██] 85│  this half's battery (bolt when charging)
+ *   │ R: [█ ] 60│  other half's battery, from the dongle (-- = unknown)
  *   │ ᛒ/USB   ✓ │  dongle output; link to the dongle (✕ = not connected)
  *   ├───────────┤  middle canvas
  *   │ (1)   (2) │  dongle's Bluetooth profiles: filled = active,
@@ -243,16 +243,17 @@ static void draw_arc(lv_obj_t *canvas, int32_t x, int32_t y, int32_t r, int32_t 
     lv_canvas_finish_layer(canvas, &layer);
 }
 
-// One battery row, 18px tall: "L [####] 85". level 0xFF = unknown.
+// One battery row, 18px tall: "L: [###] 85". level 0xFF = unknown.
+// 68px across: label 0-14, battery icon 15-42, number 44-67.
 static void draw_battery_row(lv_obj_t *canvas, int32_t y, const char *label, uint8_t level,
                              bool charging) {
-    draw_text(canvas, 0, y, 10, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT, FG, label);
+    draw_text(canvas, 0, y, 15, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT, FG, label);
 
-    // outline 29x12 at x=11, nub on the right, fill 0..25px
-    draw_rect(canvas, 11, y + 2, 29, 12, FG);
-    draw_rect(canvas, 12, y + 3, 27, 10, BG);
+    // outline 25x12 at x=15, nub on the right, fill 0..21px
+    draw_rect(canvas, 15, y + 2, 25, 12, FG);
+    draw_rect(canvas, 16, y + 3, 23, 10, BG);
     if (level != HALF_STATUS_OTHER_BATTERY_UNKNOWN) {
-        draw_rect(canvas, 13, y + 4, (MIN(level, 100) + 2) / 4, 8, FG);
+        draw_rect(canvas, 17, y + 4, (MIN(level, 100) * 21 + 50) / 100, 8, FG);
     }
     draw_rect(canvas, 40, y + 5, 3, 6, FG);
     draw_rect(canvas, 41, y + 6, 1, 4, BG);
@@ -277,8 +278,8 @@ static void draw_top(const struct remote_state *r) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     charging = zmk_usb_is_powered();
 #endif
-    draw_battery_row(top_canvas, 0, "L", zmk_battery_state_of_charge(), charging);
-    draw_battery_row(top_canvas, 20, "R",
+    draw_battery_row(top_canvas, 0, "L:", zmk_battery_state_of_charge(), charging);
+    draw_battery_row(top_canvas, 20, "R:",
                      r->valid ? r->other_battery : HALF_STATUS_OTHER_BATTERY_UNKNOWN, false);
 
     draw_rect(top_canvas, 0, 42, CANVAS_SIZE, 1, FG);

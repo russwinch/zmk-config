@@ -120,7 +120,7 @@ ZMK's stock picture for a small status screen, read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
-| `L` / `R` rows | each half's battery (`L` is this half, a bolt when charging; `R` comes from the dongle, `--` until it has heard from the right half) |
+| `L:` / `R:` rows | each half's battery icon and % (`L:` is this half, a bolt when charging; `R:` comes from the dongle, `--` until it has heard from the right half) |
 | Bottom-left icon | the dongle's output: Bluetooth or USB |
 | Bottom-right icon | this half's link to the dongle (✕ when not connected) |
 | Five circles | the dongle's Bluetooth profiles: filled is active, ring is connected, dashed ring is paired |
