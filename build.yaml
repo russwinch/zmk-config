@@ -1,5 +1,8 @@
 # GitHub Actions build matrix: one entry per half of every keyboard.
 # Keymaps: config/<shield>.keymap -> shared config/keymap.dtsi
+# Settings: config/default.conf (all builds) + config/<shield>.conf. ZMK
+# merges default.conf last, so to make an exception for one build put
+# `cmake-args: -DCONFIG_...=...` on its entry here (that beats every file).
 ---
 include:
   # --- Urchin (nice!nano v2, nice!view gem) ---
@@ -25,6 +28,8 @@ include:
   # peripherals (the right half's normal build above is already one).
   - board: xiao_ble//zmk
     shield: waterfowl_dongle prospector_adapter
+    # no deep sleep: no keys to wake it (overrides config/default.conf)
+    cmake-args: -DCONFIG_ZMK_SLEEP=n
   - board: nice_nano//zmk
     shield: waterfowl_left nice_view_adapter nice_view
     cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n

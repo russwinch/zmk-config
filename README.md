@@ -49,14 +49,15 @@ half's battery level on its RGB LED (green, yellow, red).
 
 | Board | Deep sleep after | Display |
 | --- | --- | --- |
-| Urchin, Aurora Corne | 30 minutes | nice!view stays on (it uses next to no power) |
-| Forager | 30 minutes | none |
+| Urchin, Aurora Corne | 1 hour | nice!view stays on (it uses next to no power) |
+| Forager | 1 hour | none |
 | Waterfowl halves | 1 hour | left nice!view stays on |
 | Waterfowl dongle | never (USB powered) | backlight dims after 45 minutes idle, off after an hour |
 
 Deep sleep drops the Bluetooth connection: the next key press wakes the board
 (that key isn't typed) and it takes a second or so to reconnect. Nothing sleeps
-while it's on USB power. Timeouts are in each `config/<shield>.conf`.
+while it's on USB power. The sleep timeout is shared by every board in
+`config/default.conf`; the dongle's exception is in `build.yaml`.
 
 ### Board extras
 
@@ -72,7 +73,8 @@ while it's on USB power. Timeouts are in each `config/<shield>.conf`.
 | --- | --- |
 | `config/keymap.dtsi` | **The keymap.** All layers and behaviors, written once as 34 core keys. |
 | `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
-| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep, Bluetooth power). |
+| `config/default.conf` | Settings shared by every build (deep sleep). ZMK applies it after the per-board files, so exceptions go in `build.yaml` as `cmake-args`. |
+| `config/<shield>.conf` | Per-board Kconfig (display, encoders, LEDs, Bluetooth power). |
 | `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
