@@ -52,7 +52,7 @@ half's battery level on its RGB LED (green, yellow, red).
 | Urchin, Aurora Corne | 30 minutes | nice!view stays on (it uses next to no power) |
 | Forager | 30 minutes | none |
 | Waterfowl halves | 1 hour | left nice!view stays on |
-| Waterfowl dongle | never (USB powered) | backlight dims after 1 minute idle, off 10 minutes later |
+| Waterfowl dongle | never (USB powered) | backlight dims after 45 minutes idle, off after an hour |
 
 Deep sleep drops the Bluetooth connection: the next key press wakes the board
 (that key isn't typed) and it takes a second or so to reconnect. Nothing sleeps
