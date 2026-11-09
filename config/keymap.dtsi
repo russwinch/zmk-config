@@ -35,7 +35,7 @@
 #define L_WIN   1
 #define L_LOW   2
 #define L_RAI   3
-#define L_TRI   4
+#define L_CFG   4
 
 #define XXX     &none
 #define ___     &trans
@@ -120,9 +120,9 @@
 / {
     conditional_layers {
         compatible = "zmk,conditional-layers";
-        tri_layer {
+        config_layer {
             if-layers = <L_LOW L_RAI>;
-            then-layer = <L_TRI>;
+            then-layer = <L_CFG>;
         };
     };
 };
@@ -186,8 +186,9 @@
             SENSORS
         };
 
-        // Lower + Raise held together: power, OS switch, battery, Bluetooth
-        tri_layer {
+        // Config: Lower + Raise held together. Power, OS switch, battery,
+        // Bluetooth. Shown as "Shit" on the screens, which is what we call it.
+        config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,

@@ -5,7 +5,10 @@
 # shared layers; the other boards only add encoders and spare keys.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# --layer-names: label the last layer "Config" in the picture; its
+# display-name (on the keyboard screens) is "Shit"
 keymap -c keymap-drawer/config.yaml parse -z config/urchin.keymap -c 10 \
+    --layer-names Mac Windows Lower Raise Config \
     > keymap-drawer/keymap.yaml
 keymap -c keymap-drawer/config.yaml draw keymap-drawer/keymap.yaml \
     --ortho-layout '{split: true, rows: 3, columns: 5, thumbs: 2}' \

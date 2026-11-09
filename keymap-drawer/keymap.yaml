@@ -68,7 +68,7 @@ layers:
     - ⇥
     - {t: ▽, type: trans}
     - {type: held}
-  Shit:
+  Config:
   - ['', '', '', '', '', '', '', '', '', '']
   - ['', '', '', '', '', '', '', '', '', '']
   - [Power, Mac, Windows, '', Battery, BT prev, BT next, '', '', BT clear]
