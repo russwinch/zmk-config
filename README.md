@@ -131,9 +131,12 @@ ZMK's existing "run a behavior on a half" message: a `half_status` behavior in
 `config/waterfowl.keymap` that no key is bound to. The `R` battery is the
 dongle's last reading, so it can be out of date while the right half sleeps.
 
-The screen uses the Prospector module's **Operator** layout (layer name,
-batteries, modifiers, BLE profile, WPM). To try Classic, Radii or Field, change
-the layout line in `config/waterfowl_dongle.conf`. If one peripheral stops
+The dongle's own screen uses the Prospector module's **Field** layout (layer
+name, battery levels, modifiers and a grid of lines that animate as you type).
+To try Classic, Radii or Operator, change the layout line in
+`config/waterfowl_dongle.conf`; the animation timings are set there too.
+
+If one peripheral stops
 sending keys after connecting to the dongle, reset that half (a known ZMK issue,
 [zmk#3156](https://github.com/zmkfirmware/zmk/issues/3156)).
 To go back, flash `settings_reset` again and then the normal `waterfowl_left`.
