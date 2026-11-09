@@ -56,7 +56,8 @@ the Windows layer read ⌘ as Win.
 | --- | --- |
 | `config/keymap.dtsi` | **The keymap.** All layers and behaviors, written once as 34 core keys. |
 | `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
-| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep, Bluetooth power, scanner name). |
+| `config/<shield>.conf` | Per-board Kconfig (display, encoders, sleep, Bluetooth power). |
+| `config/<shield>_left.conf` | Left (central) half only: Prospector scanner status advertising and name. |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `config/west.yml` | Keyboards: ZMK version + modules, all pinned to match ZMK v0.3. |
 | `build.yaml` | Which keyboard firmware CI builds (`.github/workflows/build.yml`). |
@@ -87,7 +88,7 @@ to the computer as normal, and its central (left) half broadcasts layer,
 battery, modifiers and connection status for the scanner to show.
 
 - **Keyboards:** nothing to do beyond flashing the normal firmware above. The
-  `.conf` files turn status advertising on and set the name the scanner shows
+  `config/<shield>_left.conf` files (central half only) turn status advertising on and set the name the scanner shows
   (Urchin, Corne, Waterfwl, Forager: max 8 characters). That name also
   becomes the keyboard's Bluetooth name.
 - **Scanner:** built in its own repo,
