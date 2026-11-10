@@ -11,11 +11,12 @@ public enum Drives {
             .sorted { $0.path < $1.path }
     }
 
-    /// Which kind of board a bootloader drive belongs to, if it says.
-    public static func board(of drive: URL, boards: [String: Board]) -> String? {
+    /// Which kind of board a bootloader drive says it is: nil if it doesn't
+    /// say, and nil for the whole thing if the drive can't be read (it has gone).
+    public static func board(of drive: URL, boards: [String: Board]) -> String?? {
         guard let data = try? Data(contentsOf: drive.appendingPathComponent("INFO_UF2.TXT")) else { return nil }
         let info = String(decoding: data, as: UTF8.self).lowercased()
-        return boards.keys.sorted().first { key in boards[key]!.hints.contains { info.contains($0) } }
+        return .some(boards.keys.sorted().first { key in boards[key]!.hints.contains { info.contains($0) } })
     }
 }
 
@@ -74,8 +75,8 @@ public func flash(
         let found = Drives.bootloaders(in: roots)
         if found.count > 1 {
             await say(.tooManyDrives)
-        } else if let only = found.first {
-            if let board = Drives.board(of: only, boards: boards), board != step.device.board {
+        } else if let only = found.first, let board = Drives.board(of: only, boards: boards) {
+            if let board, board != step.device.board {
                 await say(.wrongBoard(board))
             } else {
                 drive = only
