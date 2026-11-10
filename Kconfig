@@ -17,8 +17,9 @@ config WATERFOWL_DONGLE_IDLE_BRIGHTNESS
     default 0
     range 0 100
     help
-      0 looks black but keeps the PWM running at its shortest pulse rather
-      than stopping it (see src/dongle_idle_backlight.c).
+      0 also switches the panel off (display blanking). The backlight PWM
+      keeps running at its shortest pulse rather than being stopped (see
+      src/dongle_idle_backlight.c).
 
 config WATERFOWL_DONGLE_BACKLIGHT_OFF_MS
     int "Milliseconds after going idle before the backlight goes off (0 = never)"

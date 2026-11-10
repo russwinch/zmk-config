@@ -7,6 +7,11 @@
  * to leave the screen dark. Instead the PWM keeps running with its shortest
  * pulse (DARK_PULSE_NS, ~0.025% of the 1 ms period), which looks black.
  *
+ * When the backlight goes dark the panel itself is switched off too
+ * (display_blanking_on, the ST7789's "display off" command), and back on
+ * before the backlight returns. Both are done on ZMK's display work queue so
+ * the commands can't land in the middle of a screen redraw on the SPI bus.
+ *
  * Only built with a fixed brightness (no ambient light sensor), since the
  * Prospector module's sensor thread would otherwise keep overriding it.
  * Settings: Kconfig at the repo root, values in config/waterfowl_dongle.conf.
@@ -16,10 +21,13 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/led.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/display.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
+#include <zmk/display.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -45,7 +53,38 @@ static void set_backlight(uint8_t percent) {
     }
 }
 
-static void backlight_off_cb(struct k_work *work) { set_backlight(0); }
+static const struct device *panel = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+
+// brightness the backlight should go to next; applied on the display queue
+static atomic_t target_percent;
+static bool panel_off;
+
+static void apply_backlight_cb(struct k_work *work) {
+    uint8_t percent = (uint8_t)atomic_get(&target_percent);
+
+    if (percent > 0 && panel_off) {
+        display_blanking_off(panel);
+        panel_off = false;
+    }
+    set_backlight(percent);
+    if (percent == 0 && !panel_off && device_is_ready(panel)) {
+        display_blanking_on(panel);
+        panel_off = true;
+    }
+}
+
+static K_WORK_DEFINE(apply_backlight_work, apply_backlight_cb);
+
+static void request_backlight(uint8_t percent) {
+    atomic_set(&target_percent, percent);
+    if (zmk_display_is_initialized()) {
+        k_work_submit_to_queue(zmk_display_work_q(), &apply_backlight_work);
+    } else {
+        set_backlight(percent); // no screen yet, so no panel to switch
+    }
+}
+
+static void backlight_off_cb(struct k_work *work) { request_backlight(0); }
 
 static K_WORK_DELAYABLE_DEFINE(backlight_off_work, backlight_off_cb);
 
@@ -58,10 +97,10 @@ static int idle_backlight_listener(const zmk_event_t *eh) {
     switch (ev->state) {
     case ZMK_ACTIVITY_ACTIVE:
         k_work_cancel_delayable(&backlight_off_work);
-        set_backlight(CONFIG_PROSPECTOR_FIXED_BRIGHTNESS);
+        request_backlight(CONFIG_PROSPECTOR_FIXED_BRIGHTNESS);
         break;
     case ZMK_ACTIVITY_IDLE:
-        set_backlight(CONFIG_WATERFOWL_DONGLE_IDLE_BRIGHTNESS);
+        request_backlight(CONFIG_WATERFOWL_DONGLE_IDLE_BRIGHTNESS);
         if (CONFIG_WATERFOWL_DONGLE_BACKLIGHT_OFF_MS > 0) {
             k_work_schedule(&backlight_off_work, K_MSEC(CONFIG_WATERFOWL_DONGLE_BACKLIGHT_OFF_MS));
         }
