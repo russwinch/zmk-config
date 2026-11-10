@@ -7,25 +7,20 @@ import UniformTypeIdentifiers
 final class FlasherModel: ObservableObject {
     enum Phase: Equatable {
         case setup
-        case preparing(String)
+        case preparing
         case flashing
         case finished
         case failed(String)
     }
 
-    enum Source: Equatable {
-        case file(URL)
-        case latestBuild
-    }
-
     let targets: Targets
-    let canDownload = GitHub.gh() != nil
 
     @Published private(set) var keyboard: Keyboard
     /// Names of the devices to flash (all of them unless some are clicked off).
     @Published private(set) var selected: Set<String>
     @Published var reset = false
-    @Published var source: Source?
+    /// A CI firmware .zip, or a folder of .uf2 files.
+    @Published var firmware: URL?
 
     @Published private(set) var phase: Phase = .setup
     @Published private(set) var plan: [Step] = []
@@ -40,7 +35,7 @@ final class FlasherModel: ObservableObject {
         targets = Self.loadTargets()
         keyboard = targets.keyboards[0]
         selected = Set(targets.keyboards[0].devices.map(\.name))
-        source = Firmware.newestDownload().map(Source.file)
+        firmware = Firmware.newestDownload()
         readArguments()
     }
 
@@ -57,8 +52,7 @@ final class FlasherModel: ObservableObject {
         }
     }
 
-    /// Lets it be opened ready to go, e.g.
-    /// `open "ZMK Flasher.app" --args --keyboard waterfowl-dongle --reset --start`.
+    /// For smoke.sh: start already set up, against pretend drives.
     private func readArguments() {
         var arguments = CommandLine.arguments.dropFirst().makeIterator()
         while let argument = arguments.next() {
@@ -69,12 +63,11 @@ final class FlasherModel: ObservableObject {
                 }
             case "--firmware":
                 if let path = arguments.next() {
-                    source = .file(URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+                    firmware = URL(fileURLWithPath: path)
                 }
-            case "--download": source = .latestBuild
             case "--reset": reset = true
             case "--start": startWhenShown = true
-            case "--volumes":  // testing: look for bootloader drives here instead of /Volumes
+            case "--volumes":
                 if let path = arguments.next() { roots = [URL(fileURLWithPath: path)] }
             default: break
             }
@@ -96,7 +89,7 @@ final class FlasherModel: ObservableObject {
         }
     }
 
-    var canStart: Bool { source != nil && !selected.isEmpty }
+    var canStart: Bool { firmware != nil && !selected.isEmpty }
 
     func chooseFile() {
         let panel = NSOpenPanel()
@@ -105,7 +98,7 @@ final class FlasherModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         if panel.runModal() == .OK, let url = panel.url {
-            source = .file(url)
+            firmware = url
         }
     }
 
@@ -121,22 +114,17 @@ final class FlasherModel: ObservableObject {
     }
 
     func start() {
-        guard let source, canStart else { return }
-        let keyboard = keyboard, selected = selected, reset = reset, repo = targets.repo
+        guard let firmware, canStart else { return }
+        let keyboard = keyboard, selected = selected, reset = reset
         plan = []
         current = 0
-        phase = .preparing(source == .latestBuild ? "Downloading the latest build…" : "Reading the firmware…")
+        phase = .preparing
         task = Task {
             do {
-                // Unzipping and downloading block, so keep them off the main thread.
+                // Unzipping blocks, so keep it off the main thread.
                 let plan = try await Task.detached { () throws -> [Step] in
-                    let folder: URL
-                    switch source {
-                    case .file(let url): folder = url
-                    case .latestBuild: folder = try GitHub.downloadLatest(repo: repo)
-                    }
-                    return try Firmware.plan(
-                        keyboard: keyboard, only: selected, reset: reset, files: Firmware.unpack(folder))
+                    try Firmware.plan(
+                        keyboard: keyboard, only: selected, reset: reset, files: Firmware.unpack(firmware))
                 }.value
                 guard !Task.isCancelled else { return }
                 self.plan = plan
@@ -170,7 +158,6 @@ final class FlasherModel: ObservableObject {
                 try await flash(plan[index], roots: roots, boards: targets.boards) { [weak self] status in
                     await self?.update(status)
                 }
-                NSSound(named: "Glass")?.play()
             }
             phase = .finished
         } catch is CancellationError {
@@ -186,7 +173,6 @@ final class FlasherModel: ObservableObject {
 
     private func fail(_ error: Error) {
         guard !Task.isCancelled else { return }
-        NSSound(named: "Basso")?.play()
         phase = .failed(error.localizedDescription)
     }
 

@@ -91,7 +91,14 @@ public enum Firmware {
                 throw FlashError.notFirmware(source.lastPathComponent)
             }
             folder = try temporaryFolder()
-            try Shell.run(URL(fileURLWithPath: "/usr/bin/unzip"), ["-q", "-o", source.path, "-d", folder.path])
+            let unzip = Process()
+            unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+            unzip.arguments = ["-q", "-o", source.path, "-d", folder.path]
+            try unzip.run()
+            unzip.waitUntilExit()
+            guard unzip.terminationStatus == 0 else {
+                throw FlashError.tool("Couldn't unzip \(source.lastPathComponent).")
+            }
         }
         var found: [URL] = []
         let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil)
@@ -136,61 +143,5 @@ public enum Firmware {
             .appendingPathComponent("zmk-firmware-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
-    }
-}
-
-/// The latest CI build, fetched with the GitHub CLI.
-public enum GitHub {
-    /// Apps started from Finder don't get the shell's PATH, so look in the usual places too.
-    public static func gh() -> URL? {
-        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        return (path + ["/opt/homebrew/bin", "/usr/local/bin"])
-            .map { URL(fileURLWithPath: $0).appendingPathComponent("gh") }
-            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
-    }
-
-    /// Downloads the firmware of the latest successful build of `branch`; returns the folder.
-    public static func downloadLatest(repo: String, branch: String = "main") throws -> URL {
-        guard let gh = gh() else {
-            throw FlashError.tool("Downloading needs the GitHub CLI (gh), logged in. Or pick a firmware .zip.")
-        }
-        let run = try Shell.run(gh, [
-            "run", "list", "-R", repo, "-w", "build.yml", "-b", branch, "-s", "success",
-            "-L", "1", "--json", "databaseId", "-q", ".[0].databaseId",
-        ]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !run.isEmpty else { throw FlashError.tool("No successful build of \(branch) found.") }
-        let folder = try Firmware.temporaryFolder()
-        try Shell.run(gh, ["run", "download", run, "-R", repo, "-n", "firmware", "-D", folder.path])
-        return folder
-    }
-}
-
-enum Shell {
-    /// Runs a command and returns what it printed; throws with its error output if it fails.
-    @discardableResult
-    static func run(_ tool: URL, _ arguments: [String]) throws -> String {
-        let errors = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".err")
-        FileManager.default.createFile(atPath: errors.path, contents: nil)
-        defer { try? FileManager.default.removeItem(at: errors) }
-
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = tool
-        process.arguments = arguments
-        process.standardOutput = output
-        process.standardError = try FileHandle(forWritingTo: errors)
-        do {
-            try process.run()
-        } catch {
-            throw FlashError.tool("Couldn't run \(tool.lastPathComponent): \(error.localizedDescription)")
-        }
-        let printed = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let said = (try? String(contentsOf: errors, encoding: .utf8))?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw FlashError.tool("\(tool.lastPathComponent) failed" + (said.isEmpty ? "." : ": \(said)"))
-        }
-        return printed
     }
 }

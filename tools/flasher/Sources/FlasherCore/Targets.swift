@@ -32,7 +32,6 @@ public struct Board: Codable, Hashable, Sendable {
 
 /// tools/targets.json, shared with tools/flash.py.
 public struct Targets: Codable, Sendable {
-    public let repo: String
     public let boards: [String: Board]
     public let keyboards: [Keyboard]
 

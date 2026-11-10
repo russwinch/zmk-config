@@ -9,7 +9,7 @@ struct ContentView: View {
         Group {
             switch model.phase {
             case .setup: SetupView()
-            case .preparing(let message): PreparingView(message: message)
+            case .preparing: PreparingView()
             case .flashing: FlashingView()
             case .finished: FinishedView()
             case .failed(let message): FailedView(message: message)
@@ -68,11 +68,6 @@ struct SetupView: View {
             .keyboardShortcut(.defaultAction)
             .disabled(!model.canStart)
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first else { return false }
-            model.source = .file(url)
-            return true
-        }
     }
 }
 
@@ -81,58 +76,27 @@ struct FirmwareRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "shippingbox")
-                .font(.title2)
-                .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).lineLimit(1).truncationMode(.middle)
-                detail.font(.footnote).foregroundStyle(.secondary)
+                Text(model.firmware?.lastPathComponent ?? "No firmware chosen")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let firmware = model.firmware {
+                    Text("From \(Firmware.modified(firmware).formatted(.relative(presentation: .named)))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 8)
-            Menu("Change") {
-                Button("Choose a File…") { model.chooseFile() }
-                Button("Latest Build from GitHub") { model.source = .latestBuild }
-                    .disabled(!model.canDownload)
-            }
-            .fixedSize()
+            Button("Choose…") { model.chooseFile() }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary))
     }
-
-    private var title: String {
-        switch model.source {
-        case .file(let url): return url.lastPathComponent
-        case .latestBuild: return "Latest build of main"
-        case nil: return "No firmware chosen"
-        }
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        switch model.source {
-        case .file(let url):
-            Text("From \(Firmware.modified(url).formatted(.relative(presentation: .named)))")
-        case .latestBuild:
-            Text("Downloaded from GitHub when you start")
-        case nil:
-            Text("Drop a firmware .zip here, or choose one")
-        }
-    }
 }
 
 struct PreparingView: View {
-    @EnvironmentObject private var model: FlasherModel
-    let message: String
-
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            ProgressView()
-            Text(message).foregroundStyle(.secondary)
-            Spacer()
-            Button("Stop") { model.stop() }
-        }
+        ProgressView()
     }
 }
 

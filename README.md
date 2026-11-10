@@ -105,17 +105,11 @@ tools/flasher/build.sh                      # needs Xcode or its command line to
 open "tools/flasher/build/ZMK Flasher.app"
 ```
 
-Pick the keyboard, click a device to leave it out, and press Start. It starts
-with the newest `firmware*.zip` in `~/Downloads`; drop another zip (or a folder
-of `.uf2` files) on the window, or have it fetch the latest `main` build
-(needs the `gh` CLI). "Reset settings first" flashes `settings_reset` before
-each device's firmware, so each device is done twice. It never copies onto a
-board of the wrong type. macOS asks once for access to Downloads and to
-removable volumes, and may ask again after a rebuild.
-
-It can be opened ready to go:
-`open "tools/flasher/build/ZMK Flasher.app" --args --keyboard waterfowl-dongle --reset --start`
-(also `--firmware <zip or folder>` and `--download`).
+Pick the keyboard, click a device to leave it out, and press Start. It uses
+the newest `firmware*.zip` in `~/Downloads` unless you choose another.
+"Reset settings first" flashes `settings_reset` before each device's
+firmware, so each device is done twice. It never copies onto a board of the
+wrong type.
 
 ### From the command line
 
