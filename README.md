@@ -96,9 +96,16 @@ zip from the latest successful run in the Actions tab and flash each half
 
 ### ZMK Flasher (macOS app)
 
-`tools/flasher` is a small app that does the copying for you. It draws the
-keyboard, lights up the device to plug in next, and copies the right file as
-soon as that device's bootloader drive appears, so you only double-tap reset.
+`tools/flasher` is a small app that does the flashing for you. It draws the
+keyboard and lights up the device to plug in next. When you plug that device
+in, the app starts its bootloader over USB and copies the right file: no
+double-tap on reset.
+
+That works once a device runs firmware from this repo that has the USB
+trigger (`src/usb_flash_trigger.c`). The first time, or if the firmware is
+ever too broken to answer, double-tap reset as before and the app carries on
+from there. Each device also says whether it is the left half, right half or
+dongle, so the app won't flash a half with the other half's firmware.
 
 ```sh
 tools/flasher/build.sh                      # needs Xcode or its command line tools
@@ -108,8 +115,8 @@ open "tools/flasher/build/ZMK Flasher.app"
 Pick the keyboard, click a device to leave it out, and press Start. It uses
 the newest `firmware*.zip` in `~/Downloads` unless you choose another.
 "Reset settings first" flashes `settings_reset` before each device's
-firmware, so each device is done twice. It never copies onto a board of the
-wrong type.
+firmware, so each device is done twice (leave it plugged in). It never copies
+onto a board of the wrong type.
 
 ### From the command line
 

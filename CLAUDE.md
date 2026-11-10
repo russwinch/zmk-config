@@ -23,6 +23,10 @@
 - `tools/targets.json` mirrors `build.yaml` (it feeds `tools/flash.py` and the
   macOS app in `tools/flasher`): when a build is added, renamed or gets an
   `artifact-name`, update both (and `--dry-run` flash.py).
+- Every build has a USB serial port (`config/default.overlay`,
+  `src/usb_flash_trigger.c`) that the flasher app uses to identify the device
+  and start its bootloader. ZMK reads `default.overlay` only when `config/`
+  has no shield- or board-named overlay, so a new one must `#include` it.
 - `tools/flasher` is SwiftUI on a plain-Foundation `FlasherCore`. It only
   builds on macOS; the "Flasher app" workflow tests it, runs the built app
   against pretend drives (`smoke.sh`) and uploads screenshots, so check that

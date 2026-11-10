@@ -22,8 +22,13 @@ public enum Drives {
 
 /// Where one flash has got to.
 public enum StepStatus: Equatable, Sendable {
-    /// No bootloader drive yet: the person needs to double-tap reset.
+    /// Nothing to flash yet: the person needs to plug the device in (and
+    /// double-tap reset, if its firmware is too old to be asked over USB).
     case waiting
+    /// A different device of this keyboard is plugged in ("left", "right", "dongle").
+    case wrongDevice(String)
+    /// The device was found over USB and told to start its bootloader.
+    case starting
     /// A drive appeared but it is the other kind of board. Nothing is copied.
     case wrongBoard(String)
     /// More than one bootloader drive is mounted, so it isn't clear which to use.
@@ -51,10 +56,17 @@ public struct FlashTiming: Sendable {
 /// Waits for the step's device to show up as a bootloader drive, copies the
 /// file and waits for the drive to disappear again. Waits for as long as it
 /// takes; cancel the task to stop.
+///
+/// A device that is plugged in and running firmware with the USB trigger is
+/// sent into its bootloader, unless it says it is a different device.
+/// `finished` names devices already flashed in this run: those are expected
+/// to still be plugged in, so they aren't reported as the wrong device.
 public func flash(
     _ step: Step,
     roots: [URL] = Drives.volumes,
     boards: [String: Board],
+    ports: SerialPorts? = nil,
+    finished: Set<String> = [],
     timing: FlashTiming = FlashTiming(),
     report: @escaping @Sendable (StepStatus) async -> Void
 ) async throws {
@@ -68,6 +80,9 @@ public func flash(
     func pause(_ seconds: TimeInterval) async throws {
         try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
     }
+
+    var asked: [String: String?] = [:]  // port -> what it said it was (nil: not a keyboard)
+    var startingUntil = Date.distantPast
 
     var drive: URL?
     while drive == nil {
@@ -83,7 +98,25 @@ public func flash(
                 break
             }
         } else {
-            await say(.waiting)
+            if let ports {
+                let present = ports.paths()
+                asked = asked.filter { present.contains($0.key) }
+                for path in present where asked[path] == nil {
+                    let mine: (String) -> Bool = { $0.isEmpty || $0 == step.device.name }
+                    let name = ports.probe(path, enter: mine)
+                    asked[path] = .some(name)
+                    if let name, mine(name) { startingUntil = Date().addingTimeInterval(10) }
+                }
+            }
+            let others = asked.values.compactMap { $0 }
+                .filter { !$0.isEmpty && $0 != step.device.name && !finished.contains($0) }
+            if Date() < startingUntil {
+                await say(.starting)
+            } else if let other = others.sorted().first {
+                await say(.wrongDevice(other))
+            } else {
+                await say(.waiting)
+            }
         }
         try await pause(timing.poll)
     }

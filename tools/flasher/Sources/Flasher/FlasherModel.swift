@@ -155,7 +155,10 @@ final class FlasherModel: ObservableObject {
             for index in plan.indices.dropFirst(first) {
                 current = index
                 status = .waiting
-                try await flash(plan[index], roots: roots, boards: targets.boards) { [weak self] status in
+                let finished = Set(plan[..<index].map(\.device.name))
+                try await flash(
+                    plan[index], roots: roots, boards: targets.boards, ports: USBSerialPorts(), finished: finished
+                ) { [weak self] status in
                     await self?.update(status)
                 }
             }

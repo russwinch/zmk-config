@@ -159,6 +159,42 @@ final class FlasherCoreTests: XCTestCase {
         }
     }
 
+    func testDeviceIsAskedOverUSB() async throws {
+        let step = try Firmware.plan(keyboard: keyboard("waterfowl"), only: ["left"], reset: false, files: firmwareFolder())[0]
+        let volumes = scratch.appendingPathComponent("volumes")
+        try FileManager.default.createDirectory(at: volumes, withIntermediateDirectories: true)
+        let seen = Recorder()
+
+        // The right half and the (already flashed) dongle are plugged in: neither is touched.
+        let ports = FakePorts(["/dev/a": "right", "/dev/b": "dongle", "/dev/c": nil])
+        let flashing = Task {
+            try await flash(
+                step, roots: [volumes], boards: targets.boards, ports: ports, finished: ["dongle"], timing: fast
+            ) { await seen.add($0) }
+        }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(ports.entered, [])
+        var statuses = await seen.statuses
+        XCTAssertEqual(statuses, [.wrongDevice("right")])
+
+        // The left half is plugged in: it is sent to its bootloader and flashed.
+        var nano: Task<String?, Error>?
+        ports.plug("/dev/d", "left") { nano = self.board("Model: nice!nano", in: volumes) }
+        try await flashing.value
+        XCTAssertEqual(ports.entered, ["/dev/d"])
+        let copied = try await nano?.value
+        XCTAssertEqual(copied, step.uf2.lastPathComponent)
+        statuses = await seen.statuses
+        XCTAssertEqual(statuses.suffix(4), [.starting, .copying, .restarting, .done])
+    }
+
+    func testGreeting() {
+        XCTAssertEqual(USBSerialPorts.name(in: "zmk-flasher left"), "left")
+        XCTAssertEqual(USBSerialPorts.name(in: "zmk-flasher"), "")
+        XCTAssertNil(USBSerialPorts.name(in: "ok"))
+        XCTAssertNil(USBSerialPorts.name(in: ""))
+    }
+
     /// Every device's firmware name must be something build.yaml builds.
     func testTargetsMatchTheBuildMatrix() throws {
         let matrix = try String(
@@ -181,4 +217,38 @@ final class FlasherCoreTests: XCTestCase {
 actor Recorder {
     var statuses: [StepStatus] = []
     func add(_ status: StepStatus) { statuses.append(status) }
+}
+
+/// Pretend serial ports: path -> what the device says it is (nil: not a keyboard).
+final class FakePorts: SerialPorts, @unchecked Sendable {
+    private let lock = NSLock()
+    private var names: [String: String?]
+    private var onEnter: [String: () -> Void] = [:]
+    private var enteredPaths: [String] = []
+
+    init(_ names: [String: String?]) { self.names = names }
+
+    var entered: [String] { lock.withLock { enteredPaths } }
+
+    func plug(_ path: String, _ name: String, onEnter: @escaping () -> Void) {
+        lock.withLock {
+            names[path] = .some(name)
+            self.onEnter[path] = onEnter
+        }
+    }
+
+    func paths() -> [String] { lock.withLock { names.keys.sorted() } }
+
+    func probe(_ path: String, enter: (String) -> Bool) -> String? {
+        let (name, action) = lock.withLock { (names[path] ?? nil, onEnter[path]) }
+        guard let name else { return nil }
+        if enter(name) {
+            lock.withLock {
+                enteredPaths.append(path)
+                names[path] = nil  // it restarts, so the port goes away
+            }
+            action?()
+        }
+        return name
+    }
 }
