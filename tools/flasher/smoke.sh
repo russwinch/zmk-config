@@ -25,6 +25,7 @@ plug() {
         if [ -f "$work/volumes/$1/$3.uf2" ]; then
             rm -r "$work/volumes/$1"
             echo "flashed: $3"
+            sleep 2  # stay away long enough for the app to see it restart
             return
         fi
         sleep 0.2
