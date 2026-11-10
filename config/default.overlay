@@ -1,0 +1,13 @@
+/*
+ * Devicetree for every build (all keyboards, the dongle, settings_reset).
+ *
+ * ZMK only reads this when config/ has no overlay named after the shield or
+ * board, so if one of those is ever added, #include this file from it.
+ */
+
+/* USB serial port that tools/flasher talks to (src/usb_flash_trigger.c). */
+&zephyr_udc0 {
+    flasher_port: flasher_port {
+        compatible = "zephyr,cdc-acm-uart";
+    };
+};

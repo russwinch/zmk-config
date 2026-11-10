@@ -1,5 +1,16 @@
 # Options for this repo's own code (see CMakeLists.txt).
 
+config USB_FLASH_TRIGGER
+    bool "Reboot into the bootloader when the flasher app asks over USB"
+    default y
+    depends on DT_HAS_ZEPHYR_CDC_ACM_UART_ENABLED && USB_DEVICE_STACK && RETENTION_BOOT_MODE
+    select SERIAL
+    select UART_LINE_CTRL
+    help
+      Adds a USB serial port (config/default.overlay) that tools/flasher uses
+      to tell which device is plugged in and to start its bootloader, instead
+      of a double-tap on reset. See src/usb_flash_trigger.c.
+
 config WATERFOWL_DONGLE_IDLE_BACKLIGHT
     bool "Dim, then switch off, the Prospector screen backlight when idle"
     default y

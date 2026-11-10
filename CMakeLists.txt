@@ -5,3 +5,11 @@
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_IDLE_BACKLIGHT app PRIVATE src/dongle_idle_backlight.c)
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_half_status.c)
 target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE src/half_status_screen.c)
+
+# Which device this build is for, told to the flasher app over USB: taken from
+# the shield name, e.g. "waterfowl_left nice_view" -> left. Empty for settings_reset.
+if(CONFIG_USB_FLASH_TRIGGER)
+  string(REGEX MATCH "left|right|dongle" flasher_device "${SHIELD}")
+  target_sources(app PRIVATE src/usb_flash_trigger.c)
+  target_compile_definitions(app PRIVATE FLASHER_DEVICE="${flasher_device}")
+endif()
