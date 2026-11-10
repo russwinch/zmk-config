@@ -165,21 +165,21 @@ final class FlasherCoreTests: XCTestCase {
         try FileManager.default.createDirectory(at: volumes, withIntermediateDirectories: true)
         let seen = Recorder()
 
-        // The right half and the (already flashed) dongle are plugged in: neither is touched.
-        let ports = FakePorts(["/dev/a": "right", "/dev/b": "dongle", "/dev/c": nil])
+        // Other devices are plugged in too: none of them is touched.
+        let ports = FakePorts(["/dev/a": "waterfowl_right", "/dev/b": "urchin_left", "/dev/c": nil])
         let flashing = Task {
-            try await flash(
-                step, roots: [volumes], boards: targets.boards, ports: ports, finished: ["dongle"], timing: fast
-            ) { await seen.add($0) }
+            try await flash(step, roots: [volumes], boards: targets.boards, ports: ports, timing: fast) {
+                await seen.add($0)
+            }
         }
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(ports.entered, [])
         var statuses = await seen.statuses
-        XCTAssertEqual(statuses, [.wrongDevice("right")])
+        XCTAssertEqual(statuses, [.waiting])
 
         // The left half is plugged in: it is sent to its bootloader and flashed.
         var nano: Task<String?, Error>?
-        ports.plug("/dev/d", "left") { nano = self.board("Model: nice!nano", in: volumes) }
+        ports.plug("/dev/d", "waterfowl_left") { nano = self.board("Model: nice!nano", in: volumes) }
         try await flashing.value
         XCTAssertEqual(ports.entered, ["/dev/d"])
         let copied = try await nano?.value
@@ -189,7 +189,13 @@ final class FlasherCoreTests: XCTestCase {
     }
 
     func testGreeting() {
-        XCTAssertEqual(USBSerialPorts.name(in: "zmk-flasher left"), "left")
+        XCTAssertEqual(USBSerialPorts.name(in: "zmk-flasher waterfowl_left"), "waterfowl_left")
+
+        let left = keyboard("waterfowl-dongle").devices[1]
+        XCTAssertTrue(left.runs(shield: "waterfowl_left"))
+        XCTAssertTrue(left.runs(shield: "settings_reset"))
+        XCTAssertFalse(left.runs(shield: "waterfowl_right"))
+        XCTAssertTrue(keyboard("waterfowl-dongle").devices[0].runs(shield: "waterfowl_dongle"))
         XCTAssertEqual(USBSerialPorts.name(in: "zmk-flasher"), "")
         XCTAssertNil(USBSerialPorts.name(in: "ok"))
         XCTAssertNil(USBSerialPorts.name(in: ""))

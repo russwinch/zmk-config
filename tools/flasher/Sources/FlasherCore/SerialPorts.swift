@@ -1,16 +1,15 @@
 import Foundation
 
 /// The USB serial ports that keyboards running this repo's firmware offer
-/// (src/usb_flash_trigger.c): they say which device they are, and reboot
-/// into the bootloader when the port is set to 1200 baud.
+/// (src/usb_flash_trigger.c): they say which shield they were built for, and
+/// reboot into the bootloader when the port is set to 1200 baud.
 public protocol SerialPorts: Sendable {
     /// Ports that might be a keyboard.
     func paths() -> [String]
 
     /// Opens a port and asks what it is. Returns nil if it isn't one of ours,
-    /// otherwise the device name ("left", "right", "dongle", or "" when the
-    /// firmware doesn't know, as with settings_reset). If `enter` says yes
-    /// to that name, the device is sent into its bootloader.
+    /// otherwise its shield ("waterfowl_left", "settings_reset"...). If
+    /// `enter` says yes to that, the device is sent into its bootloader.
     func probe(_ path: String, enter: (String) -> Bool) -> String?
 }
 
@@ -46,7 +45,7 @@ public struct USBSerialPorts: SerialPorts {
         return name
     }
 
-    /// "zmk-flasher left" -> "left"; nil for anything else.
+    /// "zmk-flasher waterfowl_left" -> "waterfowl_left"; nil for anything else.
     static func name(in line: String) -> String? {
         let words = line.split(separator: " ", omittingEmptySubsequences: true)
         guard words.first.map(String.init) == greeting, words.count <= 2 else { return nil }

@@ -104,8 +104,8 @@ double-tap on reset.
 That works once a device runs firmware from this repo that has the USB
 trigger (`src/usb_flash_trigger.c`). The first time, or if the firmware is
 ever too broken to answer, double-tap reset as before and the app carries on
-from there. Each device also says whether it is the left half, right half or
-dongle, so the app won't flash a half with the other half's firmware.
+from there. Each device also says which one it is, so you can plug them all
+in at once and they are flashed in order, each with its own firmware.
 
 ```sh
 tools/flasher/build.sh                      # needs Xcode or its command line tools

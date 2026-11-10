@@ -183,7 +183,7 @@ struct Instruction: View {
 
     private var problem: Bool {
         switch status {
-        case .wrongBoard, .wrongDevice, .tooManyDrives: return true
+        case .wrongBoard, .tooManyDrives: return true
         default: return false
         }
     }
@@ -192,8 +192,6 @@ struct Instruction: View {
         switch status {
         case .waiting, .starting:
             return again ? "Keep it plugged in" : "Plug it in"
-        case .wrongDevice(let found):
-            return "That's the \(found). Unplug it and plug in this one."
         case .wrongBoard(let found):
             return "That's a \(model.boardLabel(found)), and this should be a "
                 + "\(model.boardLabel(step.device.board)). Unplug it; nothing was copied."
@@ -206,7 +204,7 @@ struct Instruction: View {
 
     private var activity: String {
         switch status {
-        case .waiting, .wrongBoard, .wrongDevice, .tooManyDrives:
+        case .waiting, .wrongBoard, .tooManyDrives:
             return "Waiting for it… double-tap reset if nothing happens"
         case .starting: return "Starting its bootloader…"
         case .copying: return step.kind == .settingsReset ? "Clearing its settings…" : "Copying the firmware…"

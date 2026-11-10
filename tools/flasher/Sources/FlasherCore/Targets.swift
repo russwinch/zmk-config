@@ -8,6 +8,14 @@ public struct Device: Codable, Hashable, Identifiable, Sendable {
     public let board: String  // key into Targets.boards
 
     public var id: String { name }
+
+    /// Whether a plugged-in device that says it was built for `shield` is
+    /// this one. Firmware names are the shield, sometimes with more after it
+    /// (waterfowl_left_peripheral_for_dongle); a device that has just had a
+    /// settings reset could be any of them.
+    public func runs(shield: String) -> Bool {
+        shield == "settings_reset" || firmware == shield || firmware.hasPrefix(shield + "_")
+    }
 }
 
 public struct Keyboard: Codable, Hashable, Identifiable, Sendable {

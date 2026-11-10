@@ -4,7 +4,7 @@
  *
  * The board shows up as a USB serial port (flasher_port, config/default.overlay).
  * When something opens the port it says which device it is, e.g.
- * "zmk-flasher left"; when the port is set to 1200 baud it reboots into the
+ * "zmk-flasher waterfowl_left"; when the port is set to 1200 baud it reboots into the
  * bootloader, the same signal Arduino boards use. Nothing runs while the
  * board is not on USB power.
  */
@@ -23,7 +23,7 @@
 #define POLL_MS 100
 #define BOOTLOADER_BAUD 1200
 
-// FLASHER_DEVICE is "left", "right", "dongle" or "" (CMakeLists.txt)
+// FLASHER_DEVICE is the build's first shield (CMakeLists.txt)
 static const char greeting[] = "zmk-flasher " FLASHER_DEVICE "\n";
 
 static const struct device *port = DEVICE_DT_GET(DT_NODELABEL(flasher_port));
