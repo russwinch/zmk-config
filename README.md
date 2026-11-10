@@ -83,7 +83,9 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, and the left half's nice!view screen when behind the dongle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
-| `tools/flash.py` | Flashes a keyboard's devices in order, optionally with a settings reset (see Flashing). |
+| `tools/flasher/` | macOS app that flashes a keyboard's devices in order and shows which one to plug in next (see Flashing). |
+| `tools/flash.py` | The same from the command line, on any OS. |
+| `tools/targets.json` | The keyboards and their firmware files, for both of the above. |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
 ## Flashing
@@ -92,9 +94,33 @@ Every push builds all firmware (`.github/workflows/build.yml`). Download the
 zip from the latest successful run in the Actions tab and flash each half
 (double-tap reset, then copy the `.uf2` onto the drive that appears).
 
-`tools/flash.py` does the copying for you: it waits for each bootloader drive
-and copies the right file, in order, so you only double-tap reset. It needs
-Python 3.9+ and nothing else.
+### ZMK Flasher (macOS app)
+
+`tools/flasher` is a small app that does the copying for you. It draws the
+keyboard, lights up the device to plug in next, and copies the right file as
+soon as that device's bootloader drive appears, so you only double-tap reset.
+
+```sh
+tools/flasher/build.sh                      # needs Xcode or its command line tools
+open "tools/flasher/build/ZMK Flasher.app"
+```
+
+Pick the keyboard, click a device to leave it out, and press Start. It starts
+with the newest `firmware*.zip` in `~/Downloads`; drop another zip (or a folder
+of `.uf2` files) on the window, or have it fetch the latest `main` build
+(needs the `gh` CLI). "Reset settings first" flashes `settings_reset` before
+each device's firmware, so each device is done twice. It never copies onto a
+board of the wrong type. macOS asks once for access to Downloads and to
+removable volumes, and may ask again after a rebuild.
+
+It can be opened ready to go:
+`open "tools/flasher/build/ZMK Flasher.app" --args --keyboard waterfowl-dongle --reset --start`
+(also `--firmware <zip or folder>` and `--download`).
+
+### From the command line
+
+`tools/flash.py` does the same in a terminal, on macOS, Linux and Windows. It
+needs Python 3.9+ and nothing else.
 
 ```sh
 python3 tools/flash.py waterfowl-dongle            # newest ~/Downloads/firmware*.zip
@@ -125,8 +151,8 @@ firmware again.
 The dongle becomes the split central (it runs the keymap and plugs into the
 computer); both halves become peripherals. To switch:
 
-Quickest: `python3 tools/flash.py waterfowl-dongle --reset` does all of the
-steps below in order. By hand:
+Quickest: ZMK Flasher (or `python3 tools/flash.py waterfowl-dongle --reset`)
+with "Reset settings first" on does all of the steps below in order. By hand:
 
 1. Flash `settings_reset` to the dongle (`xiao_ble`) and both halves (`nice_nano`).
 2. Flash `waterfowl_dongle prospector_adapter` to the dongle,

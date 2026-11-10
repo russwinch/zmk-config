@@ -1,0 +1,41 @@
+# Builds and tests the macOS flasher app (tools/flasher) when it changes.
+name: Flasher app
+
+on:
+  push:
+    paths:
+      - "tools/flasher/**"
+      - "tools/targets.json"
+      - "build.yaml"
+      - ".github/workflows/flasher.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: flasher-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: swift test --package-path tools/flasher
+
+      - name: Build the app
+        run: tools/flasher/build.sh
+
+      - name: Run it against pretend drives
+        run: tools/flasher/smoke.sh "$RUNNER_TEMP/screenshots"
+
+      - name: Shrink the screenshots
+        if: always()
+        run: sips -Z 1600 "$RUNNER_TEMP"/screenshots/*.png || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore

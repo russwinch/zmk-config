@@ -20,10 +20,18 @@
   workflow; pull before pushing after a keymap change.
 - Keep the README's tables (boards, layers, timings, encoders) in step with
   the keymap.
-- `tools/flash.py`'s `TARGETS` mirrors `build.yaml`: when a build is added,
-  renamed or gets an `artifact-name`, update both (and `--dry-run` it).
+- `tools/targets.json` mirrors `build.yaml` (it feeds `tools/flash.py` and the
+  macOS app in `tools/flasher`): when a build is added, renamed or gets an
+  `artifact-name`, update both (and `--dry-run` flash.py).
+- `tools/flasher` is SwiftUI on a plain-Foundation `FlasherCore`. It only
+  builds on macOS; the "Flasher app" workflow tests it, runs the built app
+  against pretend drives (`smoke.sh`) and uploads screenshots, so check that
+  run after changing it.
 
 ## Flashing for the user (`tools/flash.py`)
+
+The user normally flashes with the app (`tools/flasher`); this is for when
+they ask Claude to drive it.
 
 Only possible when Claude runs on the user's own computer: a cloud session
 can't see USB drives, so there just tell them the command to run.

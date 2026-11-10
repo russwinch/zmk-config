@@ -22,6 +22,7 @@ be run by an agent while a person handles the hardware (see CLAUDE.md).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import string
@@ -33,7 +34,6 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO = "russwinch/zmk-config"
 SETTINGS_RESET = "settings_reset"
 
 
@@ -45,34 +45,20 @@ class Device:
     board: str  # "nice_nano" or "xiao_ble" (picks the settings_reset file, checks the drive)
 
 
-# Keep in step with build.yaml. Order matters: it is the flashing (and so the
-# pairing) order, dongle first, then left, then right.
+# The keyboards live in targets.json (shared with the macOS app in flasher/);
+# keep that in step with build.yaml. Device order matters: it is the flashing
+# (and so the pairing) order, dongle first, then left, then right.
+_TARGETS = json.loads((Path(__file__).parent / "targets.json").read_text())
+REPO: str = _TARGETS["repo"]
 TARGETS: dict[str, list[Device]] = {
-    "waterfowl-dongle": [
-        Device("dongle", "Prospector dongle", "waterfowl_dongle", "xiao_ble"),
-        Device("left", "Waterfowl LEFT half", "waterfowl_left_peripheral_for_dongle", "nice_nano"),
-        Device("right", "Waterfowl RIGHT half", "waterfowl_right", "nice_nano"),
-    ],
-    "waterfowl": [
-        Device("left", "Waterfowl LEFT half", "waterfowl_left", "nice_nano"),
-        Device("right", "Waterfowl RIGHT half", "waterfowl_right", "nice_nano"),
-    ],
-    "urchin": [
-        Device("left", "Urchin LEFT half", "urchin_left", "nice_nano"),
-        Device("right", "Urchin RIGHT half", "urchin_right", "nice_nano"),
-    ],
-    "aurora": [
-        Device("left", "Aurora Corne LEFT half", "splitkb_aurora_corne_left", "nice_nano"),
-        Device("right", "Aurora Corne RIGHT half", "splitkb_aurora_corne_right", "nice_nano"),
-    ],
-    "forager": [
-        Device("left", "Forager LEFT half", "forager_left", "xiao_ble"),
-        Device("right", "Forager RIGHT half", "forager_right", "xiao_ble"),
-    ],
+    k["id"]: [Device(**d) for d in k["devices"]] for k in _TARGETS["keyboards"]
+}
+RESET_NOTES: dict[str, str] = {
+    k["id"]: k["reset_note"] for k in _TARGETS["keyboards"] if "reset_note" in k
 }
 
 # Words looked for in a bootloader drive's INFO_UF2.TXT to tell the boards apart.
-BOARD_HINTS = {"nice_nano": ("nicenano", "nice!nano", "nice_nano"), "xiao_ble": ("xiao",)}
+BOARD_HINTS = {name: tuple(b["hints"]) for name, b in _TARGETS["boards"].items()}
 
 
 def fail(msg: str) -> None:
@@ -295,9 +281,8 @@ def main() -> None:
         print(f"  {i}. {d.what}: {step}  [{uf2.name}]")
     if args.dry_run:
         return
-    if args.reset and args.target == "waterfowl-dongle":
-        print("\nKeep the dongle powered throughout, so each half pairs with it as soon as it "
-              "has its firmware (left before right sets the Prospector's battery order).")
+    if args.reset and args.target in RESET_NOTES:
+        print("\n" + RESET_NOTES[args.target])
 
     for i, (uf2, d, step) in enumerate(plan, 1):
         flash(uf2, d, f"[{i}/{len(plan)}] {step}", args.volumes, args.timeout, args.force)
