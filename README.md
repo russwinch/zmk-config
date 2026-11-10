@@ -83,6 +83,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, and the left half's nice!view screen when behind the dongle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
+| `tools/flash.py` | Flashes a keyboard's devices in order, optionally with a settings reset (see Flashing). |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
 ## Flashing
@@ -90,6 +91,23 @@ while it's on USB power. The sleep timeout is shared by every board in
 Every push builds all firmware (`.github/workflows/build.yml`). Download the
 zip from the latest successful run in the Actions tab and flash each half
 (double-tap reset, then copy the `.uf2` onto the drive that appears).
+
+`tools/flash.py` does the copying for you: it waits for each bootloader drive
+and copies the right file, in order, so you only double-tap reset. It needs
+Python 3.9+ and nothing else.
+
+```sh
+python3 tools/flash.py waterfowl-dongle            # newest ~/Downloads/firmware*.zip
+python3 tools/flash.py waterfowl-dongle --reset    # settings_reset first on each device
+python3 tools/flash.py waterfowl --firmware path/to/firmware.zip
+python3 tools/flash.py waterfowl-dongle --download # latest main build, needs the gh CLI
+python3 tools/flash.py waterfowl-dongle --only dongle
+python3 tools/flash.py --list                      # keyboards and their devices
+```
+
+With `--reset` each device is done twice (settings reset, then firmware), so
+double-tap reset again when it asks. `--dry-run` shows the plan without
+flashing. It stops rather than copy onto a board of the wrong type.
 
 | Keyboard | Left half | Right half |
 | --- | --- | --- |
@@ -106,6 +124,9 @@ firmware again.
 
 The dongle becomes the split central (it runs the keymap and plugs into the
 computer); both halves become peripherals. To switch:
+
+Quickest: `python3 tools/flash.py waterfowl-dongle --reset` does all of the
+steps below in order. By hand:
 
 1. Flash `settings_reset` to the dongle (`xiao_ble`) and both halves (`nice_nano`).
 2. Flash `waterfowl_dongle prospector_adapter` to the dongle,

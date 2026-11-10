@@ -20,3 +20,26 @@
   workflow; pull before pushing after a keymap change.
 - Keep the README's tables (boards, layers, timings, encoders) in step with
   the keymap.
+- `tools/flash.py`'s `TARGETS` mirrors `build.yaml`: when a build is added,
+  renamed or gets an `artifact-name`, update both (and `--dry-run` it).
+
+## Flashing for the user (`tools/flash.py`)
+
+Only possible when Claude runs on the user's own computer: a cloud session
+can't see USB drives, so there just tell them the command to run.
+
+1. Agree the keyboard (`--list`) and whether to `--reset`. A reset clears all
+   Bluetooth pairings, including the computer's, so only add it when asked or
+   when pairing is broken (halves not connecting, wrong order on the dongle).
+2. Make sure the firmware is current: `--download` takes the latest successful
+   `main` build (needs `gh`); after pushing, wait for that build first. Or use
+   `--firmware <zip or folder>`.
+3. Run with `--dry-run` and check the plan.
+4. Run it for real in the background. It never reads input: it prints a
+   `>>>` line naming the next device, then waits up to `--timeout` seconds
+   for its bootloader drive. Relay each `>>>` instruction to the user
+   ("double-tap reset on the LEFT half") and report errors as printed.
+5. Never pass `--force` (copies onto a board of the wrong type) unless the
+   user has confirmed which device is plugged in.
+6. After a `--reset` on `waterfowl-dongle`, remind them: dongle stays powered,
+   and re-pair the computer (forget the keyboard there first).
