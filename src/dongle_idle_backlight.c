@@ -2,6 +2,11 @@
  * Prospector dongle: dim the screen backlight when the keyboard goes idle,
  * switch it off a while later, and restore it on the next key press.
  *
+ * "0%" never really sets a 0% duty cycle: Zephyr's nRF PWM driver stops the
+ * PWM hardware at 0% and has to restart it afterwards, and that once seemed
+ * to leave the screen dark. Instead the PWM keeps running with its shortest
+ * pulse (DARK_PULSE_NS, ~0.025% of the 1 ms period), which looks black.
+ *
  * Only built with a fixed brightness (no ambient light sensor), since the
  * Prospector module's sensor thread would otherwise keep overriding it.
  * Settings: Kconfig at the repo root, values in config/waterfowl_dongle.conf.
@@ -10,6 +15,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/led.h>
+#include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
 
 #include <zmk/event_manager.h>
@@ -21,11 +27,19 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static const struct device *backlight = DEVICE_DT_GET(DT_PARENT(DT_NODELABEL(disp_bl)));
 #define BACKLIGHT_IDX DT_NODE_CHILD_IDX(DT_NODELABEL(disp_bl))
 
+// the same backlight as a raw PWM channel, for the "0%" pulse below
+static const struct pwm_dt_spec backlight_pwm = PWM_DT_SPEC_GET(DT_NODELABEL(disp_bl));
+
+// 4 cycles of the 16 MHz PWM clock: must stay above 0 cycles, or the driver
+// treats it as 0% and stops the PWM
+#define DARK_PULSE_NS 250
+
 static void set_backlight(uint8_t percent) {
     if (!device_is_ready(backlight)) {
         return;
     }
-    int ret = led_set_brightness(backlight, BACKLIGHT_IDX, percent);
+    int ret = percent == 0 ? pwm_set_pulse_dt(&backlight_pwm, PWM_NSEC(DARK_PULSE_NS))
+                           : led_set_brightness(backlight, BACKLIGHT_IDX, percent);
     if (ret < 0) {
         LOG_WRN("Could not set backlight to %d%% (%d)", percent, ret);
     }
