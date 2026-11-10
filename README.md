@@ -129,7 +129,7 @@ ZMK's stock picture for a small status screen, read with the screen vertical:
 
 The dongle sends this when the profile, output or a battery changes, and again
 every minute (`src/dongle_half_status.c`, `src/half_status_screen.c`). It uses
-ZMK's existing "run a behavior on a half" message: a `half_status` behavior in
+ZMK's existing "run a behavior on a half" message: a `hstatus` behavior in
 `config/waterfowl.keymap` that no key is bound to. The `R` battery is the
 dongle's last reading, so it can be out of date while the right half sleeps.
 

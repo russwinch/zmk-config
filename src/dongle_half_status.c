@@ -27,6 +27,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 // Two halves: each one is told the battery of the other.
 BUILD_ASSERT(ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT == 2, "expects exactly two peripherals");
+BUILD_ASSERT(sizeof(HALF_STATUS_BEHAVIOR_NAME) - 1 <= HALF_STATUS_BEHAVIOR_NAME_MAX,
+             "behavior name too long for ZMK's Bluetooth split message");
 
 static uint8_t other_battery(uint8_t source) {
     uint8_t level;

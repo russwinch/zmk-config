@@ -6,7 +6,7 @@
  * It rides on ZMK's normal "run this behavior on the peripheral" message:
  * the dongle invokes the behavior named HALF_STATUS_BEHAVIOR_NAME on each
  * half with the two 32-bit parameters below. The half defines that behavior
- * (node `half_status` in config/waterfowl.keymap) and stores the values.
+ * (node `hstatus` in config/waterfowl.keymap) and stores the values.
  *
  * Sender:   src/dongle_half_status.c   (dongle)
  * Receiver: src/half_status_screen.c   (left half)
@@ -16,8 +16,11 @@
 
 #include <zephyr/sys/util.h>
 
-// The behavior's devicetree node name; ZMK sends it as a string (max 15 chars).
-#define HALF_STATUS_BEHAVIOR_NAME "half_status"
+// The behavior's devicetree node name; ZMK sends it as a string. Over
+// Bluetooth split only 8 characters fit (ZMK_SPLIT_RUN_BEHAVIOR_DEV_LEN is 9,
+// with the NUL): a longer name is cut short and the half can't find it.
+#define HALF_STATUS_BEHAVIOR_NAME "hstatus"
+#define HALF_STATUS_BEHAVIOR_NAME_MAX 8
 
 // param1
 #define HALF_STATUS_OTHER_BATTERY_MASK GENMASK(7, 0)  // other half's battery %, 0xFF = unknown
