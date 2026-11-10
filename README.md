@@ -54,7 +54,7 @@ the Bluetooth connection state when it changes. Both flashes last 500ms
 | Urchin, Aurora Corne | 1 hour | nice!view stays on (it uses next to no power) |
 | Forager | 1 hour | none |
 | Waterfowl halves | 1 hour | left nice!view stays on |
-| Waterfowl dongle | never (USB powered) | backlight dims after 45 minutes idle, off after an hour |
+| Waterfowl dongle | never (USB powered) | backlight dims very low (2%) after an hour idle; never fully off |
 
 Deep sleep drops the Bluetooth connection: the next key press wakes the board
 (that key isn't typed) and it takes a second or so to reconnect. Nothing sleeps

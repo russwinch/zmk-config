@@ -14,12 +14,13 @@ if WATERFOWL_DONGLE_IDLE_BACKLIGHT
 
 config WATERFOWL_DONGLE_IDLE_BRIGHTNESS
     int "Backlight brightness (%) while idle"
-    default 10
-    range 0 100
+    default 2
+    # not 0: a backlight switched fully off once didn't come back on
+    range 1 100
 
 config WATERFOWL_DONGLE_BACKLIGHT_OFF_MS
     int "Milliseconds after going idle before the backlight goes off (0 = never)"
-    default 600000
+    default 0
 
 endif
 
