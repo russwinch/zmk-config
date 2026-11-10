@@ -88,13 +88,16 @@ while it's on USB power. The sleep timeout is shared by every board in
 
 ## Flashing
 
-Every push builds all firmware (`.github/workflows/build.yml`). Download the
-zip from the latest successful run in the Actions tab and flash each half
-(double-tap reset, then copy the `.uf2` onto the drive that appears).
+Every push builds all firmware (`.github/workflows/build.yml`) and publishes
+it as a release named after the branch and commit (the newest 30 are kept;
+builds of branches other than `main` are prereleases). Download
+`firmware.zip` from the release and flash each half (double-tap reset, then
+copy the `.uf2` onto the drive that appears).
 
 [Keyboard Writer](https://github.com/russwinch/keyboard-writer) is a macOS
 app that does all of this: plug the devices in, press Start, and each is
-flashed in order without touching reset. The firmware here includes its
+flashed in order without touching reset. It lists the releases here and
+downloads the one chosen. The firmware here includes its
 module (`config/west.yml`, `config/default.overlay`) so the app can identify
 each device and start its bootloader over USB.
 
