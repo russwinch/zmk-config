@@ -92,7 +92,13 @@ Every push builds all firmware (`.github/workflows/build.yml`). Download the
 zip from the latest successful run in the Actions tab and flash each half
 (double-tap reset, then copy the `.uf2` onto the drive that appears).
 
-`tools/flash.py` does the copying for you: it waits for each bootloader drive
+[Keyboard Writer](https://github.com/russwinch/keyboard-writer) is a macOS
+app that does all of this: plug the devices in, press Start, and each is
+flashed in order without touching reset. The firmware here includes its
+module (`config/west.yml`, `config/default.overlay`) so the app can identify
+each device and start its bootloader over USB.
+
+`tools/flash.py` does the copying from a terminal: it waits for each bootloader drive
 and copies the right file, in order, so you only double-tap reset. It needs
 Python 3.9+ and nothing else.
 

@@ -15,6 +15,9 @@ manifest:
       # forager, prospector
     - name: carrefinho
       url-base: https://github.com/carrefinho
+      # keyboard-writer
+    - name: russwinch
+      url-base: https://github.com/russwinch
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -40,5 +43,10 @@ manifest:
     - name: zmk-rgbled-widget
       remote: caksoylar
       revision: e6b467792a1dabef8cfa5c9fd26bfefc9c16662b
+    # Lets the Keyboard Writer app start each device's bootloader over USB
+    # (see config/default.overlay).
+    - name: keyboard-writer
+      remote: russwinch
+      revision: b29967ff7b2b1c097de48673e5ff4d013bb0fdca
   self:
     path: config

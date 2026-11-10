@@ -21,7 +21,9 @@
 - Keep the README's tables (boards, layers, timings, encoders) in step with
   the keymap.
 - `tools/flash.py`'s `TARGETS` mirrors `build.yaml`: when a build is added,
-  renamed or gets an `artifact-name`, update both (and `--dry-run` it).
+  renamed or gets an `artifact-name`, update both (and `--dry-run` it). The
+  Keyboard Writer app (russwinch/keyboard-writer) has its own copy in
+  `targets.json`; its ZMK module is pinned in `config/west.yml`.
 
 ## Flashing for the user (`tools/flash.py`)
 
