@@ -14,7 +14,7 @@
  *
  * Only built with a fixed brightness (no ambient light sensor), since the
  * Prospector module's sensor thread would otherwise keep overriding it.
- * Settings: Kconfig at the repo root, values in config/waterfowl_dongle.conf.
+ * Settings: Kconfig at the repo root, values in config/<keyboard>_dongle.conf.
  */
 
 #include <zephyr/kernel.h>

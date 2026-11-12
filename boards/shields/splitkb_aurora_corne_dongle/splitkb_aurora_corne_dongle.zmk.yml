@@ -1,0 +1,8 @@
+file_format: "1"
+id: splitkb_aurora_corne_dongle
+name: Aurora Corne Dongle
+type: shield
+url: https://github.com/carrefinho/prospector
+requires: [xiao_ble]
+features:
+  - keys

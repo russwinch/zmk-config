@@ -43,5 +43,5 @@ can't see USB drives, so there just tell them the command to run.
    ("double-tap reset on the LEFT half") and report errors as printed.
 5. Never pass `--force` (copies onto a board of the wrong type) unless the
    user has confirmed which device is plugged in.
-6. After a `--reset` on `waterfowl-dongle`, remind them: dongle stays powered,
+6. After a `--reset` on a `-dongle` keyboard, remind them: dongle stays powered,
    and re-pair the computer (forget the keyboard there first).

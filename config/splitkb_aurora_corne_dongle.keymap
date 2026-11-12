@@ -1,0 +1,13 @@
+/*
+ * splitkb Aurora Corne via a Prospector dongle: the dongle is the central and
+ * runs this keymap; both halves are peripherals. Same layers as
+ * splitkb_aurora_corne.keymap.
+ * Layout: splitkb_aurora_corne_layout.dtsi. Layers: keymap.dtsi.
+ */
+
+// The battery key (&ind_bat) still works from here: the dongle has the widget
+// turned off (splitkb_aurora_corne_dongle.conf), but ZMK passes the key on to
+// both halves, which each blink their own battery level on their LED.
+
+#include "splitkb_aurora_corne_layout.dtsi"
+#include "keymap.dtsi"

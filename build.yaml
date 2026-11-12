@@ -11,11 +11,33 @@ include:
   - board: nice_nano//zmk
     shield: urchin_right nice_view_adapter nice_view_gem
 
+  # --- Urchin via Prospector dongle ---
+  # Same arrangement as the Waterfowl dongle below; the right half's normal
+  # build above is already a peripheral.
+  - board: xiao_ble//zmk
+    shield: urchin_dongle prospector_adapter
+    cmake-args: -DCONFIG_ZMK_SLEEP=n
+  - board: nice_nano//zmk
+    shield: urchin_left nice_view_adapter nice_view_gem
+    # peripheral; nice-view-gem shows its own peripheral screen
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
+    artifact-name: urchin_left_peripheral_for_dongle
+
   # --- splitkb Aurora Corne (nice!nano v2, nice!view gem, encoders) ---
   - board: nice_nano//zmk
     shield: splitkb_aurora_corne_left nice_view_adapter nice_view_gem
   - board: nice_nano//zmk
     shield: splitkb_aurora_corne_right nice_view_adapter nice_view_gem
+
+  # --- splitkb Aurora Corne via Prospector dongle ---
+  - board: xiao_ble//zmk
+    shield: splitkb_aurora_corne_dongle prospector_adapter
+    cmake-args: -DCONFIG_ZMK_SLEEP=n
+  - board: nice_nano//zmk
+    shield: splitkb_aurora_corne_left nice_view_adapter nice_view_gem
+    # peripheral; nice-view-gem shows its own peripheral screen
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
+    artifact-name: splitkb_aurora_corne_left_peripheral_for_dongle
 
   # --- Waterfowl (nice!nano v2, nice!view on left, encoders) ---
   - board: nice_nano//zmk
@@ -42,6 +64,16 @@ include:
     shield: forager_left rgbled_adapter
   - board: xiao_ble//zmk
     shield: forager_right rgbled_adapter
+
+  # --- Forager via Prospector dongle ---
+  # forager_dongle is the forager module's own keyless shield.
+  - board: xiao_ble//zmk
+    shield: forager_dongle prospector_adapter
+    cmake-args: -DCONFIG_ZMK_SLEEP=n
+  - board: xiao_ble//zmk
+    shield: forager_left rgbled_adapter
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
+    artifact-name: forager_left_peripheral_for_dongle
 
   # --- settings reset, one per controller type ---
   - board: nice_nano//zmk

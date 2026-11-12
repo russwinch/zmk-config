@@ -1,0 +1,8 @@
+file_format: "1"
+id: urchin_dongle
+name: Urchin Dongle
+type: shield
+url: https://github.com/carrefinho/prospector
+requires: [xiao_ble]
+features:
+  - keys

@@ -6,10 +6,10 @@ each board's own file only adds its extras.
 
 | Keyboard | Controller | Display / LEDs | Extras |
 | --- | --- | --- | --- |
-| Urchin | nice!nano v2 | nice!view gem, RGB LED widget | none |
-| splitkb Aurora Corne | nice!nano v2 | nice!view gem, RGB LED widget | 2 encoders, outer thumb keys (unused outer columns) |
+| Urchin | nice!nano v2 | nice!view gem, RGB LED widget | optional Prospector dongle |
+| splitkb Aurora Corne | nice!nano v2 | nice!view gem, RGB LED widget | 2 encoders, outer thumb keys (unused outer columns); optional Prospector dongle |
 | Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side; optional Prospector dongle |
-| Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | none |
+| Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | optional Prospector dongle |
 
 ## Keymap
 
@@ -54,7 +54,7 @@ the Bluetooth connection state when it changes. Both flashes last 500ms
 | Urchin, Aurora Corne | 1 hour | nice!view stays on (it uses next to no power) |
 | Forager | 1 hour | none |
 | Waterfowl halves | 1 hour | left nice!view stays on |
-| Waterfowl dongle | never (USB powered) | panel and backlight off after an hour idle (backlight PWM kept running at its shortest pulse); any key brings it back |
+| Prospector dongles | never (USB powered) | panel and backlight off after an hour idle (backlight PWM kept running at its shortest pulse); any key brings it back |
 
 Deep sleep drops the Bluetooth connection: the next key press wakes the board
 (that key isn't typed) and it takes a second or so to reconnect. Nothing sleeps
@@ -77,9 +77,9 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
 | `config/default.conf` | Settings shared by every build (deep sleep). ZMK applies it after the per-board files, so exceptions go in `build.yaml` as `cmake-args`. |
 | `config/<shield>.conf` | Per-board Kconfig (display, encoders, LEDs, Bluetooth power). |
-| `config/waterfowl_layout.dtsi` | Waterfowl glue shared by its normal and dongle keymaps. |
+| `config/<keyboard>_layout.dtsi` | Glue shared by a keyboard's normal and dongle keymaps (Urchin, Aurora Corne, Waterfowl; the Forager dongle uses `forager.keymap` itself). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
-| `boards/shields/waterfowl_dongle/` | Keyless dongle shield for the Waterfowl (used with `prospector_adapter`). |
+| `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module. |
 | `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, and the left half's nice!view screen when behind the dongle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
@@ -125,13 +125,24 @@ flashing. It stops rather than copy onto a board of the wrong type.
 | Waterfowl | `waterfowl_left …` | `waterfowl_right …` |
 | Forager | `forager_left …` | `forager_right …` |
 
+With the Prospector dongle:
+
+| Keyboard | Dongle (`xiao_ble`) | Left half | Right half |
+| --- | --- | --- | --- |
+| Urchin | `urchin_dongle prospector_adapter …` | `urchin_left_peripheral_for_dongle` | `urchin_right …` |
+| Aurora Corne | `splitkb_aurora_corne_dongle prospector_adapter …` | `splitkb_aurora_corne_left_peripheral_for_dongle` | `splitkb_aurora_corne_right …` |
+| Waterfowl | `waterfowl_dongle prospector_adapter …` | `waterfowl_left_peripheral_for_dongle` | `waterfowl_right …` |
+| Forager | `forager_dongle prospector_adapter …` | `forager_left_peripheral_for_dongle` | `forager_right …` |
+
 If halves won't pair, flash `settings_reset` (one per controller type:
 `nice_nano` or `xiao_ble`) to both halves, then the normal
 firmware again.
 
-### Waterfowl with the Prospector dongle
+### With the Prospector dongle
 
-The dongle becomes the split central (it runs the keymap and plugs into the
+Every keyboard can run behind a Prospector dongle (`<keyboard>-dongle` in
+`tools/flash.py --list`). The steps below use the Waterfowl's names; the
+others follow the same pattern (table above). The dongle becomes the split central (it runs the keymap and plugs into the
 computer); both halves become peripherals. To switch:
 
 Quickest: `python3 tools/flash.py waterfowl-dongle --reset` does all of the
@@ -147,7 +158,9 @@ steps below in order. By hand:
 The Config layer's battery key works with the dongle too: the dongle passes it
 on and each half blinks its own battery level.
 
-The left half's nice!view (in `waterfowl_left_peripheral_for_dongle`) swaps
+Urchin and Aurora Corne halves keep nice-view-gem's peripheral screen, and
+the Forager halves their RGB LED. On the Waterfowl, the left half's nice!view
+(in `waterfowl_left_peripheral_for_dongle`) swaps
 ZMK's stock picture for a small status screen, read with the screen vertical:
 
 | Part | Shows |
@@ -166,7 +179,7 @@ dongle's last reading, so it can be out of date while the right half sleeps.
 The dongle's own screen uses the Prospector module's **Field** layout (layer
 name, battery levels, modifiers and a grid of lines that animate as you type).
 To try Classic, Radii or Operator, change the layout line in
-`config/waterfowl_dongle.conf`; the animation timings are set there too.
+`config/<keyboard>_dongle.conf`; the animation timings are set there too.
 
 If one peripheral stops
 sending keys after connecting to the dongle, reset that half (a known ZMK issue,

@@ -3,7 +3,8 @@
 config WATERFOWL_DONGLE_IDLE_BACKLIGHT
     bool "Dim, then switch off, the Prospector screen backlight when idle"
     default y
-    depends on SHIELD_WATERFOWL_DONGLE && ZMK_DISPLAY && !PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
+    depends on SHIELD_WATERFOWL_DONGLE || SHIELD_URCHIN_DONGLE || SHIELD_SPLITKB_AURORA_CORNE_DONGLE || SHIELD_FORAGER_DONGLE
+    depends on ZMK_DISPLAY && !PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
     help
       After CONFIG_ZMK_IDLE_TIMEOUT without a key press the backlight drops to
       WATERFOWL_DONGLE_IDLE_BRIGHTNESS; after a further

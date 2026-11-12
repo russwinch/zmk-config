@@ -1,0 +1,17 @@
+# Aurora Corne dongle: a keyless split central that both halves connect to.
+
+if SHIELD_SPLITKB_AURORA_CORNE_DONGLE
+
+config ZMK_KEYBOARD_NAME
+    default "Aurora Corne"
+
+config ZMK_SPLIT
+    default y
+
+config ZMK_SPLIT_ROLE_CENTRAL
+    default y
+
+config ZMK_SPLIT_BLE_CENTRAL_PERIPHERALS
+    default 2
+
+endif

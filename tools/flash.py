@@ -57,13 +57,28 @@ TARGETS: dict[str, list[Device]] = {
         Device("left", "Waterfowl LEFT half", "waterfowl_left", "nice_nano"),
         Device("right", "Waterfowl RIGHT half", "waterfowl_right", "nice_nano"),
     ],
+    "urchin-dongle": [
+        Device("dongle", "Prospector dongle", "urchin_dongle", "xiao_ble"),
+        Device("left", "Urchin LEFT half", "urchin_left_peripheral_for_dongle", "nice_nano"),
+        Device("right", "Urchin RIGHT half", "urchin_right", "nice_nano"),
+    ],
     "urchin": [
         Device("left", "Urchin LEFT half", "urchin_left", "nice_nano"),
         Device("right", "Urchin RIGHT half", "urchin_right", "nice_nano"),
     ],
+    "aurora-dongle": [
+        Device("dongle", "Prospector dongle", "splitkb_aurora_corne_dongle", "xiao_ble"),
+        Device("left", "Aurora Corne LEFT half", "splitkb_aurora_corne_left_peripheral_for_dongle", "nice_nano"),
+        Device("right", "Aurora Corne RIGHT half", "splitkb_aurora_corne_right", "nice_nano"),
+    ],
     "aurora": [
         Device("left", "Aurora Corne LEFT half", "splitkb_aurora_corne_left", "nice_nano"),
         Device("right", "Aurora Corne RIGHT half", "splitkb_aurora_corne_right", "nice_nano"),
+    ],
+    "forager-dongle": [
+        Device("dongle", "Prospector dongle", "forager_dongle", "xiao_ble"),
+        Device("left", "Forager LEFT half", "forager_left_peripheral_for_dongle", "xiao_ble"),
+        Device("right", "Forager RIGHT half", "forager_right", "xiao_ble"),
     ],
     "forager": [
         Device("left", "Forager LEFT half", "forager_left", "xiao_ble"),
@@ -295,7 +310,7 @@ def main() -> None:
         print(f"  {i}. {d.what}: {step}  [{uf2.name}]")
     if args.dry_run:
         return
-    if args.reset and args.target == "waterfowl-dongle":
+    if args.reset and args.target.endswith("-dongle"):
         print("\nKeep the dongle powered throughout, so each half pairs with it as soon as it "
               "has its firmware (left before right sets the Prospector's battery order).")
 
