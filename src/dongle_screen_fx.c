@@ -14,14 +14,20 @@
  * sent: the SPI link is what limits the frame rate (a whole frame takes
  * about 70 ms at 16 MHz), not working the picture out.
  *
+ * With the panel's touch wires connected (dts/prospector_touch.dtsi), a swipe
+ * across the screen also steps through the screens, and the animations react
+ * to a finger.
+ *
  * Settings: Kconfig at the repo root.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/input/input.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
@@ -65,6 +71,9 @@ static atomic_t wanted_screen; /* 0 = the module's, 1.. = animation */
 static atomic_t paused;        /* keyboard idle: the panel is off */
 static atomic_t wpm;
 static atomic_t halves_connected; /* bit per half */
+
+static atomic_t touch; /* TOUCH_DOWN | x << 8 | y, in frame pixels */
+#define TOUCH_DOWN BIT(16)
 
 static struct k_spinlock keys_lock;
 static uint8_t keys[FX_MAX_KEYS];
@@ -177,6 +186,11 @@ static void frame_cb(struct k_work *work) {
         n_keys = 0;
     }
 
+    const atomic_val_t finger = atomic_get(&touch);
+    in.touching = (finger & TOUCH_DOWN) != 0;
+    in.touch_x = (finger >> 8) & 0xff;
+    in.touch_y = finger & 0xff;
+
     /* energy: follows words per minute (quick up, slow down), and each key
      * nudges it straight away, since ZMK only updates the WPM once a second */
     const float target = MIN(1.0f, atomic_get(&wpm) / (float)CONFIG_DONGLE_SCREEN_FX_WPM_REFERENCE);
@@ -264,13 +278,71 @@ static void request_apply(void) {
     }
 }
 
-void dongle_screen_fx_next(void) {
+void dongle_screen_fx_step(int delta) {
     if (!zmk_display_is_initialized()) {
         return;
     }
-    atomic_set(&wanted_screen, (atomic_get(&wanted_screen) + 1) % (fx_count() + 1));
+    const int screens = fx_count() + 1;
+    atomic_set(&wanted_screen, (atomic_get(&wanted_screen) + screens + delta % screens) % screens);
     request_apply();
 }
+
+void dongle_screen_fx_next(void) { dongle_screen_fx_step(1); }
+
+/* --- touch ---------------------------------------------------------------------- */
+
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_TOUCH)
+
+#define SWIPE_MIN 60 /* panel pixels sideways for a swipe */
+
+/* The touch controller reports the panel's own upright 240x280; the picture
+ * is on its side (the module turns it 270 degrees, or 90 when flipped). */
+static void touch_to_panel(int raw_x, int raw_y, int *x, int *y) {
+    *x = raw_y;
+    *y = PANEL_H - 1 - raw_x;
+    if (IS_ENABLED(CONFIG_PROSPECTOR_ROTATE_DISPLAY_180) !=
+        IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_TOUCH_UPSIDE_DOWN)) {
+        *x = PANEL_W - 1 - *x;
+        *y = PANEL_H - 1 - *y;
+    }
+    *x = CLAMP(*x, 0, PANEL_W - 1);
+    *y = CLAMP(*y, 0, PANEL_H - 1);
+}
+
+static void touch_cb(struct input_event *evt, void *user_data) {
+    static int raw_x, raw_y, start_x, start_y;
+    static bool down;
+
+    if (evt->type == INPUT_EV_ABS && evt->code == INPUT_ABS_X) {
+        raw_x = evt->value;
+    } else if (evt->type == INPUT_EV_ABS && evt->code == INPUT_ABS_Y) {
+        raw_y = evt->value;
+    } else if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH) {
+        int x, y;
+        touch_to_panel(raw_x, raw_y, &x, &y);
+
+        if (evt->value) {
+            if (!down) {
+                start_x = x;
+                start_y = y;
+            }
+            down = true;
+            atomic_set(&touch, TOUCH_DOWN | ((x / 2) << 8) | (y / 2));
+        } else if (down) {
+            down = false;
+            atomic_set(&touch, 0);
+            /* a swipe: mostly sideways. Leftwards is "next", like a page. */
+            const int dx = x - start_x, dy = y - start_y;
+            if (abs(dx) >= SWIPE_MIN && abs(dx) > 2 * abs(dy)) {
+                dongle_screen_fx_step(dx < 0 ? 1 : -1);
+            }
+        }
+    }
+}
+
+INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_NODELABEL(prospector_touch)), touch_cb, NULL);
+
+#endif
 
 /* --- events ------------------------------------------------------------------- */
 

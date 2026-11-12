@@ -79,7 +79,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/<shield>.conf` | Per-board Kconfig (display, encoders, LEDs, Bluetooth power). |
 | `config/<keyboard>_layout.dtsi` | Glue shared by a keyboard's normal and dongle keymaps (Urchin, Aurora Corne, Waterfowl; the Forager dongle uses `forager.keymap` itself). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
-| `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module. |
+| `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module, with our additions in `config/forager_dongle.overlay`. |
 | `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, the dongle's animated screens, and the left half's nice!view screen when behind the dongle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
@@ -201,6 +201,26 @@ red when that half isn't connected) and the output bottom right (`USB` or
 `BT1`..; red when the computer isn't connected). The screen to start on after
 power-up and the typing speed that counts as flat out are set in
 `config/<keyboard>_dongle.conf`.
+
+**Touch** (optional, untested until wired). The Prospector's panel is a touch
+panel: its assembly manual has you cut the four touch wires. Connected to the
+XIAO, a sideways swipe steps through the screens (leftwards is next), and the
+animations follow a finger: it steers Warp, is a torch in Fire, moves
+Plasma's rings, starts Rain, is a sparkler in Sparks and turns Wire.
+
+| Panel wire | XIAO pin |
+| --- | --- |
+| `TP_SDA` | D4 (SDA) |
+| `TP_SCL` | D5 (SCL) |
+| `TP_IRQ` | D2 |
+| `TP_RST` | D1 |
+
+D2, D4 and D5 are the light sensor's pins, so this is for a dongle without
+one. Nothing needs switching on: without the wires the touch controller just
+isn't found (`dts/prospector_touch.dtsi`). If touches land on the opposite
+side of the screen, set `CONFIG_DONGLE_SCREEN_FX_TOUCH_UPSIDE_DOWN=y` in
+`config/<keyboard>_dongle.conf`. A touch doesn't count as activity: it won't
+wake the screen after it has gone dark.
 
 The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 `tools/fx_preview.py` can run it on a computer and save each animation as a

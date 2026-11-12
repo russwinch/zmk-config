@@ -1,0 +1,8 @@
+/*
+ * Forager dongle: the forager_dongle shield is the forager module's, so the
+ * extras for our Prospector go here. ZMK reads this instead of
+ * default.overlay, hence the include.
+ */
+
+#include "default.overlay"
+#include <prospector_touch.dtsi>

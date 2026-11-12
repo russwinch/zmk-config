@@ -88,6 +88,19 @@ config DONGLE_SCREEN_FX_WPM_REFERENCE
     default 60
     range 10 300
 
+config DONGLE_SCREEN_FX_TOUCH
+    bool "Touch: swipe between screens, animations follow a finger"
+    default y
+    depends on DT_HAS_HYNITRON_CST816S_ENABLED
+    select INPUT
+    help
+      Needs the panel's four touch wires connected (dts/prospector_touch.dtsi).
+      Without them the touch controller isn't found and nothing happens.
+
+config DONGLE_SCREEN_FX_TOUCH_UPSIDE_DOWN
+    bool "Touch lands on the opposite side of the screen: turn it round"
+    depends on DONGLE_SCREEN_FX_TOUCH
+
 endif
 
 config BEHAVIOR_SCREEN_NEXT
