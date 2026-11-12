@@ -6,10 +6,12 @@
  * XIAO like this, it works:
  *
  *   TP_SDA -> D4 (SDA)    TP_SCL -> D5 (SCL)
- *   TP_IRQ -> D2          TP_RST -> D1
+ *   TP_IRQ -> D0          TP_RST -> D1
  *
- * D2, D4 and D5 are where the optional light sensor goes, so this is for a
- * dongle without one (the two can share D4/D5, but not D2).
+ * The same wiring as the Prospector Scanner firmware's touch mode
+ * (t-ogura/zmk-config-prospector, docs/TOUCH_MODE.md), so that firmware can
+ * be used to check the soldering. D4/D5 are shared with the optional light
+ * sensor, which is at another address.
  *
  * Harmless when the wires aren't connected: the controller isn't found at
  * start-up and nothing else changes.
@@ -30,7 +32,7 @@
     prospector_touch: cst816s@15 {
         compatible = "hynitron,cst816s";
         reg = <0x15>;
-        irq-gpios = <&xiao_d 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        irq-gpios = <&xiao_d 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
         rst-gpios = <&xiao_d 1 GPIO_ACTIVE_LOW>;
     };
 };
