@@ -32,6 +32,8 @@ struct fx_input {
     float energy;              /* 0..1: how hard you are typing */
     uint8_t n_keys;            /* keys pressed since the last frame */
     uint8_t keys[FX_MAX_KEYS]; /* their key positions */
+    bool touching;             /* a finger is on the screen... */
+    uint8_t touch_x, touch_y;  /* ...here, in frame pixels */
 };
 
 struct fx_status {

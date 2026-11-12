@@ -127,7 +127,7 @@ static int key_x(uint8_t key) { return 8 + (key % 10) * 13 + (int)(rnd() % 7); }
 static struct {
     float x, y, z;
 } stars[STARS];
-static float warp_kick;
+static float warp_kick, warp_cx, warp_cy; /* the point the stars fly out of */
 
 static void star_spawn(int i, float z) {
     stars[i].x = rndf();
@@ -142,11 +142,18 @@ static void warp_start(uint16_t *palette) {
         star_spawn(i, 0.05f + (rnd() & 1023) / 1080.0f);
     }
     warp_kick = 0;
+    warp_cx = FX_W / 2;
+    warp_cy = FX_H / 2;
 }
 
 static void warp_frame(uint8_t *fb, const struct fx_input *in) {
     warp_kick = warp_kick * 0.85f + in->n_keys * 0.012f;
     float speed = (0.003f + in->energy * 0.045f + warp_kick) * in->step;
+
+    /* steer with a finger */
+    warp_cx += ((in->touching ? in->touch_x : FX_W / 2) - warp_cx) * 0.25f;
+    warp_cy += ((in->touching ? in->touch_y : FX_H / 2) - warp_cy) * 0.25f;
+    const int cx = (int)warp_cx, cy = (int)warp_cy;
 
     fade_canvas(30 + (int)(60 * (1.0f - in->energy)));
 
@@ -157,10 +164,10 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
             star_spawn(i, 1.0f);
             continue;
         }
-        int x0 = FX_W / 2 + (int)(stars[i].x / z0 * (FX_W / 2));
-        int y0 = FX_H / 2 + (int)(stars[i].y / z0 * (FX_H / 2));
-        int x1 = FX_W / 2 + (int)(stars[i].x / z1 * (FX_W / 2));
-        int y1 = FX_H / 2 + (int)(stars[i].y / z1 * (FX_H / 2));
+        int x0 = cx + (int)(stars[i].x / z0 * (FX_W / 2));
+        int y0 = cy + (int)(stars[i].y / z0 * (FX_H / 2));
+        int x1 = cx + (int)(stars[i].x / z1 * (FX_W / 2));
+        int y1 = cy + (int)(stars[i].y / z1 * (FX_H / 2));
         stars[i].z = z1;
         if ((unsigned)x1 >= FX_W || (unsigned)y1 >= FX_H) {
             star_spawn(i, 1.0f);
@@ -191,6 +198,14 @@ static void fire_frame(uint8_t *fb, const struct fx_input *in) {
         int cx = key_x(in->keys[k]);
         for (int y = FX_H - 7; y < FX_H; y++) {
             for (int x = cx - 3; x <= cx + 3; x++) {
+                plot(canvas, x, y, 251);
+            }
+        }
+    }
+    /* a finger is a torch */
+    if (in->touching) {
+        for (int y = in->touch_y - 4; y <= in->touch_y + 4; y++) {
+            for (int x = in->touch_x - 4; x <= in->touch_x + 4; x++) {
                 plot(canvas, x, y, 251);
             }
         }
@@ -240,6 +255,10 @@ static void plasma_frame(uint8_t *fb, const struct fx_input *in) {
     static int16_t col_a[FX_W], col_b[FX_W], col_c[FX_W];
     static int16_t row_a[FX_H], row_b[FX_H], row_c[FX_H];
     int cx = FX_W / 2 + sin8[(t / 2) & 255] / 3, cy = FX_H / 2 + sin8[(t / 3 + 64) & 255] / 3;
+    if (in->touching) { /* the rings follow a finger */
+        cx = in->touch_x;
+        cy = in->touch_y;
+    }
     for (int x = 0; x < FX_W; x++) {
         col_a[x] = sin8[(x * zoom + t) & 255];
         col_b[x] = x * (zoom + 1) + sin8[(x + t * 2) & 255] / 4;
@@ -291,6 +310,9 @@ static void rain_drop(int c) {
 static void rain_frame(uint8_t *fb, const struct fx_input *in) {
     for (int k = 0; k < in->n_keys; k++) {
         rain_drop(key_x(in->keys[k]) / 5);
+    }
+    if (in->touching) {
+        rain_drop(in->touch_x / 5);
     }
     /* background drizzle, a downpour at speed */
     uint32_t chance = (uint32_t)((0.004f + in->energy * 0.06f) * in->step * 65536);
@@ -386,6 +408,10 @@ static void sparks_frame(uint8_t *fb, const struct fx_input *in) {
     for (int k = 0; k < in->n_keys; k++) {
         sparks_burst(key_x(in->keys[k]), 20 + (int)(rnd() % 55), 16, 2.2f);
     }
+    /* a finger is a sparkler */
+    if (in->touching) {
+        sparks_burst(in->touch_x, in->touch_y, 3, 1.6f);
+    }
     /* a show of its own too: now and then when idle, constantly at speed */
     spark_timer -= in->step;
     if (spark_timer <= 0) {
@@ -427,6 +453,8 @@ static const float wire_verts[WIRE_VERTS][3] = {
 };
 static uint8_t wire_edges[WIRE_EDGES][2];
 static float wire_a, wire_b, wire_c, wire_pulse;
+static bool wire_held;
+static uint8_t wire_held_x, wire_held_y;
 
 static void wire_start(uint16_t *palette) {
     static const struct stop stops[] = {{0, 0, 0, 0}, {80, 70, 0, 120}, {180, 0, 190, 255}, {251, 240, 255, 255}};
@@ -447,6 +475,7 @@ static void wire_start(uint16_t *palette) {
         }
     }
     wire_a = wire_b = wire_c = wire_pulse = 0;
+    wire_held = false;
 }
 
 static void wire_frame(uint8_t *fb, const struct fx_input *in) {
@@ -454,6 +483,14 @@ static void wire_frame(uint8_t *fb, const struct fx_input *in) {
     wire_a += spin;
     wire_b += spin * 0.71f;
     wire_c += spin * 0.37f;
+    /* turn it by dragging a finger */
+    if (in->touching && wire_held) {
+        wire_b += (in->touch_x - wire_held_x) * 0.05f;
+        wire_c += (in->touch_y - wire_held_y) * 0.05f;
+    }
+    wire_held = in->touching;
+    wire_held_x = in->touch_x;
+    wire_held_y = in->touch_y;
     wire_pulse = wire_pulse * 0.8f + in->n_keys * 0.12f;
     if (wire_pulse > 0.5f) {
         wire_pulse = 0.5f;
