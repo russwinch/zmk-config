@@ -67,6 +67,7 @@ parse_config:
     "&bt BT_PRV": "BT prev"
     "&bt BT_NXT": "BT next"
     "&ind_bat": "Battery"
+    "&scr_next": "Screen"
     "&to 0": "Mac"
     "&to 1": "Windows"
 draw_config:

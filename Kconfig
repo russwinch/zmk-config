@@ -58,3 +58,39 @@ config WATERFOWL_HALF_STATUS_SCREEN
       dongle's Bluetooth profile. Needs NICE_VIEW_WIDGET_STATUS=n (the stock
       screen) and the half_status behavior node (config/waterfowl.keymap).
       Turned on for the dongle build of the left half in build.yaml.
+
+# --- Animated screens on the dongle (src/dongle_screen_fx.c) ---
+
+config DONGLE_SCREEN_FX
+    bool "Typing-reactive animations as extra screens on the Prospector dongle"
+    default y
+    depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_DISPLAY && ZMK_SPLIT_ROLE_CENTRAL
+    depends on ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
+    select ZMK_WPM
+    help
+      The &scr_next key steps from the Prospector module's status screen
+      through the animations in src/screen_fx/fx.c and back. Each shows both
+      batteries and the connection along the bottom. Uses about 60 KB of RAM.
+
+if DONGLE_SCREEN_FX
+
+config DONGLE_SCREEN_FX_START
+    int "Screen shown after power-up"
+    default 0
+    range 0 6
+    help
+      0 is the Prospector module's status screen; 1 and up are the
+      animations, in the order &scr_next shows them (Warp, Fire, Plasma,
+      Rain, Sparks, Wire).
+
+config DONGLE_SCREEN_FX_WPM_REFERENCE
+    int "Words per minute at which the animations run flat out"
+    default 60
+    range 10 300
+
+endif
+
+config BEHAVIOR_SCREEN_NEXT
+    bool
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_SCREEN_NEXT_ENABLED
