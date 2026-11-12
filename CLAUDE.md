@@ -25,10 +25,20 @@
   Keyboard Writer app (russwinch/keyboard-writer) has its own copy in
   `targets.json`; its ZMK module is pinned in `config/west.yml`.
 
-## Flashing for the user (`tools/flash.py`)
+## Flashing
 
-Only possible when Claude runs on the user's own computer: a cloud session
-can't see USB drives, so there just tell them the command to run.
+The user flashes with their Keyboard Writer app (russwinch/keyboard-writer,
+see README "Flashing"): it lists this repo's releases, one per build, and
+flashes the devices in order. So when firmware is ready to try, don't spell
+out `flash.py` commands. Say which release to pick in the app (`build-<run
+number>`, and that it is a prerelease if it is a branch build), which devices
+need it (a keymap or dongle-screen change only needs the central: the dongle,
+or the left half without one) and whether a settings reset is needed.
+
+### With `tools/flash.py`
+
+Only when the user asks for it, and only possible when Claude runs on the
+user's own computer: a cloud session can't see USB drives.
 
 1. Agree the keyboard (`--list`) and whether to `--reset`. A reset clears all
    Bluetooth pairings, including the computer's, so only add it when asked or
