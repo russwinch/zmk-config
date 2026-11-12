@@ -114,6 +114,14 @@
             quick-tap-ms = <175>;
             bindings = <&kp>, <&kp>;
         };
+
+        // Next screen on the Prospector dongle: its status screen, then the
+        // animations (src/dongle_screen_fx.c). Does nothing without the dongle.
+        scr_next: scr_next {
+            compatible = "zmk,behavior-screen-next";
+            #binding-cells = <0>;
+            display-name = "Next screen";
+        };
     };
 };
 
@@ -187,13 +195,13 @@
         };
 
         // Config: Lower + Raise held together. Power, OS switch, battery,
-        // Bluetooth. Shown as "Shit" on the screens, which is what we call it.
+        // Bluetooth, the dongle's screen. Shown as "Shit" on the screens, which is what we call it.
         config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
-    &kp C_PWR,     &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
+    &kp C_PWR,     &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    &scr_next,     XXX,           &bt BT_CLR,
                                                  ___,           ___,               ___,           ___
             )>;
             SENSORS

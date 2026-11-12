@@ -5,3 +5,5 @@
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_IDLE_BACKLIGHT app PRIVATE src/dongle_idle_backlight.c)
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_half_status.c)
 target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE src/half_status_screen.c)
+target_sources_ifdef(CONFIG_DONGLE_SCREEN_FX app PRIVATE src/dongle_screen_fx.c src/screen_fx/fx.c)
+target_sources_ifdef(CONFIG_BEHAVIOR_SCREEN_NEXT app PRIVATE src/behavior_screen_next.c)

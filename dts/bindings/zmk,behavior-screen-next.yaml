@@ -1,0 +1,8 @@
+# The &scr_next key (config/keymap.dtsi): next screen on the Prospector
+# dongle (src/dongle_screen_fx.c).
+
+description: Show the next screen on the Prospector dongle
+
+compatible: "zmk,behavior-screen-next"
+
+include: zero_param.yaml

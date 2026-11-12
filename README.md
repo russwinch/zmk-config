@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, next dongle screen (shown as "Shit" on the screens) |
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
@@ -80,9 +80,10 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/<keyboard>_layout.dtsi` | Glue shared by a keyboard's normal and dongle keymaps (Urchin, Aurora Corne, Waterfowl; the Forager dongle uses `forager.keymap` itself). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module. |
-| `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, and the left half's nice!view screen when behind the dongle. |
+| `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, the dongle's animated screens, and the left half's nice!view screen when behind the dongle. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
+| `tools/fx_preview.py` | Renders the dongle's animated screens to GIFs on a computer (see With the Prospector dongle). |
 | `tools/flash.py` | Flashes a keyboard's devices in order, optionally with a settings reset (see Flashing). |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
@@ -185,6 +186,34 @@ The dongle's own screen uses the Prospector module's **Field** layout (layer
 name, battery levels, modifiers and a grid of lines that animate as you type).
 To try Classic, Radii or Operator, change the layout line in
 `config/<keyboard>_dongle.conf`; the animation timings are set there too.
+
+#### Animated screens
+
+The **Screen** key on the Config layer steps the dongle from that status
+screen through six full-screen animations and back. They are prototypes:
+
+| # | Screen | Idle | Typing |
+| --- | --- | --- | --- |
+| 1 | Warp | drifting stars | light speed; each key gives a kick |
+| 2 | Fire | embers | a wall of flame; each key throws in a hot spot |
+| 3 | Plasma | slow colour soup | faster and tighter; each key shifts the colours |
+| 4 | Rain | a drizzle of falling code | a downpour; each key starts a drop |
+| 5 | Sparks | a firework now and then | one per key |
+| 6 | Wire | a slowly turning icosahedron | spins up with trails; each key makes it pulse |
+
+Each shows both batteries bottom left (`L85 R80`; red at 15% or less, `--` in
+red when that half isn't connected) and the output bottom right (`USB` or
+`BT1`..; red when the computer isn't connected). The screen to start on after
+power-up and the typing speed that counts as flat out are set in
+`config/<keyboard>_dongle.conf`.
+
+The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
+`tools/fx_preview.py` can run it on a computer and save each animation as a
+GIF in `fx_preview_out/` (needs gcc and Pillow): the quick way to try a change
+or a new animation. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
+empty screen and writes the frames straight to the panel, a quarter of the
+pixels doubled up. The SPI link to the panel sets the frame rate: a whole
+frame takes about 70 ms, so full-screen animations run at around 15 a second.
 
 If one peripheral stops
 sending keys after connecting to the dongle, reset that half (a known ZMK issue,
