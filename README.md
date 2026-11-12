@@ -207,6 +207,11 @@ red when that half isn't connected) and the output bottom right (`USB` or
 power-up and the typing speed that counts as flat out are set in
 `config/<keyboard>_dongle.conf`.
 
+Only the dongle needs flashing to change these (the keymap and the screen
+code both live there): pick the build in
+[Keyboard Writer](https://github.com/russwinch/keyboard-writer), see
+[Flashing](#flashing).
+
 The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 `tools/fx_preview.py` can run it on a computer and save each animation as a
 GIF in `fx_preview_out/` (needs gcc and Pillow): the quick way to try a change
