@@ -212,11 +212,13 @@ Plasma's rings, starts Rain, is a sparkler in Sparks and turns Wire.
 | --- | --- |
 | `TP_SDA` | D4 (SDA) |
 | `TP_SCL` | D5 (SCL) |
-| `TP_IRQ` | D2 |
+| `TP_IRQ` (`TP_INT`) | D0 |
 | `TP_RST` | D1 |
 
-D2, D4 and D5 are the light sensor's pins, so this is for a dongle without
-one. Nothing needs switching on: without the wires the touch controller just
+This is the wiring the Prospector Scanner firmware's touch mode uses
+([t-ogura/zmk-config-prospector](https://github.com/t-ogura/zmk-config-prospector/blob/main/docs/TOUCH_MODE.md)),
+so its touch build can be flashed to check the soldering. Nothing needs
+switching on: without the wires the touch controller just
 isn't found (`dts/prospector_touch.dtsi`). If touches land on the opposite
 side of the screen, set `CONFIG_DONGLE_SCREEN_FX_TOUCH_UPSIDE_DOWN=y` in
 `config/<keyboard>_dongle.conf`. A touch doesn't count as activity: it won't
