@@ -14,6 +14,12 @@
  * sent: the SPI link is what limits the frame rate (a whole frame takes
  * about 70 ms at 16 MHz), not working the picture out.
  *
+ * The pictures need about 60 KB, which the dongle doesn't have free. LVGL's
+ * drawing buffers are bigger than that and sit unused while it is parked on
+ * the empty screen, so the animation's memory is borrowed from one of them
+ * (borrow_memory). Nothing has to be handed back: LVGL simply draws over it
+ * when its own screen returns.
+ *
  * Settings: Kconfig at the repo root.
  */
 
@@ -54,10 +60,15 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 static const struct device *panel = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 
-static uint8_t frame[FX_W * FX_H];
-static uint8_t shown[FX_W * FX_H]; /* what the panel has now */
-static uint16_t palette[256];      /* RGB565 in the panel's byte order */
-static uint16_t band[PANEL_W * BAND_ROWS * 2];
+#define PIXELS (FX_W * FX_H)
+#define BAND_PIXELS (PANEL_W * BAND_ROWS * 2)
+
+/* borrowed from LVGL while an animation shows: see borrow_memory */
+static uint8_t *frame;
+static uint8_t *shown; /* what the panel has now */
+static uint16_t *band;
+
+static uint16_t palette[256]; /* RGB565 in the panel's byte order */
 
 /* --- what the rest of the keyboard tells us (any thread) -------------------- */
 
@@ -75,6 +86,7 @@ static uint8_t n_keys;
 static int screen; /* the one showing */
 static lv_obj_t *module_screen;
 static lv_obj_t *empty_screen;
+static bool start_pending; /* the animation has still to be set up */
 static bool redraw_all;
 static float energy;
 static uint32_t last_frame_at, status_at, banner_until;
@@ -142,19 +154,19 @@ static void show_frame(void) {
             for (int x = 0; x < width; x += 2) {
                 out[x] = out[x + 1] = palette[*in++];
             }
-            memcpy(out + width, out, width * sizeof(band[0]));
+            memcpy(out + width, out, width * sizeof(*band));
             out += width * 2;
         }
 
         const struct display_buffer_descriptor desc = {
-            .buf_size = width * BAND_ROWS * 2 * sizeof(band[0]),
+            .buf_size = width * BAND_ROWS * 2 * sizeof(*band),
             .width = width,
             .height = BAND_ROWS * 2,
             .pitch = width,
         };
         display_write(panel, x0 * 2, top * 2, &desc, band);
     }
-    memcpy(shown, frame, sizeof(shown));
+    memcpy(shown, frame, PIXELS);
     redraw_all = false;
 }
 
@@ -162,9 +174,56 @@ static void schedule_frame(uint32_t delay_ms) {
     k_work_reschedule_for_queue(zmk_display_work_q(), &frame_work, K_MSEC(delay_ms));
 }
 
+/*
+ * Lay the animation's pictures out in the LVGL drawing buffer that is free.
+ * Only once LVGL has finished drawing and sending the empty screen (the
+ * TAKEOVER_MS wait): after that it has no reason to touch either buffer.
+ */
+static bool borrow_memory(void) {
+    lv_display_t *display = lv_display_get_default();
+    lv_draw_buf_t *buf = display != NULL ? lv_display_get_buf_active(display) : NULL;
+    const size_t needed = 3 * PIXELS + BAND_PIXELS * sizeof(*band);
+
+    if (buf == NULL || buf->data == NULL || buf->data_size < needed) {
+        LOG_ERR("screen fx: no LVGL buffer of %u bytes to borrow", (unsigned int)needed);
+        return false;
+    }
+    frame = buf->data;
+    shown = frame + PIXELS;
+    fx_set_canvas(shown + PIXELS);
+    band = (uint16_t *)(shown + 2 * PIXELS); /* 3 * PIXELS is a multiple of 4 */
+    return true;
+}
+
+static void begin_animation(void) {
+    uint16_t native[256];
+    fx_start(screen - 1, native);
+    for (int i = 0; i < 256; i++) {
+        palette[i] = sys_cpu_to_be16(native[i]);
+    }
+    redraw_all = true;
+    last_frame_at = k_uptime_get_32();
+    status_at = last_frame_at - STATUS_MS;
+    banner_until = last_frame_at + BANNER_MS;
+}
+
+static void apply_cb(struct k_work *work);
+static K_WORK_DEFINE(apply_work, apply_cb);
+
 static void frame_cb(struct k_work *work) {
     if (screen == 0 || atomic_get(&paused)) {
         return;
+    }
+
+    if (start_pending) {
+        if (!borrow_memory()) {
+            /* back to the module's screen */
+            atomic_set(&wanted_screen, 0);
+            k_work_submit_to_queue(zmk_display_work_q(), &apply_work);
+            return;
+        }
+        begin_animation();
+        start_pending = false;
     }
 
     const uint32_t now = k_uptime_get_32();
@@ -199,16 +258,9 @@ static void frame_cb(struct k_work *work) {
     schedule_frame(took + 5 < FRAME_MS ? FRAME_MS - took : 5);
 }
 
+/* The animation itself is set up by the first frame, once LVGL is done. */
 static void start_animation(uint32_t delay_ms) {
-    uint16_t native[256];
-    fx_start(screen - 1, native);
-    for (int i = 0; i < 256; i++) {
-        palette[i] = sys_cpu_to_be16(native[i]);
-    }
-    redraw_all = true;
-    last_frame_at = k_uptime_get_32();
-    status_at = last_frame_at - STATUS_MS;
-    banner_until = last_frame_at + delay_ms + BANNER_MS;
+    start_pending = true;
     schedule_frame(delay_ms);
 }
 
@@ -218,6 +270,7 @@ static void apply_cb(struct k_work *work) {
 
     if (want == screen) {
         if (screen != 0 && !atomic_get(&paused)) {
+            /* the panel was off: send the whole picture again */
             redraw_all = true;
             last_frame_at = k_uptime_get_32();
             schedule_frame(0);
@@ -255,8 +308,6 @@ static void apply_cb(struct k_work *work) {
     }
     start_animation(delay_ms);
 }
-
-static K_WORK_DEFINE(apply_work, apply_cb);
 
 static void request_apply(void) {
     if (zmk_display_is_initialized()) {

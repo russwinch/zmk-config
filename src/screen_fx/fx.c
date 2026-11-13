@@ -4,7 +4,9 @@
  * Each animation is a start function (palette, state) and a frame function.
  * `canvas` is one spare picture they share for whatever has to survive from
  * frame to frame (flame heat, fading trails); the frame handed in is redrawn
- * completely every time, because the status text is written over it.
+ * completely every time, because the status text is written over it. The
+ * caller owns the canvas's memory (fx_set_canvas): the dongle has none to
+ * spare for it.
  */
 
 #include "fx.h"
@@ -15,7 +17,9 @@
 #define PIXELS (FX_W * FX_H)
 #define TWO_PI 6.2831853f
 
-static uint8_t canvas[PIXELS];
+static uint8_t *canvas;
+
+void fx_set_canvas(uint8_t *memory) { canvas = memory; }
 
 /* --- helpers -------------------------------------------------------------- */
 
@@ -516,7 +520,7 @@ void fx_start(int fx, uint16_t *palette) {
         return;
     }
     init_tables();
-    memset(canvas, 0, sizeof(canvas));
+    memset(canvas, 0, PIXELS);
     memset(palette, 0, 256 * sizeof(palette[0]));
     effects[fx].start(palette);
     palette[FX_BLACK] = rgb(0, 0, 0);
