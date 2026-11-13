@@ -212,7 +212,9 @@ The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 GIF in `fx_preview_out/` (needs gcc and Pillow): the quick way to try a change
 or a new animation. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
 empty screen and writes the frames straight to the panel, a quarter of the
-pixels doubled up. The SPI link to the panel sets the frame rate: a whole
+pixels doubled up. The dongle has no RAM to spare for the pictures, so they
+are kept in one of LVGL's drawing buffers, idle while its screen is parked.
+The SPI link to the panel sets the frame rate: a whole
 frame takes about 70 ms, so full-screen animations run at around 15 a second.
 
 If one peripheral stops

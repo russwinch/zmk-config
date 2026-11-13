@@ -44,6 +44,10 @@ struct fx_status {
 int fx_count(void);
 const char *fx_name(int fx);
 
+/* FX_W * FX_H bytes for the animations to keep between frames. Call before
+ * fx_start, and again if the memory moves. */
+void fx_set_canvas(uint8_t *memory);
+
 /* Start animation `fx`: resets it, fills `palette` (256 x RGB565). */
 void fx_start(int fx, uint16_t *palette);
 

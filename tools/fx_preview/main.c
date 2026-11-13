@@ -18,11 +18,12 @@ int main(int argc, char **argv) {
     int frames = argc > 2 ? atoi(argv[2]) : 150;
     float fps = argc > 3 ? atof(argv[3]) : 15;
 
-    static uint8_t fb[FX_W * FX_H];
+    static uint8_t fb[FX_W * FX_H], canvas[FX_W * FX_H];
     static uint8_t out[FX_W * 2 * 3];
     uint16_t palette[256];
     struct fx_status status = {{85, 12}, {true, true}, true, "USB"};
 
+    fx_set_canvas(canvas);
     fx_start(fx, palette);
 
     float energy = 0, key_debt = 0;
