@@ -28,15 +28,6 @@
 #define FX_MAX_KEYS 8
 #define FX_MAX_CHARS 8
 
-struct fx_input {
-    float step;                /* time since the last frame, in 30ths of a second */
-    float energy;              /* 0..1: how hard you are typing */
-    uint8_t n_keys;            /* keys pressed since the last frame */
-    uint8_t keys[FX_MAX_KEYS]; /* their key positions */
-    uint8_t n_chars;           /* characters typed since the last frame */
-    char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
-};
-
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
@@ -47,8 +38,22 @@ struct fx_status {
     char host[4];           /* "USB", "BT1".. */
 };
 
+struct fx_input {
+    float step;                /* time since the last frame, in 30ths of a second */
+    float energy;              /* 0..1: how hard you are typing */
+    uint8_t n_keys;            /* keys pressed since the last frame */
+    uint8_t keys[FX_MAX_KEYS]; /* their key positions */
+    uint8_t n_chars;           /* characters typed since the last frame */
+    char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
+    const struct fx_status *status; /* for an animation that draws it itself */
+};
+
 int fx_count(void);
 const char *fx_name(int fx);
+
+/* The animation shows the batteries and output itself (from fx_input's
+ * status): leave them out of fx_draw_status, and draw nothing over it. */
+bool fx_draws_status(int fx);
 
 /* FX_W * FX_H bytes for the animations to keep between frames. Call before
  * fx_start, and again if the memory moves. */
