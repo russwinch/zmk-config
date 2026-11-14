@@ -289,14 +289,16 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
 /* --- fire: embers when idle, a wall of flame at full speed ----------------- */
 
 static void fire_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 0},        {40, 70, 0, 0},      {100, 220, 30, 0},
-                                        {160, 255, 140, 0},  {215, 255, 230, 60}, {251, 255, 255, 230}};
+    /* white only at the very top, which just the keys' hot spots reach: the
+     * flames themselves stop at yellow, so they keep their shape at speed */
+    static const struct stop stops[] = {{0, 0, 0, 0},       {40, 70, 0, 0},      {100, 210, 25, 0},
+                                        {165, 255, 120, 0}, {225, 255, 215, 40}, {251, 255, 255, 220}};
     gradient(palette, stops, 6);
 }
 
 static void fire_frame(uint8_t *fb, const struct fx_input *in) {
     /* the fuel: the bottom three rows */
-    int base = 110 + (int)(in->energy * 141);
+    int base = 110 + (int)(in->energy * 95);
     for (int i = PIXELS - 3 * FX_W; i < PIXELS; i++) {
         int v = base - (int)(rnd() & 63);
         canvas[i] = v > 0 ? v : 0;
@@ -310,8 +312,9 @@ static void fire_frame(uint8_t *fb, const struct fx_input *in) {
             }
         }
     }
-    /* flames cool fast when idle (they die low), slowly at full speed */
-    uint32_t cooling = 5 + (uint32_t)((1.0f - in->energy) * 9);
+    /* flames cool fast when idle (they die low), slower at full speed, but
+     * still fast enough to leave dark between the tongues */
+    uint32_t cooling = 9 + (uint32_t)((1.0f - in->energy) * 5);
     for (int pass = 0; pass < 2; pass++) {
         for (int y = 0; y < FX_H - 3; y++) {
             uint8_t *row = &canvas[y * FX_W];
