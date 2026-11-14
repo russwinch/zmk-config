@@ -22,7 +22,6 @@ LV_FONT_DECLARE(Symbols_Regular_28);
 LV_FONT_DECLARE(Symbols_Bold_26);
 
 #define SYMBOL_WAVES_UP 0x102667 /* wireless */
-#define SYMBOL_LINKS 0x100264    /* a chain link: stands for the USB cable */
 
 #define PANEL_W (FX_W * 2)
 #define BATTERY_X 6
@@ -30,7 +29,7 @@ LV_FONT_DECLARE(Symbols_Bold_26);
 
 /* The Field screen's: text bottom at 20 above the screen's, 9 from its side. */
 #define BATTERY_LEFT 9
-#define OUTPUT_RIGHT (PANEL_W - 9)
+#define OUTPUT_BOX (PANEL_W - 4 - 68) /* the Field output box's left edge */
 #define LINE_BOTTOM 220
 
 enum {
@@ -175,25 +174,27 @@ void overlay_render(const struct fx_status *status) {
               WHITE, true);
     add_shadow(&battery);
 
-    /* Bluetooth: the waves and the profile number. USB: the link alone. */
+    /* The output, as the Field screen has it: nothing over USB; on Bluetooth
+     * the waves and the profile number, laid out as in its 68 x 34 box (the
+     * symbol in the middle of a 30 wide space 8 in, the number 5 from the
+     * right), with that box in the bottom right corner. */
+    if (status->usb) {
+        return;
+    }
     const bool solid = status->host_connected;
     const lv_font_t *symbols = solid ? &Symbols_Bold_26 : &Symbols_Regular_28;
-    const uint32_t symbol = status->usb ? SYMBOL_LINKS : SYMBOL_WAVES_UP;
     const uint8_t symbol_color = solid ? SYM_SENDING : status->host_open ? SYM_UNPAIRED : SYM_SEARCHING;
     /* both symbol fonts end up on the same baseline, one above the number's */
     const int symbol_top = LINE_BOTTOM - 7 - (symbols->line_height - symbols->base_line);
-    int right = OUTPUT_RIGHT;
+    const int symbol_wide = draw_glyph(&output, symbols, SYMBOL_WAVES_UP, 0, 0, 0, 0, false);
+    draw_glyph(&output, symbols, SYMBOL_WAVES_UP, 0, OUTPUT_BOX + 8 + (30 - symbol_wide) / 2, symbol_top,
+               symbol_color, true);
 
-    if (!status->usb) {
-        const char number[2] = {(char)('0' + status->profile % 10), '\0'};
-        const int top = LINE_BOTTOM - 6 - (FG_Medium_26.line_height - FG_Medium_26.base_line);
-        const int width = draw_text(&output, &FG_Medium_26, number, 0, 0, 0, 0, false);
-        draw_text(&output, &FG_Medium_26, number, right - width, top, 0, solid ? WHITE : GREY, true);
-        right -= width + 5;
-    }
-    /* the symbol sits in the middle of a box 30 wide, like the Field one */
-    const int width = draw_glyph(&output, symbols, symbol, 0, 0, 0, 0, false);
-    draw_glyph(&output, symbols, symbol, 0, right - 30 + (30 - width) / 2, symbol_top, symbol_color, true);
+    const char number[2] = {(char)('0' + status->profile % 10), '\0'};
+    const int number_top = LINE_BOTTOM - 6 - (FG_Medium_26.line_height - FG_Medium_26.base_line);
+    const int number_wide = draw_text(&output, &FG_Medium_26, number, 0, 0, 0, 0, false);
+    draw_text(&output, &FG_Medium_26, number, OUTPUT_BOX + 68 - 5 - number_wide, number_top, 0,
+              solid ? WHITE : GREY, true);
     add_shadow(&output);
 }
 

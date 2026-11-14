@@ -218,8 +218,8 @@ along the bottom as the Field screen
 draws them, in its fonts and colours: both levels bottom left (`85/80`, left
 then right; `-` for a half that isn't connected), and bottom right the
 wireless symbol with the Bluetooth profile number (counted from 0, as on the
-Field screen), or a link symbol for USB. The symbol is cyan when the computer
-is connected, grey when not. With another layout chosen its fonts aren't in
+Field screen), and nothing when typing over USB. The symbol is cyan when the
+computer is connected, grey when not. With another layout chosen its fonts aren't in
 the firmware, and the animations fall back to small text of their own
 (`85/80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on after
 power-up and the typing speed that counts as flat out are set in
