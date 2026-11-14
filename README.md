@@ -182,10 +182,11 @@ ZMK's existing "run a behavior on a half" message: a `hstatus` behavior in
 `config/waterfowl.keymap` that no key is bound to. The `R` battery is the
 dongle's last reading, so it can be out of date while the right half sleeps.
 
-The dongle's own screen uses the Prospector module's **Field** layout (layer
-name, battery levels, modifiers and a grid of lines that animate as you type).
-To try Classic, Radii or Operator, change the layout line in
-`config/<keyboard>_dongle.conf`; the animation timings are set there too.
+The dongle's own screen uses the Prospector module's **Operator** layout
+(layer name, battery levels, modifiers, the output and a words-per-minute
+meter with the figure beside it). To try Classic, Radii or Field (a grid of
+lines that animate as you type), change the layout line in
+`config/<keyboard>_dongle.conf`.
 
 #### Animated screens
 
@@ -219,15 +220,15 @@ rows, which is the Waterfowl; on the other boards it is only roughly right.
 Tracker and Thermal show the batteries and the output their own way, in the
 animations' small pixel letters: Tracker as a gauge up each side with the
 level under it and the output top right, Thermal as `85/80` bottom left and
-the output bottom right. The others show them
-along the bottom as the Field screen
-draws them, in its fonts and colours: both levels bottom left (`85/80`, left
-then right; `-` for a half that isn't connected), and bottom right the
-wireless symbol with the Bluetooth profile number (counted from 0, as on the
-Field screen), and nothing when typing over USB. The symbol is cyan when the
-computer is connected, grey when not. With another layout chosen its fonts aren't in
-the firmware, and the animations fall back to small text of their own
-(`85/80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on
+the output bottom right. The others show them along the bottom in small text
+of the same kind (`85/80`, left then right; `USB` or `BT1`..; red for low,
+missing or not connected). With the Field layout chosen instead of Operator,
+its fonts are in the firmware and those animations draw the status as the
+Field screen does, in its fonts and colours: both levels bottom left (`-` for
+a half that isn't connected), and bottom right the wireless symbol with the
+Bluetooth profile number (counted from 0, as on the Field screen), and nothing
+when typing over USB; the symbol is cyan when the computer is connected, grey
+when not. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/<keyboard>_dongle.conf`.
 
