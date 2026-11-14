@@ -453,7 +453,7 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
 /* The flames are too bright to read anything over, so they burn above a
  * black bar along the bottom that the status text sits in (the theme's
  * `drop` puts it there). */
-#define FIRE_BAR 17
+#define FIRE_BAR 22
 
 static void fire_start(uint16_t *palette) {
     /* white only at the very top, which just the keys' hot spots reach: the

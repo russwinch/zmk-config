@@ -251,6 +251,8 @@ static void read_link(struct bt_conn *conn, void *data) {
     reading->found[which] = bt_hci_get_conn_handle(conn, &reading->handle[which]) == 0;
 }
 
+static void read_keys(struct fx_debug *d);
+
 /* What lvgl_heap_stats fills in needs CONFIG_SYS_HEAP_RUNTIME_STATS. */
 void lvgl_heap_stats(struct sys_memory_stats *stats);
 
