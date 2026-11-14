@@ -26,12 +26,15 @@
 #define FX_WHITE 255
 
 #define FX_MAX_KEYS 8
+#define FX_MAX_CHARS 8
 
 struct fx_input {
     float step;                /* time since the last frame, in 30ths of a second */
     float energy;              /* 0..1: how hard you are typing */
     uint8_t n_keys;            /* keys pressed since the last frame */
     uint8_t keys[FX_MAX_KEYS]; /* their key positions */
+    uint8_t n_chars;           /* characters typed since the last frame */
+    char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
 };
 
 struct fx_status {
