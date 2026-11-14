@@ -92,7 +92,12 @@ Every push builds all firmware (`.github/workflows/build.yml`) and publishes
 it as a release named after the branch and commit (the newest 30 are kept;
 builds of branches other than `main` are prereleases). Download
 `firmware.zip` from the release and flash each half (double-tap reset, then
-copy the `.uf2` onto the drive that appears).
+copy the `.uf2` onto the drive that appears). Each `.uf2` is attached to the
+release on its own as well, with dots for the spaces in its name.
+
+On an iPad, download the `.uf2` in Safari and use Share > Save to Files to
+put it on the bootloader drive: copy and paste in the Files app fails there
+(error 100093).
 
 [Keyboard Writer](https://github.com/russwinch/keyboard-writer) is a macOS
 app that does all of this: plug the devices in, press Start, and each is

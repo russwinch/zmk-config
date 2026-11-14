@@ -4,8 +4,9 @@ jobs:
   build:
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85  # same ZMK commit as config/west.yml
 
-  # One release per build, holding the firmware zip. The Keyboard Writer app
-  # (russwinch/keyboard-writer) lists these and downloads the one chosen:
+  # One release per build, holding the firmware zip and each .uf2. The
+  # Keyboard Writer app (russwinch/keyboard-writer) lists these and downloads
+  # the zip of the one chosen:
   # release files need no login, unlike a run's artifacts. Builds of other
   # branches are prereleases; the app starts on the newest that isn't.
   release:
@@ -23,11 +24,15 @@ jobs:
         run: |
           gh run download "$GITHUB_RUN_ID" --name firmware --dir firmware
           find firmware -name '*.uf2' -exec zip -q -j firmware.zip {} +
+          # Each .uf2 on its own too, to download one without unzipping (e.g.
+          # on an iPad). Spaces become dots, as GitHub would rename them anyway.
+          mkdir assets
+          find firmware -name '*.uf2' | while read -r f; do cp "$f" "assets/$(basename "$f" | tr ' ' '.')"; done
           subject="$(gh api "repos/$GH_REPO/commits/$GITHUB_SHA" --jq '.commit.message | split("\n")[0]')"
           tag="build-$GITHUB_RUN_NUMBER"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # a re-run
           if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then kind=--latest; else kind=--prerelease; fi
-          gh release create "$tag" firmware.zip --target "$GITHUB_SHA" $kind \
+          gh release create "$tag" firmware.zip assets/*.uf2 --target "$GITHUB_SHA" $kind \
             --title "$GITHUB_REF_NAME · $subject" --notes "Built from $GITHUB_SHA."
 
       - name: Keep the newest 30
