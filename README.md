@@ -193,8 +193,8 @@ lines that animate as you type), change the layout line in
 #### Animated screens
 
 The **Screen +** key on the Config layer (the U key) steps the dongle from
-that status screen through eight full-screen animations, then the
-[Debug screen](#debug-screen), and back to it;
+that status screen through eight full-screen animations, then the Keys
+screen and the [Debug screen](#debug-screen), and back to it;
 **Screen -** (the Y key) goes the other way. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
@@ -209,6 +209,13 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 | 6 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
 | 7 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
 | 8 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
+| 9 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+
+Keys draws the keyboard the dongle is built for, from its matrix transform.
+A key counts as holding a modifier or a layer if its binding is `&kp` with a
+modifier, `&mo`, or a hold-tap over one of those (home row mods, `&lt`), and
+only takes the colour while that modifier or layer is really active, so a
+tapped home row mod stays white. Toggles and sticky keys aren't coloured.
 
 Terminal shows the text itself, passwords included, to anyone who can see the
 dongle; it only does so while it is the screen showing. It works the
@@ -229,9 +236,12 @@ the Bluetooth profile number (counted from 0, as the Field screen does). The sym
 is in the animation's colour when the computer is connected and pulses grey
 when it isn't; over USB there is no symbol at all. The text's colours are set
 per animation (the `theme` in the list at the end of `src/screen_fx/fx.c`):
-light with a dark edge on most, black with a pale glow on Fire, where the
-flames behind it are bright. Tracker also has a gauge for each battery up the
-sides. The screen to start on
+light with a dark edge. The theme also says which letters the numbers are in
+and how low they sit: Terminal, Code, Thermal and Tracker have them in the
+animations' own small pixel letters, a size down from the Field font; on Fire
+the flames burn above a black bar along the bottom that holds the text; and
+on Tracker it sits under the line across the bottom, with a gauge for each
+battery up the sides. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 
@@ -250,7 +260,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L3 NAV 0009   51WPM` | the highest active layer and its name, a bit for every active layer (hex), typing speed |
 | `CTL SFT ALT GUI   N29` | modifiers, lit while held; key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
-| key map | every key position: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle |
+| key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
 
 The link rows' columns:

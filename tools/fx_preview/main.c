@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
                  {.up = true, .rssi_known = true, .rssi = -71, .interval = 6, .latency = 30}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .interval = 12, .drops = 1, .reason = 0x13},
         .battery_age_s = {12, 340}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
-        .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
+        .layers = 0x9, .bounce_ms = 18, .bounce_key = 23, .keyboard = "Forager",
     };
 
     fx_set_canvas(canvas);
@@ -76,7 +76,12 @@ int main(int argc, char **argv) {
             debug.log[2] = events[1];
             debug.n_log = 3;
             debug.presses++;
-            debug.held = 1ull << in.keys[in.n_keys - 1];
+            /* with a thumb key holding a layer and a home row key a modifier, now and then */
+            debug.held_layer = debug.presses % 5 < 3 ? 1ull << 31 : 0;
+            debug.held_mod = debug.presses % 7 < 2 ? 1ull << 16 : 0;
+            debug.held = 1ull << in.keys[in.n_keys - 1] | debug.held_layer | debug.held_mod;
+            debug.layer = debug.held_layer ? 3 : 0;
+            debug.layer_name = debug.held_layer ? "Nav" : "Mac";
             debug.mods = debug.presses % 7 == 0 ? 0x02 : 0;
             in.chars[in.n_chars++] = typed[typed_at++ % (sizeof(typed) - 1)];
             energy += 0.03f;
@@ -106,7 +111,7 @@ int main(int argc, char **argv) {
         in.debug = &debug;
         fx_frame(fx, fb, &in);
         const bool plain = fx_is_debug(fx);
-        fx_draw_banner(fb, f < fps * 2 && !plain ? fx_name(fx) : NULL);
+        fx_draw_banner(fb, f < fps * 2 && !plain && !fx_shows_keys(fx) ? fx_name(fx) : NULL);
 
         for (int y = 0; y < FX_H * 2; y++) {
             /* as the dongle does: the panel's byte order, then the text */

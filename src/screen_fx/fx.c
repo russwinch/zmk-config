@@ -93,10 +93,49 @@ static void line(uint8_t *buf, int x0, int y0, int x1, int y1, uint8_t c) {
     line_on(buf, x0, y0, x1, y1, c, false);
 }
 
-/* Where a key is on the board, taking it for 10 columns by 4 rows (the
- * Waterfowl; near enough on the others). */
-static inline int key_col(uint8_t key) { return key % 10; }
-static inline int key_row(uint8_t key) { return key / 10 < 3 ? key / 10 : 3; }
+/* --- the keys --------------------------------------------------------------- */
+
+/* Where each key position is on the board (fx_set_keys). Until the dongle
+ * says, the Urchin and Forager: three rows of ten, two thumb keys a side. */
+#define RC(row, col) ((row) << 8 | (col))
+static const uint16_t urchin_keys[] = {
+    RC(0, 0), RC(0, 1), RC(0, 2), RC(0, 3), RC(0, 4), RC(0, 5), RC(0, 6), RC(0, 7), RC(0, 8), RC(0, 9),
+    RC(1, 0), RC(1, 1), RC(1, 2), RC(1, 3), RC(1, 4), RC(1, 5), RC(1, 6), RC(1, 7), RC(1, 8), RC(1, 9),
+    RC(2, 0), RC(2, 1), RC(2, 2), RC(2, 3), RC(2, 4), RC(2, 5), RC(2, 6), RC(2, 7), RC(2, 8), RC(2, 9),
+    RC(3, 3), RC(3, 4), RC(3, 5), RC(3, 6),
+};
+#undef RC
+static const uint16_t *key_places = urchin_keys;
+static int key_count = sizeof(urchin_keys) / sizeof(urchin_keys[0]);
+static int board_cols = 10;
+
+void fx_set_keys(const uint16_t *places, int count) {
+    if (places == NULL || count <= 0) {
+        return;
+    }
+    key_places = places;
+    key_count = count;
+    board_cols = 2;
+    for (int i = 0; i < count; i++) {
+        const int cols = (places[i] & 0xff) + 1;
+        board_cols = cols > board_cols ? cols : board_cols;
+    }
+    board_cols += board_cols & 1; /* the halves are the same width */
+}
+
+/* A key's own column and row on its board; a position the board hasn't got
+ * counts as the middle of the bottom row. */
+static inline int board_col(int key) { return key < key_count ? key_places[key] & 0xff : board_cols / 2; }
+static inline int board_row(int key) { return key < key_count ? key_places[key] >> 8 : 3; }
+
+/* The same for the animations, which take every board for 10 columns by 4
+ * rows: on a wider one the outer columns count as the ones next to them, so
+ * each half's keys stay on its side. */
+static inline int key_col(uint8_t key) {
+    const int col = board_col(key) - (board_cols - 10) / 2;
+    return col < 0 ? 0 : col > 9 ? 9 : col;
+}
+static inline int key_row(uint8_t key) { return board_row(key) < 3 ? board_row(key) : 3; }
 
 /* Where across the screen a key lands: its column. */
 static int key_x(uint8_t key) { return 8 + key_col(key) * 13 + (int)(rnd() % 7); }
@@ -202,6 +241,8 @@ static const uint8_t font[][7] = {
     {0x08, 0x04, 0x06, 0x04, 0x04, 0x08, 0x00}, /* } */
     {0x0a, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ~ */
 };
+
+const uint8_t *fx_glyph_rows(char c) { return c < ' ' || c > '~' ? NULL : font[c - ' ']; }
 
 static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
     if (c < ' ' || c > '~') {
@@ -409,6 +450,11 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- fire: embers when idle, a wall of flame at full speed ----------------- */
 
+/* The flames are too bright to read anything over, so they burn above a
+ * black bar along the bottom that the status text sits in (the theme's
+ * `drop` puts it there). */
+#define FIRE_BAR 22
+
 static void fire_start(uint16_t *palette) {
     /* white only at the very top, which just the keys' hot spots reach: the
      * flames themselves stop at yellow, so they keep their shape at speed */
@@ -451,7 +497,8 @@ static void fire_frame(uint8_t *fb, const struct fx_input *in) {
             }
         }
     }
-    memcpy(fb, canvas, PIXELS);
+    memcpy(fb, canvas + FIRE_BAR * FX_W, PIXELS - FIRE_BAR * FX_W);
+    memset(fb + PIXELS - FIRE_BAR * FX_W, 0, FIRE_BAR * FX_W);
 }
 
 /* --- terminal: what you type, in green, fading away ------------------------ */
@@ -830,7 +877,8 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
  * its column. The figure top right is the range of the nearest.
  *
  * It adds a gauge for each half's battery up the sides, over the level that
- * every animation has in its bottom corner.
+ * every animation has in its bottom corner: here in the small letters, and
+ * moved down clear of the line across the bottom.
  */
 
 #define TRACK_CX (FX_W / 2)
@@ -1464,12 +1512,18 @@ static void hop_frame(uint8_t *fb, const struct fx_input *in) {
  * switches and the firmware (README, "Debug screen"). Top to bottom: the
  * dongle itself; a table of the three Bluetooth links; the profiles, USB
  * and the output in use; layer, typing speed and modifiers; then the last
- * few raw events beside a map of the keys, and the worst key bounce seen.
+ * few raw events beside a map of the keys (`board`), and the worst key
+ * bounce seen.
  */
 
-enum { DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN, DBG_HEAT /* ..DBG_HEAT + 15 */ };
+enum {
+    DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN,
+    DBG_MOD,   /* a key holding a modifier down */
+    DBG_LAYER, /* a key holding a layer on */
+    DBG_HEAT   /* ..DBG_HEAT + 15 */
+};
 
-static uint8_t debug_heat[40]; /* how lately each key was pressed */
+static uint8_t debug_heat[64]; /* how lately each key was pressed */
 static float debug_fade;
 
 static void debug_start(uint16_t *palette) {
@@ -1480,6 +1534,8 @@ static void debug_start(uint16_t *palette) {
     palette[DBG_BRIGHT] = rgb(255, 255, 255);
     palette[DBG_GOOD] = rgb(70, 235, 130);
     palette[DBG_WARN] = rgb(255, 190, 40);
+    palette[DBG_MOD] = rgb(255, 150, 30);
+    palette[DBG_LAYER] = rgb(205, 110, 255);
     for (int i = 0; i < 16; i++) {
         palette[DBG_HEAT + i] = rgb(i * 6, 45 + i * 12, 70 + i * 11);
     }
@@ -1522,6 +1578,44 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 #define DBG_COL_DROPS 111
 #define DBG_COL_REASON 124
 #define DBG_COL_AGE 138
+
+/*
+ * The board this dongle is built for, key for key (fx_set_keys), its top
+ * left at (left, top): keys `wide` by `high` with `gap` between them,
+ * `pitch` apart across, and `split` more between the halves. A key is white
+ * while held (orange if it is holding a modifier down, violet if a layer)
+ * and glows for a second after.
+ */
+static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int pitch, int high, int gap,
+                  int split) {
+    const struct fx_debug *d = in->debug;
+    for (int k = 0; k < in->n_keys; k++) {
+        if (in->keys[k] < sizeof(debug_heat)) {
+            debug_heat[in->keys[k]] = 15;
+        }
+    }
+    for (int key = 0; key < key_count && key < (int)sizeof(debug_heat); key++) {
+        const int col = board_col(key), row = board_row(key) < 4 ? board_row(key) : 4;
+        const int kx = left + col * pitch + (col >= board_cols / 2 ? split : 0), ky = top + row * (high + gap);
+        const uint64_t bit = 1ull << key;
+        const uint8_t color = !(d->held & bit)   ? (debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM)
+                              : d->held_layer & bit ? DBG_LAYER
+                              : d->held_mod & bit   ? DBG_MOD
+                                                    : DBG_BRIGHT;
+        for (int y = 0; y < high; y++) {
+            for (int x = 0; x < pitch - gap; x++) {
+                plot(fb, kx + x, ky + y, color);
+            }
+        }
+    }
+    debug_fade += in->step;
+    if (debug_fade >= 2) { /* the glow is gone in a second */
+        debug_fade = 0;
+        for (unsigned key = 0; key < sizeof(debug_heat); key++) {
+            debug_heat[key] -= debug_heat[key] > 0;
+        }
+    }
+}
 
 /* One row of the table: `level` is the battery, or the output for the computer. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
@@ -1700,29 +1794,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put(fb, 5, 88 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
     }
 
-    /* the keys: white while held, glowing for a moment after */
-    for (int k = 0; k < in->n_keys; k++) {
-        if (in->keys[k] < sizeof(debug_heat)) {
-            debug_heat[in->keys[k]] = 15;
-        }
-    }
-    for (int key = 0; key < 34; key++) {
-        /* the four thumb keys sit under the middle of the board */
-        const int col = key_row(key) == 3 ? key_col(key) + 3 : key_col(key);
-        const int kx = 88 + col * 5 + (col >= 5 ? 1 : 0), ky = 88 + key_row(key) * 5;
-        const bool held = (d->held >> key) & 1;
-        const uint8_t color = held ? DBG_BRIGHT : debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM;
-        for (int i = 0; i < 16; i++) {
-            plot(fb, kx + (i & 3), ky + (i >> 2), color);
-        }
-    }
-    debug_fade += in->step;
-    if (debug_fade >= 2) { /* the glow is gone in a second */
-        debug_fade = 0;
-        for (unsigned key = 0; key < sizeof(debug_heat); key++) {
-            debug_heat[key] -= debug_heat[key] > 0;
-        }
-    }
+    board(fb, in, 139 - board_cols * (board_cols > 10 ? 4 : 5), 88, board_cols > 10 ? 4 : 5, 4, 1, 1);
 
     /* the quickest a key has come back down after going up: a switch that
      * bounces shows here as a few milliseconds */
@@ -1735,10 +1807,71 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
+/* --- keys: the keyboard's name and its keys, as they are pressed ------------ */
+
+/*
+ * The Debug screen's map of the keys with room to see it: the keyboard's
+ * name across the top, the highest layer under it (violet when it isn't the
+ * bottom one), and the board. Colours as `board` has them.
+ */
+
+/* Text twice the size, like Tracker's range. */
+static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
+    for (; *s; s++, x += 10) {
+        if (*s < ' ' || *s > '~') {
+            continue;
+        }
+        const uint8_t *rows = font[*s - ' '];
+        for (int row = 0; row < 14; row++) {
+            for (int col = 0; col < 10; col++) {
+                if (rows[row / 2] & (0x10 >> col / 2)) {
+                    plot(fb, x + col, y + row, color);
+                }
+            }
+        }
+    }
+}
+
+static void keys_frame(uint8_t *fb, const struct fx_input *in) {
+    memset(fb, DBG_BG, PIXELS);
+    if (in->debug == NULL) {
+        return;
+    }
+    const struct fx_debug *d = in->debug;
+    char buf[24];
+
+    snprintf(buf, sizeof(buf), "%s", d->keyboard ? d->keyboard : "KEYBOARD");
+    for (char *p = buf; *p; p++) {
+        *p = *p >= 'a' && *p <= 'z' ? *p - 32 : *p; /* the small letters only read well as capitals */
+    }
+    const int len = (int)strlen(buf);
+    if (len * 10 <= FX_W - 8) {
+        put_big(fb, (FX_W - len * 10 + 2) / 2, 8, buf, DBG_BRIGHT);
+    } else {
+        put(fb, (FX_W - len * 5 + 1) / 2, 12, buf, DBG_BRIGHT);
+    }
+
+    if (d->layer_name && d->layer_name[0]) {
+        snprintf(buf, sizeof(buf), "%s", d->layer_name);
+    } else {
+        snprintf(buf, sizeof(buf), "LAYER %u", d->layer);
+    }
+    for (char *p = buf; *p; p++) {
+        *p = *p >= 'a' && *p <= 'z' ? *p - 32 : *p;
+    }
+    put(fb, (FX_W - (int)strlen(buf) * 5 + 1) / 2, 27, buf, d->layer ? DBG_LAYER : DBG_LABEL);
+
+    /* as big as fits across, above the status text */
+    const int split = 4, pitch = (FX_W - 6 - split) / board_cols;
+    board(fb, in, (FX_W - (board_cols * pitch - 2 + split)) / 2, 40, pitch, pitch - 2, 2, split);
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 #define RGB565(r, g, b) ((uint16_t)(((r) >> 3) << 11 | ((g) >> 2) << 5 | (b) >> 3))
 #define LOW_RED RGB565(255, 70, 50)
+#define FIRE_DROP 16  /* the text's foot 9 rows from the bottom of the panel */
+#define TRACK_DROP 12 /* under the line at TRACK_CY */
 
 static const struct {
     const char *name;
@@ -1746,34 +1879,39 @@ static const struct {
     void (*frame)(uint8_t *fb, const struct fx_input *in);
     struct fx_theme theme; /* the status text over it: see fx.h */
     bool debug;            /* see fx_is_debug */
+    bool keys;             /* see fx_shows_keys */
 } effects[] = {
     {"WARP", warp_start, warp_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}, false},
-    /* the flames are behind the text when typing, and nearly white: dark
-     * text, with a glow round it for when they have died down */
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+    /* in the black bar under the flames (FIRE_BAR) */
     {"FIRE", fire_start, fire_frame,
-     {.ink = RGB565(0, 0, 0), .dim = RGB565(90, 40, 0), .accent = RGB565(0, 0, 0),
-      .search = RGB565(120, 60, 20), .low = RGB565(190, 0, 0), .halo = RGB565(255, 230, 140)}, false},
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(255, 170, 40),
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .drop = FIRE_DROP}},
     {"TERMINAL", term_start, term_frame,
      {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
-      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0}, false},
+      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
     {"CODE", code_start, code_frame,
      {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0}, false},
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
     {"THERMAL", thermal_start, thermal_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
-      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0}, false},
+      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0, .font = FX_FONT_PIXEL}},
     {"TRACKER", tracker_start, tracker_frame,
      {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
-      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14)}, false},
+      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14), .font = FX_FONT_PIXEL,
+      .drop = TRACK_DROP}},
     {"LIFE", life_start, life_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}, false},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
     {"HOP", hop_start, hop_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
-      .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}, false},
-    {"DEBUG", debug_start, debug_frame, {0}, true},
+      .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}},
+    {"KEYS", debug_start, keys_frame,
+     {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
+      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14), .font = FX_FONT_PIXEL},
+     .keys = true},
+    {"DEBUG", debug_start, debug_frame, {0}, .debug = true},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 
@@ -1782,6 +1920,8 @@ int fx_count(void) { return FX_COUNT; }
 const char *fx_name(int fx) { return fx >= 0 && fx < FX_COUNT ? effects[fx].name : ""; }
 
 bool fx_is_debug(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].debug; }
+
+bool fx_shows_keys(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].keys; }
 
 const struct fx_theme *fx_theme(int fx) { return &effects[fx >= 0 && fx < FX_COUNT ? fx : 0].theme; }
 

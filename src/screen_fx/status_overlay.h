@@ -9,7 +9,9 @@
  * the wireless symbol with the Bluetooth profile number (nothing over USB).
  * The symbol takes the animation's colour when the computer is connected
  * and pulses grey when it isn't. Colours come from the animation's theme
- * (fx_theme), so the text can be dark where the picture is bright.
+ * (fx_theme), so the text can be dark where the picture is bright. The theme
+ * can also have the numbers in the animations' own 5x7 letters, smaller, and
+ * move everything nearer the bottom of the screen.
  *
  * The text is kept as three small masks, worked out only when something
  * changes, and mixed into the pixels on their way to the panel.
@@ -27,13 +29,15 @@
 #define OVERLAY_OUTPUT_W 72
 #define OVERLAY_BYTES ((2 * OVERLAY_BATTERY_W + OVERLAY_OUTPUT_W) * OVERLAY_ROWS)
 
-/* On the panel: the rows the masks cover, and the output's columns. */
+/* On the panel: the first row the masks cover, before the theme's drop, and
+ * the output's columns. */
 #define OVERLAY_TOP 185
 #define OVERLAY_OUTPUT_X ((FX_W * 2 - OVERLAY_OUTPUT_W) / 2)
 
-/* First and last frame row (FX_H of them) the masks touch. */
-#define OVERLAY_FRAME_ROW0 (OVERLAY_TOP / 2)
-#define OVERLAY_FRAME_ROW1 ((OVERLAY_TOP + OVERLAY_ROWS - 1) / 2)
+/* First and last frame row (FX_H of them) the masks touch, with the theme
+ * that is set. */
+int overlay_frame_row0(void);
+int overlay_frame_row1(void);
 
 /* How solid the pulsing symbol is at its strongest. */
 #define OVERLAY_PULSE_MAX 16
@@ -41,7 +45,8 @@
 /* OVERLAY_BYTES for the masks. Call before overlay_render. */
 void overlay_set_memory(uint8_t *memory);
 
-/* The colours to mix the masks in with: takes effect on the next blend. */
+/* The colours to mix the masks in with, which take effect on the next blend,
+ * and the letters and place, which need an overlay_render. */
 void overlay_set_theme(const struct fx_theme *theme);
 
 /* Work the masks out again. Returns whether the symbol is one that pulses

@@ -46,7 +46,12 @@ struct fx_theme {
     uint16_t search; /* the symbol when it isn't: this one pulses */
     uint16_t low;    /* a battery that is nearly flat */
     uint16_t halo;   /* around all of it: dark for light text, light for dark */
+    uint8_t font;    /* FX_FONT_FIELD, or FX_FONT_PIXEL where the picture has letters of its own */
+    uint8_t drop;    /* panel rows to move it all down by (and two thirds of that in from the sides) */
 };
+
+#define FX_FONT_FIELD 0 /* the Prospector module's Field screen fonts */
+#define FX_FONT_PIXEL 1 /* the animations' own 5x7 letters, three panel pixels to a dot */
 
 /* --- what the Debug screen shows -------------------------------------------- */
 
@@ -90,6 +95,9 @@ struct fx_debug {
     uint8_t mods;         /* held: HID modifier bits */
     uint16_t wpm;
     uint64_t held;        /* a bit for each key position held */
+    uint64_t held_mod;    /* those of them holding a modifier down */
+    uint64_t held_layer;  /* and those holding a layer on */
+    const char *keyboard; /* its name, or NULL */
     uint32_t presses;     /* key presses since power-up */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;
@@ -105,17 +113,32 @@ struct fx_input {
     uint8_t n_chars;           /* characters typed since the last frame */
     char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
     const struct fx_status *status; /* for an animation that shows some of it itself */
-    const struct fx_debug *debug;   /* for the Debug screen (fx_is_debug) */
+    const struct fx_debug *debug;   /* for the Debug screen (fx_is_debug): all of it;
+                                     * for the Keys screen (fx_shows_keys): what fx.c says */
 };
+
+/* Where the board's key positions are: for each, its row << 8 | column, as
+ * in ZMK's matrix transform (RC). The animations place a key by it and the
+ * Debug screen draws the board from it. Kept, not copied; without it the
+ * positions are taken to be the Urchin's (and Forager's). */
+void fx_set_keys(const uint16_t *places, int count);
 
 int fx_count(void);
 const char *fx_name(int fx);
 
 const struct fx_theme *fx_theme(int fx);
 
+/* The 7 rows of a character in the animations' letters (top first, left dot
+ * in bit 4), or NULL if there is none. */
+const uint8_t *fx_glyph_rows(char c);
+
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text or banner over it. */
 bool fx_is_debug(int fx);
+
+/* The Keys screen: wants fx_input's debug filled in as far as the keys, the
+ * layer and the keyboard's name go, and no banner over it. */
+bool fx_shows_keys(int fx);
 
 /* FX_W * FX_H bytes for the animations to keep between frames. Call before
  * fx_start, and again if the memory moves. */
