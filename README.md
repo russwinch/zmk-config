@@ -190,7 +190,7 @@ To try Classic, Radii or Operator, change the layout line in
 #### Animated screens
 
 The **Screen** key on the Config layer steps the dongle from that status
-screen through five full-screen animations and back. They are prototypes:
+screen through six full-screen animations and back. They are prototypes:
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
@@ -199,6 +199,7 @@ screen through five full-screen animations and back. They are prototypes:
 | 3 | Sparks | a firework now and then | one per key, above its column |
 | 4 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
 | 5 | Code | a program in an alien script, written slowly | written fast: two characters a key (the same key always gives the same one), lines running off the top |
+| 6 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
 
 Terminal shows the text itself, passwords included, to anyone who can see the
 dongle; it only does so while it is the screen showing. It works the
@@ -217,7 +218,7 @@ wireless symbol with the Bluetooth profile number (counted from 0, as on the
 Field screen), or a link symbol for USB. The symbol is cyan when the computer
 is connected, grey when not. With another layout chosen its fonts aren't in
 the firmware, and the animations fall back to small text of their own
-(`L85 R80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on after
+(`85/80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on after
 power-up and the typing speed that counts as flat out are set in
 `config/<keyboard>_dongle.conf`.
 

@@ -681,6 +681,104 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
+/* --- thermal: the keyboard through a heat camera ---------------------------- */
+
+/*
+ * The screen is the board seen from above: each key leaves a hot spot at its
+ * own place, which spreads and cools from white through red, yellow and
+ * green back into the cold blue. Two warm patches wander about so there is
+ * something to see when idle, the whole picture warms up with typing speed,
+ * and a sight follows the last key pressed.
+ */
+
+static float thermal_time, thermal_x, thermal_y, thermal_lock;
+static int thermal_tx, thermal_ty;
+
+static void thermal_start(uint16_t *palette) {
+    static const struct stop stops[] = {{0, 0, 0, 35},      {45, 0, 25, 150},   {95, 0, 160, 130}, {140, 150, 225, 0},
+                                        {175, 255, 210, 0}, {215, 255, 35, 0},  {251, 255, 245, 235}};
+    gradient(palette, stops, 7);
+    thermal_time = 0;
+    thermal_x = thermal_tx = FX_W / 2;
+    thermal_y = thermal_ty = FX_H / 2 - 12;
+    thermal_lock = 0;
+}
+
+/* Warm the canvas around (cx, cy): `peak` in the middle, nothing at `radius`.
+ * Added to what is there, or with `hold` only bringing it up to that. */
+static void thermal_heat(int cx, int cy, int radius, int peak, bool hold) {
+    for (int y = cy - radius; y <= cy + radius; y++) {
+        for (int x = cx - radius; x <= cx + radius; x++) {
+            int far = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+            if (far >= radius * radius || (unsigned)x >= FX_W || (unsigned)y >= FX_H) {
+                continue;
+            }
+            int was = canvas[y * FX_W + x], v = peak * (radius * radius - far) / (radius * radius);
+            v = hold ? (v > was ? v : was) : v + was;
+            canvas[y * FX_W + x] = v > 251 ? 251 : v;
+        }
+    }
+}
+
+static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
+    thermal_time += in->step;
+
+    /* the board fills the screen above the status text, the halves apart */
+    for (int k = 0; k < in->n_keys; k++) {
+        int col = key_col(in->keys[k]), row = key_row(in->keys[k]);
+        thermal_tx = 13 + col * 12 + (col >= 5 ? 7 : 0);
+        thermal_ty = 14 + row * 21;
+        thermal_heat(thermal_tx, thermal_ty, 9, 210, false);
+        thermal_lock = 1;
+    }
+    /* the wanderers, warmer the faster you type */
+    int warm = 60 + (int)(in->energy * 70);
+    thermal_heat(FX_W / 2 + (int)(sinf(thermal_time * 0.013f) * 52), 45 + (int)(sinf(thermal_time * 0.021f + 2) * 30),
+                 15, warm, true);
+    thermal_heat(FX_W / 2 + (int)(sinf(thermal_time * 0.017f + 4) * 50), 50 + (int)(sinf(thermal_time * 0.011f) * 32),
+                 12, warm, true);
+
+    /* heat spreads to the pixels around and leaks away, the hottest fastest */
+    for (int y = 1; y < FX_H - 1; y++) {
+        uint8_t *row = &canvas[y * FX_W];
+        for (int x = 1; x < FX_W - 1; x++) {
+            int v = (row[x - 1] + row[x + 1] + row[x - FX_W] + row[x + FX_W] + 2) >> 2;
+            row[x] = v > 1 ? v - (v >> 5) - ((x ^ y) & 1) : 0;
+        }
+    }
+
+    /* the picture: the heat on a cold, noisy background that typing warms */
+    int ambient = 12 + (int)(in->energy * 28);
+    int band = (int)(thermal_time * 0.8f) % (FX_H + 40) - 20; /* a brighter line rolling down */
+    for (int y = 0; y < FX_H; y++) {
+        int lift = ambient + (y > band - 3 && y < band + 3 ? 7 : 0);
+        uint32_t r = 0;
+        for (int x = 0; x < FX_W; x++) {
+            if ((x & 3) == 0) {
+                r = rnd();
+            }
+            int v = canvas[y * FX_W + x] + lift + (int)(r & 7);
+            r >>= 3;
+            fb[y * FX_W + x] = v > 251 ? 251 : v;
+        }
+    }
+
+    /* the sight: closes in on the key, then opens out again */
+    float ease = clampf(0.25f * in->step, 0.0f, 1.0f);
+    thermal_x += (thermal_tx - thermal_x) * ease;
+    thermal_y += (thermal_ty - thermal_y) * ease;
+    thermal_lock -= thermal_lock * clampf(0.04f * in->step, 0.0f, 1.0f);
+    int size = 13 - (int)(thermal_lock * 6), arm = 4;
+    int sx = (int)thermal_x, sy = (int)thermal_y;
+    uint8_t color = thermal_lock > 0.5f ? FX_WHITE : FX_GREY;
+    for (int corner = 0; corner < 4; corner++) {
+        int dx = corner & 1 ? 1 : -1, dy = corner & 2 ? 1 : -1;
+        line(fb, sx + dx * size, sy + dy * size, sx + dx * (size - arm), sy + dy * size, color);
+        line(fb, sx + dx * size, sy + dy * size, sx + dx * size, sy + dy * (size - arm), color);
+    }
+    plot(fb, sx, sy, color);
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 static const struct {
@@ -693,6 +791,7 @@ static const struct {
     {"SPARKS", sparks_start, sparks_frame},
     {"TERMINAL", term_start, term_frame},
     {"CODE", code_start, code_frame},
+    {"THERMAL", thermal_start, thermal_frame},
 };
 
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
@@ -855,14 +954,15 @@ static int text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
     return x + 5 * (int)strlen(s);
 }
 
-static int battery_text(uint8_t *fb, int x, int y, char side, uint8_t percent, bool connected) {
-    char buf[5] = {side, '-', '-', 0, 0};
+/* A battery level, "--" when its half isn't connected or hasn't said. */
+static int battery_text(uint8_t *fb, int x, int y, uint8_t percent, bool connected) {
+    char buf[3] = "--";
     if (connected && percent > 0) {
         if (percent > 99) {
             percent = 99; /* two digits: "99" reads as full */
         }
-        buf[1] = '0' + percent / 10;
-        buf[2] = '0' + percent % 10;
+        buf[0] = '0' + percent / 10;
+        buf[1] = '0' + percent % 10;
     }
     return text(fb, x, y, buf, !connected || (percent > 0 && percent <= 15) ? FX_RED : FX_WHITE);
 }
@@ -871,8 +971,10 @@ void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *ban
     if (status) {
         /* kept clear of the panel's rounded corners */
         const int y = FX_H - 16;
-        int x = battery_text(fb, 10, y, 'L', status->battery[0], status->half_connected[0]);
-        battery_text(fb, x + 5, y, 'R', status->battery[1], status->half_connected[1]);
+        /* left/right, as the Field screen has them */
+        int x = battery_text(fb, 10, y, status->battery[0], status->half_connected[0]);
+        x = text(fb, x, y, "/", FX_WHITE);
+        battery_text(fb, x, y, status->battery[1], status->half_connected[1]);
 
         int len = (int)strlen(status->host);
         text(fb, FX_W - 10 - 5 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
