@@ -124,6 +124,35 @@ static uint32_t released_at[BOUNCE_KEYS]; /* 0: not yet */
 static uint32_t battery_at[2];            /* 0: no report yet */
 static const struct bt_conn *half_conn[2]; /* only ever compared, never used */
 
+/*
+ * What a held key is holding, for the Keys and Debug screens to colour it
+ * by. Worked out from the keymap when the key goes down (key_pressed): a
+ * modifier (&kp LSHIFT, or the hold side of a hold-tap such as a home row
+ * mod) or a layer (&mo, &lt). The key only takes the colour while those
+ * modifiers are really down or that layer is really on, so a hold-tap that
+ * is tapped doesn't.
+ */
+enum { HOLDS_NOTHING, HOLDS_MODS, HOLDS_LAYER, FALLS_THROUGH /* &trans */ };
+#define KEY_INFOS 64
+static uint8_t key_holds[KEY_INFOS], key_holds_what[KEY_INFOS]; /* modifier bits, or a layer */
+
+/* Each behavior that can hold something, by the name keymap bindings have it under. */
+#define BEHAVIOR_KIND(node, kind) {DEVICE_DT_NAME(node), kind},
+#define HOLD_OF(node) DT_PHANDLE_BY_IDX(node, bindings, 0)
+#define HOLD_TAP_KIND(node)                                                                                  \
+    BEHAVIOR_KIND(node, DT_NODE_HAS_COMPAT(HOLD_OF(node), zmk_behavior_momentary_layer) ? HOLDS_LAYER        \
+                        : DT_NODE_HAS_COMPAT(HOLD_OF(node), zmk_behavior_key_press) ? HOLDS_MODS             \
+                                                                                    : HOLDS_NOTHING)
+static const struct {
+    const char *name;
+    uint8_t kind;
+} behavior_kinds[] = {
+    DT_FOREACH_STATUS_OKAY(zmk_behavior_hold_tap, HOLD_TAP_KIND)
+    DT_FOREACH_STATUS_OKAY_VARGS(zmk_behavior_key_press, BEHAVIOR_KIND, HOLDS_MODS)
+    DT_FOREACH_STATUS_OKAY_VARGS(zmk_behavior_momentary_layer, BEHAVIOR_KIND, HOLDS_LAYER)
+    DT_FOREACH_STATUS_OKAY_VARGS(zmk_behavior_transparent, BEHAVIOR_KIND, FALLS_THROUGH)
+};
+
 /* --- display work queue only ------------------------------------------------- */
 
 static int screen; /* the one showing */
@@ -241,15 +270,12 @@ static void read_debug(uint32_t now) {
     d->reset_cause = reset_cause;
     d->activity = (uint8_t)zmk_activity_get_state();
     d->wpm = (uint16_t)atomic_get(&wpm);
-    d->mods = zmk_hid_get_explicit_mods();
+    read_keys(d);
     d->usb = (uint8_t)zmk_usb_get_conn_state();
     for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
         d->profile_state[i] = i >= ZMK_BLE_PROFILE_COUNT || zmk_ble_profile_is_open(i) ? 0
                               : zmk_ble_profile_is_connected(i) ? 2 : 1;
     }
-    d->layer = zmk_keymap_highest_layer_active();
-    d->layer_name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(d->layer));
-    d->layers = zmk_keymap_layer_state();
 
 #if IS_ENABLED(CONFIG_SYS_HEAP_RUNTIME_STATS) && !IS_ENABLED(CONFIG_LV_Z_MEM_POOL_HEAP_LIB_C)
     struct sys_memory_stats heap = {0};
@@ -500,8 +526,13 @@ static void frame_cb(struct k_work *work) {
     }
 
     in.status = &status;
+    const bool shows_keys = fx_shows_keys(screen - 1);
+    if (shows_keys) {
+        read_keys(&debug_shown);
+        in.debug = &debug_shown;
+    }
     fx_frame(screen - 1, frame, &in);
-    fx_draw_banner(frame, (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
+    fx_draw_banner(frame, !shows_keys && (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
     show_frame();
 
     /* always leave the queue a moment for LVGL's own tick and the backlight */
@@ -685,8 +716,81 @@ static void log_event(struct fx_event event, uint32_t now) {
     debug.log[debug.n_log++] = event;
 }
 
+/* The modifiers a key code is or carries, if it is a modifier: &kp LSHIFT, &kp LC(LSHIFT). */
+static uint8_t mods_of(uint32_t encoded) {
+    const uint16_t page = ZMK_HID_USAGE_PAGE(encoded), id = ZMK_HID_USAGE_ID(encoded);
+    if (!is_mod(page ? page : HID_USAGE_KEY, id)) {
+        return 0;
+    }
+    return (uint8_t)(SELECT_MODS(encoded) | BIT(id - HID_USAGE_KEY_KEYBOARD_LEFTCONTROL));
+}
+
+/* A key has gone down: note what its binding can hold. As the keymap does,
+ * that is the one on the highest layer that is on and isn't &trans there. */
+static void key_pressed(uint32_t key) {
+    uint8_t holds = HOLDS_NOTHING, what = 0;
+    for (int index = ZMK_KEYMAP_LAYERS_LEN - 1; index >= 0; index--) {
+        const zmk_keymap_layer_id_t layer = zmk_keymap_layer_index_to_id(index);
+        if (layer == ZMK_KEYMAP_LAYER_ID_INVAL || !(zmk_keymap_layer_active(layer) || index == 0)) {
+            continue;
+        }
+        const struct zmk_behavior_binding *binding = zmk_keymap_get_layer_binding_at_idx(layer, key);
+        if (binding == NULL || binding->behavior_dev == NULL) {
+            continue;
+        }
+        uint8_t kind = HOLDS_NOTHING;
+        for (int i = 0; i < ARRAY_SIZE(behavior_kinds); i++) {
+            if (strcmp(binding->behavior_dev, behavior_kinds[i].name) == 0) {
+                kind = behavior_kinds[i].kind;
+                break;
+            }
+        }
+        if (kind == FALLS_THROUGH) {
+            continue;
+        }
+        if (kind == HOLDS_MODS) {
+            what = mods_of(binding->param1);
+            holds = what ? HOLDS_MODS : HOLDS_NOTHING;
+        } else if (kind == HOLDS_LAYER) {
+            what = (uint8_t)binding->param1;
+            holds = HOLDS_LAYER;
+        }
+        break;
+    }
+    key_holds[key] = holds;
+    key_holds_what[key] = what;
+}
+
+/* What the Keys screen shows, and part of what the Debug screen does. */
+static void read_keys(struct fx_debug *d) {
+    uint64_t held = 0;
+    K_SPINLOCK(&debug_lock) {
+        held = debug.held;
+    }
+    d->held = held;
+    d->mods = zmk_hid_get_explicit_mods();
+    d->layer = zmk_keymap_highest_layer_active();
+    d->layer_name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(d->layer));
+    d->layers = zmk_keymap_layer_state();
+    d->keyboard = CONFIG_ZMK_KEYBOARD_NAME;
+    d->held_mod = d->held_layer = 0;
+    for (int key = 0; key < KEY_INFOS; key++) {
+        if (!(held & BIT64(key))) {
+            continue;
+        }
+        if (key_holds[key] == HOLDS_MODS && (d->mods & key_holds_what[key]) == key_holds_what[key]) {
+            d->held_mod |= BIT64(key);
+        } else if (key_holds[key] == HOLDS_LAYER && zmk_keymap_layer_active(key_holds_what[key])) {
+            d->held_layer |= BIT64(key);
+        }
+    }
+}
+
 static void debug_position(const struct zmk_position_state_changed *pos) {
     const uint32_t now = k_uptime_get_32(), key = pos->position;
+    if (pos->state && key < KEY_INFOS) {
+        key_pressed(key);
+    }
     K_SPINLOCK(&debug_lock) {
         if (key < 64) {
             debug.held = (debug.held & ~BIT64(key)) | (pos->state ? BIT64(key) : 0);

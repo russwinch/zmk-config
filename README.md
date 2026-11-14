@@ -193,8 +193,8 @@ lines that animate as you type), change the layout line in
 #### Animated screens
 
 The **Screen +** key on the Config layer (the U key) steps the dongle from
-that status screen through eight full-screen animations, then the
-[Debug screen](#debug-screen), and back to it;
+that status screen through eight full-screen animations, then the Keys
+screen and the [Debug screen](#debug-screen), and back to it;
 **Screen -** (the Y key) goes the other way. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
@@ -209,6 +209,13 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 | 6 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
 | 7 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
 | 8 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
+| 9 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+
+Keys draws the keyboard the dongle is built for, from its matrix transform.
+A key counts as holding a modifier or a layer if its binding is `&kp` with a
+modifier, `&mo`, or a hold-tap over one of those (home row mods, `&lt`), and
+only takes the colour while that modifier or layer is really active, so a
+tapped home row mod stays white. Toggles and sticky keys aren't coloured.
 
 Terminal shows the text itself, passwords included, to anyone who can see the
 dongle; it only does so while it is the screen showing. It works the
