@@ -385,8 +385,23 @@ static bool borrow_memory(void) {
     return true;
 }
 
+/* Where each key position is on this keyboard, from the matrix transform
+ * its keymap goes by (the physical layout's if it has one, as ZMK does), so
+ * the animations put a key on the side of the screen it is on. */
+#if DT_HAS_CHOSEN(zmk_physical_layout)
+#define KEY_TRANSFORM DT_PHANDLE(DT_CHOSEN(zmk_physical_layout), transform)
+#elif DT_HAS_CHOSEN(zmk_matrix_transform)
+#define KEY_TRANSFORM DT_CHOSEN(zmk_matrix_transform)
+#endif
+#ifdef KEY_TRANSFORM
+static const uint16_t key_places[] = DT_PROP(KEY_TRANSFORM, map);
+#endif
+
 static void begin_animation(void) {
     uint16_t native[256];
+#ifdef KEY_TRANSFORM
+    fx_set_keys(key_places, ARRAY_SIZE(key_places));
+#endif
     fx_start(screen - 1, native);
     overlay_set_theme(fx_theme(screen - 1));
     pulsing = false;

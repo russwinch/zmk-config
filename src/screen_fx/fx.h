@@ -113,6 +113,12 @@ struct fx_input {
     const struct fx_debug *debug;   /* for the Debug screen (fx_is_debug) */
 };
 
+/* Where the board's key positions are: for each, its row << 8 | column, as
+ * in ZMK's matrix transform (RC). The animations place a key by it and the
+ * Debug screen draws the board from it. Kept, not copied; without it the
+ * positions are taken to be the Urchin's (and Forager's). */
+void fx_set_keys(const uint16_t *places, int count);
+
 int fx_count(void);
 const char *fx_name(int fx);
 

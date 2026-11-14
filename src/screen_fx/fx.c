@@ -93,10 +93,49 @@ static void line(uint8_t *buf, int x0, int y0, int x1, int y1, uint8_t c) {
     line_on(buf, x0, y0, x1, y1, c, false);
 }
 
-/* Where a key is on the board, taking it for 10 columns by 4 rows (the
- * Waterfowl; near enough on the others). */
-static inline int key_col(uint8_t key) { return key % 10; }
-static inline int key_row(uint8_t key) { return key / 10 < 3 ? key / 10 : 3; }
+/* --- the keys --------------------------------------------------------------- */
+
+/* Where each key position is on the board (fx_set_keys). Until the dongle
+ * says, the Urchin and Forager: three rows of ten, two thumb keys a side. */
+#define RC(row, col) ((row) << 8 | (col))
+static const uint16_t urchin_keys[] = {
+    RC(0, 0), RC(0, 1), RC(0, 2), RC(0, 3), RC(0, 4), RC(0, 5), RC(0, 6), RC(0, 7), RC(0, 8), RC(0, 9),
+    RC(1, 0), RC(1, 1), RC(1, 2), RC(1, 3), RC(1, 4), RC(1, 5), RC(1, 6), RC(1, 7), RC(1, 8), RC(1, 9),
+    RC(2, 0), RC(2, 1), RC(2, 2), RC(2, 3), RC(2, 4), RC(2, 5), RC(2, 6), RC(2, 7), RC(2, 8), RC(2, 9),
+    RC(3, 3), RC(3, 4), RC(3, 5), RC(3, 6),
+};
+#undef RC
+static const uint16_t *key_places = urchin_keys;
+static int key_count = sizeof(urchin_keys) / sizeof(urchin_keys[0]);
+static int board_cols = 10;
+
+void fx_set_keys(const uint16_t *places, int count) {
+    if (places == NULL || count <= 0) {
+        return;
+    }
+    key_places = places;
+    key_count = count;
+    board_cols = 2;
+    for (int i = 0; i < count; i++) {
+        const int cols = (places[i] & 0xff) + 1;
+        board_cols = cols > board_cols ? cols : board_cols;
+    }
+    board_cols += board_cols & 1; /* the halves are the same width */
+}
+
+/* A key's own column and row on its board; a position the board hasn't got
+ * counts as the middle of the bottom row. */
+static inline int board_col(int key) { return key < key_count ? key_places[key] & 0xff : board_cols / 2; }
+static inline int board_row(int key) { return key < key_count ? key_places[key] >> 8 : 3; }
+
+/* The same for the animations, which take every board for 10 columns by 4
+ * rows: on a wider one the outer columns count as the ones next to them, so
+ * each half's keys stay on its side. */
+static inline int key_col(uint8_t key) {
+    const int col = board_col(key) - (board_cols - 10) / 2;
+    return col < 0 ? 0 : col > 9 ? 9 : col;
+}
+static inline int key_row(uint8_t key) { return board_row(key) < 3 ? board_row(key) : 3; }
 
 /* Where across the screen a key lands: its column. */
 static int key_x(uint8_t key) { return 8 + key_col(key) * 13 + (int)(rnd() % 7); }
@@ -1478,7 +1517,7 @@ static void hop_frame(uint8_t *fb, const struct fx_input *in) {
 
 enum { DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN, DBG_HEAT /* ..DBG_HEAT + 15 */ };
 
-static uint8_t debug_heat[40]; /* how lately each key was pressed */
+static uint8_t debug_heat[64]; /* how lately each key was pressed */
 static float debug_fade;
 
 static void debug_start(uint16_t *palette) {
@@ -1715,14 +1754,18 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
             debug_heat[in->keys[k]] = 15;
         }
     }
-    for (int key = 0; key < 34; key++) {
-        /* the four thumb keys sit under the middle of the board */
-        const int col = key_row(key) == 3 ? key_col(key) + 3 : key_col(key);
-        const int kx = 88 + col * 5 + (col >= 5 ? 1 : 0), ky = 88 + key_row(key) * 5;
+    /* the board this dongle is built for, key for key (fx_set_keys), smaller
+     * if it is wider than ten columns */
+    const int pitch = board_cols > 10 ? 4 : 5, left = 139 - board_cols * pitch;
+    for (int key = 0; key < key_count && key < (int)sizeof(debug_heat); key++) {
+        const int col = board_col(key), row = board_row(key);
+        const int kx = left + col * pitch + (col >= board_cols / 2 ? 1 : 0), ky = 88 + (row < 4 ? row : 4) * 5;
         const bool held = (d->held >> key) & 1;
         const uint8_t color = held ? DBG_BRIGHT : debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM;
-        for (int i = 0; i < 16; i++) {
-            plot(fb, kx + (i & 3), ky + (i >> 2), color);
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < pitch - 1; x++) {
+                plot(fb, kx + x, ky + y, color);
+            }
         }
     }
     debug_fade += in->step;

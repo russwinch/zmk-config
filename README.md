@@ -253,7 +253,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L3 NAV 0009   51WPM` | the highest active layer and its name, a bit for every active layer (hex), typing speed |
 | `CTL SFT ALT GUI   N29` | modifiers, lit while held; key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
-| key map | every key position: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle |
+| key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
 
 The link rows' columns:
