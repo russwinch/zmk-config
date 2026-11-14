@@ -185,7 +185,7 @@ To try Classic, Radii or Operator, change the layout line in
 #### Animated screens
 
 The **Screen** key on the Config layer steps the dongle from that status
-screen through eight full-screen animations and back. They are prototypes:
+screen through nine full-screen animations and back. They are prototypes:
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
@@ -197,6 +197,7 @@ screen through eight full-screen animations and back. They are prototypes:
 | 6 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
 | 7 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
 | 8 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
+| 9 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
 
 Terminal shows the text itself, passwords included, to anyone who can see the
 dongle; it only does so while it is the screen showing. It works the

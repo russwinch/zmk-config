@@ -79,12 +79,12 @@ if DONGLE_SCREEN_FX
 config DONGLE_SCREEN_FX_START
     int "Screen shown after power-up"
     default 0
-    range 0 8
+    range 0 9
     help
       0 is the Prospector module's status screen; 1 and up are the
       animations, in the order &scr_next shows them (Warp, Fire,
       Sparks, Terminal, Code, Thermal, Tracker,
-      Life).
+      Life, Hop).
 
 config DONGLE_SCREEN_FX_WPM_REFERENCE
     int "Words per minute at which the animations run flat out"
