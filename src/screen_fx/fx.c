@@ -1237,6 +1237,356 @@ static void life_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
+/* --- hop: a little creature running through a platform game ---------------- */
+
+/*
+ * It runs by itself, slowly when idle and fast at speed, and jumps the
+ * ponds, rocks, logs and bushes in its way, picking up the stars over them
+ * (counted top right). Each key plants a flower under its column and, when
+ * nothing is coming, gets a little hop out of it. Clouds, two rows of hills
+ * and the ground scroll at different speeds.
+ *
+ * Places in the world are whole pixels, 24 bits that wrap; hop_at() says
+ * where one is on the screen.
+ */
+
+enum {
+    HOP_NONE, /* see-through, in a sprite */
+    HOP_SKY,  /* 6 shades, top to horizon */
+    HOP_SUN = HOP_SKY + 6,
+    HOP_SUN_RIM,
+    HOP_CLOUD,
+    HOP_CLOUD_SHADE,
+    HOP_HILL_FAR,
+    HOP_HILL_NEAR,
+    HOP_GRASS_TOP,
+    HOP_GRASS,
+    HOP_DIRT,
+    HOP_DIRT_DARK,
+    HOP_WATER,
+    HOP_WATER_LIGHT,
+    HOP_ROCK,
+    HOP_ROCK_LIGHT,
+    HOP_ROCK_DARK,
+    HOP_WOOD,
+    HOP_WOOD_LIGHT,
+    HOP_LEAF,
+    HOP_LEAF_DARK,
+    HOP_BERRY,
+    HOP_OUTLINE,
+    HOP_BODY,
+    HOP_BELLY,
+    HOP_CHEEK,
+    HOP_FEET,
+    HOP_STAR,
+    HOP_STAR_LIGHT,
+    HOP_FLOWER, /* 4 colours */
+};
+
+#define HOP_GROUND 92 /* the top of the grass */
+#define HOP_X 30      /* the creature's left edge */
+#define HOP_WIDE 12
+#define HOP_COLUMNS 32 /* of 8 pixels: the screen is 18 */
+#define HOP_FLOWERS 12
+
+enum { HOP_FLAT, HOP_POND, HOP_ROCKS, HOP_LOG, HOP_BUSH };
+
+static struct {
+    uint8_t kind, star;
+} hop_column[HOP_COLUMNS];
+static struct {
+    uint32_t at;
+    uint8_t color, grown;
+} hop_flower[HOP_FLOWERS];
+static uint32_t hop_pos;   /* the left of the screen, in 256ths of a pixel */
+static uint32_t hop_made;  /* the next column to make up */
+static int hop_clear, hop_more; /* columns before the next thing; pond still to come */
+static bool hop_jumping;
+static uint32_t hop_jump_from;
+static int hop_jump_far, hop_jump_high;
+static int hop_stars, hop_next_flower;
+static float hop_sparkle, hop_time;
+
+/* Where a place in the world is across the screen (can be off either side). */
+static inline int hop_at(uint32_t place) { return (int32_t)((place - (hop_pos >> 8)) << 8) >> 8; }
+
+static void hop_start(uint16_t *palette) {
+    static const uint8_t colors[][3] = {
+        [HOP_SKY] = {70, 150, 255},       {95, 170, 255},  {120, 190, 255}, {150, 210, 255}, {180, 225, 255}, {210, 240, 255},
+        [HOP_SUN] = {255, 240, 120},      [HOP_SUN_RIM] = {255, 215, 70},
+        [HOP_CLOUD] = {255, 255, 255},    [HOP_CLOUD_SHADE] = {215, 232, 250},
+        [HOP_HILL_FAR] = {130, 205, 170}, [HOP_HILL_NEAR] = {90, 190, 110},
+        [HOP_GRASS_TOP] = {150, 235, 90}, [HOP_GRASS] = {70, 190, 70},
+        [HOP_DIRT] = {190, 125, 70},      [HOP_DIRT_DARK] = {150, 90, 50},
+        [HOP_WATER] = {40, 120, 230},     [HOP_WATER_LIGHT] = {150, 215, 255},
+        [HOP_ROCK] = {150, 150, 165},     [HOP_ROCK_LIGHT] = {200, 200, 215}, [HOP_ROCK_DARK] = {105, 105, 125},
+        [HOP_WOOD] = {150, 95, 45},       [HOP_WOOD_LIGHT] = {225, 180, 115},
+        [HOP_LEAF] = {40, 160, 60},       [HOP_LEAF_DARK] = {20, 110, 45},    [HOP_BERRY] = {235, 50, 70},
+        [HOP_OUTLINE] = {70, 35, 30},     [HOP_BODY] = {255, 150, 50},        [HOP_BELLY] = {255, 235, 190},
+        [HOP_CHEEK] = {255, 120, 150},    [HOP_FEET] = {210, 90, 30},
+        [HOP_STAR] = {255, 215, 40},      [HOP_STAR_LIGHT] = {255, 250, 190},
+        [HOP_FLOWER] = {255, 90, 120},    {255, 255, 255}, {190, 120, 255}, {255, 170, 40},
+    };
+    for (unsigned i = 0; i < sizeof(colors) / sizeof(colors[0]); i++) {
+        palette[i] = rgb(colors[i][0], colors[i][1], colors[i][2]);
+    }
+    memset(hop_column, 0, sizeof(hop_column));
+    memset(hop_flower, 0, sizeof(hop_flower));
+    hop_pos = hop_made = 0;
+    hop_clear = 20;
+    hop_more = 0;
+    hop_jumping = false;
+    hop_stars = 0;
+    hop_sparkle = hop_time = 0;
+}
+
+/* A sprite drawn as text, a letter a pixel; `tint` is the colour for 'c'. */
+static void hop_sprite(uint8_t *fb, int x, int y, const char *const *rows, int n, uint8_t tint) {
+    for (int row = 0; row < n; row++) {
+        for (int col = 0; rows[row][col]; col++) {
+            uint8_t c;
+            switch (rows[row][col]) {
+            case 'k': c = HOP_OUTLINE; break;
+            case 'o': c = HOP_BODY; break;
+            case 'b': c = HOP_BELLY; break;
+            case 'p': c = HOP_CHEEK; break;
+            case 'f': c = HOP_FEET; break;
+            case 'W': c = FX_WHITE; break;
+            case 'K': c = FX_BLACK; break;
+            case 'w': c = HOP_CLOUD; break;
+            case 's': c = HOP_CLOUD_SHADE; break;
+            case 'g': c = HOP_ROCK; break;
+            case 'G': c = HOP_ROCK_LIGHT; break;
+            case 'd': c = HOP_ROCK_DARK; break;
+            case 'n': c = HOP_WOOD; break;
+            case 'N': c = HOP_WOOD_LIGHT; break;
+            case 'l': c = HOP_LEAF; break;
+            case 'L': c = HOP_LEAF_DARK; break;
+            case 'r': c = HOP_BERRY; break;
+            case 'y': c = HOP_STAR; break;
+            case 'Y': c = HOP_STAR_LIGHT; break;
+            case 'c': c = tint; break;
+            default: continue;
+            }
+            plot(fb, x + col, y + row, c);
+        }
+    }
+}
+
+static const char *const hop_body[] = {
+    "..kk....kk..",
+    ".kook..kook.",
+    ".kooookoook.",
+    "kooooooooook",
+    "koooWKooWKok",
+    "koooWKooWKok",
+    "kopoooooopok",
+    "koobbbbbbook",
+    ".kobbbbbbok.",
+    "..kkkkkkkk..",
+};
+static const char *const hop_blink[] = {"kooooooooook", "kookkkookkok"};
+static const char *const hop_feet[][2] = {
+    {"..ff....ff..", "............"}, /* standing */
+    {".ff......ff.", "............"}, /* striding */
+    {"...ff..ff...", "............"}, /* tucked up */
+};
+static const char *const hop_cloud[] = {
+    "....www...........", "..wwwwwww..www....", ".wwwwwwwwwwwwwww..",
+    "wwwwwwwwwwwwwwwwww", "swwwwwwwwwwwwwwwws", ".sssssssssssssss..",
+};
+static const char *const hop_rock[] = {"..gGGg..", ".gGGggg.", "gGGggggd", "gGgggggd", "gggggddd", "ggggdddd", "gdgddddd"};
+static const char *const hop_log[] = {".nnnnnn.", "nNNnnnnn", "nNnNnnnn", "nNNnnnnn", "nnnnnnnn", ".nnnnnn."};
+static const char *const hop_bush[] = {"..l..l..", ".lll.ll.", "lllrlllL", "llllllLL", "lrllLlrL", "lllLLLLL", ".lLLLLL."};
+static const char *const hop_star[] = {"...y...", "..yYy..", "yyyYyyy", ".yYYYy.", "..yYy..", ".yy.yy.", "y.....y"};
+static const char *const hop_bloom[] = {".c.", "cyc", ".c."};
+
+static void hop_make_column(float energy) {
+    uint8_t kind = HOP_FLAT, star = 0;
+    if (hop_more > 0) {
+        kind = HOP_POND;
+        hop_more--;
+    } else if (hop_clear > 0) {
+        hop_clear--;
+    } else {
+        const uint32_t r = rnd();
+        kind = r % 10 < 3 ? HOP_POND : HOP_ROCKS + (r >> 4) % 3;
+        /* wider ponds once it is moving */
+        hop_more = kind == HOP_POND && energy > 0.35f && (r & 0x100) ? 1 : 0;
+        star = (r >> 10) % 3 != 0;
+        hop_clear = 5 + (int)((r >> 12) % 7);
+    }
+    hop_column[hop_made % HOP_COLUMNS].kind = kind;
+    hop_column[hop_made % HOP_COLUMNS].star = star;
+    hop_made++;
+}
+
+static void hop_frame(uint8_t *fb, const struct fx_input *in) {
+    hop_time += in->step;
+    hop_pos += (uint32_t)((0.7f + in->energy * 3.0f) * in->step * 256);
+    const uint32_t left = hop_pos >> 8, me = left + HOP_X;
+
+    while (hop_at(hop_made * 8) < FX_W + 24) {
+        hop_make_column(in->energy);
+    }
+
+    /* the jump: its shape is fixed by where it must land, so a change of
+     * speed in the air can't drop it short */
+    int lift = 0;
+    if (hop_jumping) {
+        const int gone = hop_at(me) - hop_at(hop_jump_from);
+        if (gone >= hop_jump_far) {
+            hop_jumping = false;
+        } else {
+            lift = 4 * hop_jump_high * gone * (hop_jump_far - gone) / (hop_jump_far * hop_jump_far);
+        }
+    }
+    if (!hop_jumping) {
+        /* the first thing in the way within 5 columns of its nose */
+        const uint32_t nose = me + HOP_WIDE;
+        int ahead = -1;
+        for (int i = 0; i < 6 && ahead < 0; i++) {
+            if (hop_column[(nose / 8 + i) % HOP_COLUMNS].kind != HOP_FLAT) {
+                ahead = i;
+            }
+        }
+        if (ahead >= 0) {
+            uint32_t starts = (nose / 8 + ahead) * 8, ends = starts + 8;
+            while (hop_column[(ends / 8) % HOP_COLUMNS].kind != HOP_FLAT) {
+                ends += 8;
+            }
+            if (hop_at(starts) - hop_at(nose) <= 7) {
+                hop_jumping = true;
+                hop_jump_from = me;
+                hop_jump_far = hop_at(ends) + 5 - hop_at(me);
+                hop_jump_high = hop_jump_far * 6 / 10;
+                hop_jump_high = hop_jump_high < 16 ? 16 : hop_jump_high > 27 ? 27 : hop_jump_high;
+            }
+        } else if (in->n_keys) {
+            hop_jumping = true; /* a hop for the key */
+            hop_jump_from = me;
+            hop_jump_far = 16;
+            hop_jump_high = 7;
+        }
+    }
+
+    /* each key plants a flower under its column, if there is ground there */
+    for (int k = 0; k < in->n_keys; k++) {
+        const uint32_t at = left + key_x(in->keys[k]);
+        if (hop_column[(at / 8) % HOP_COLUMNS].kind == HOP_FLAT) {
+            hop_next_flower = (hop_next_flower + 1) % HOP_FLOWERS;
+            hop_flower[hop_next_flower].at = at;
+            hop_flower[hop_next_flower].color = HOP_FLOWER + rnd() % 4;
+            hop_flower[hop_next_flower].grown = 1;
+        }
+    }
+
+    /* sky, sun, clouds */
+    for (int y = 0; y < HOP_GROUND; y++) {
+        memset(&fb[y * FX_W], HOP_SKY + y * 6 / HOP_GROUND, FX_W);
+    }
+    for (int y = -8; y <= 8; y++) {
+        for (int x = -8; x <= 8; x++) {
+            if (x * x + y * y <= 64) {
+                plot(fb, 112 + x, 22 + y, x * x + y * y <= 42 ? HOP_SUN : HOP_SUN_RIM);
+            }
+        }
+    }
+    for (int i = 0; i < 3; i++) {
+        static const uint8_t cloud_x[] = {20, 95, 160}, cloud_y[] = {10, 30, 17};
+        hop_sprite(fb, (int)((cloud_x[i] - left / 6) % 200) - 30, cloud_y[i], hop_cloud, 6, 0);
+    }
+
+    /* hills, far and near */
+    for (int x = 0; x < FX_W; x++) {
+        const float far = (x + (left / 4) % 4096) * 0.0491f, near = (x + (left / 2) % 4096) * 0.0736f;
+        const int far_top = HOP_GROUND - 20 - (int)(sinf(far) * 9 + sinf(far * 3 + 1) * 4);
+        const int near_top = HOP_GROUND - 9 - (int)(sinf(near + 2) * 6 + sinf(near * 2) * 3);
+        for (int y = far_top; y < HOP_GROUND; y++) {
+            fb[y * FX_W + x] = y >= near_top ? HOP_HILL_NEAR : HOP_HILL_FAR;
+        }
+    }
+
+    /* the ground and the ponds */
+    for (int x = 0; x < FX_W; x++) {
+        const uint32_t place = left + x;
+        const bool pond = hop_column[(place / 8) % HOP_COLUMNS].kind == HOP_POND;
+        for (int y = HOP_GROUND; y < FX_H; y++) {
+            uint8_t c;
+            if (pond) {
+                const int surface = HOP_GROUND + 4 + (((place + (uint32_t)(hop_time / 6)) & 7) < 3);
+                c = y < HOP_GROUND + 4 ? HOP_SKY + 5 : y <= surface ? HOP_WATER_LIGHT : HOP_WATER;
+            } else {
+                c = y == HOP_GROUND ? HOP_GRASS_TOP
+                    : y < HOP_GROUND + 4 + ((place & 3) == 1) ? HOP_GRASS
+                    : ((place * 7 + y * 13) % 23) < 3 ? HOP_DIRT_DARK : HOP_DIRT;
+            }
+            fb[y * FX_W + x] = c;
+        }
+    }
+
+    for (int i = 0; i < HOP_FLOWERS; i++) {
+        const int x = hop_at(hop_flower[i].at), grown = hop_flower[i].grown;
+        if (grown == 0 || x < -4 || x > FX_W + 4) {
+            hop_flower[i].grown = x < -4 ? 0 : grown;
+            continue;
+        }
+        for (int stem = 1; stem <= grown / 2; stem++) {
+            plot(fb, x, HOP_GROUND - stem, HOP_LEAF);
+        }
+        if (grown >= 6) {
+            hop_sprite(fb, x - 1, HOP_GROUND - grown / 2 - 3, hop_bloom, 3, hop_flower[i].color);
+        }
+        hop_flower[i].grown = grown < 10 ? grown + 1 : grown;
+    }
+
+    /* what is in the way, and the stars over it */
+    const int my_top = HOP_GROUND - 12 - lift;
+    for (uint32_t col = left / 8; hop_at(col * 8) < FX_W; col++) {
+        const int x = hop_at(col * 8);
+        const uint8_t kind = hop_column[col % HOP_COLUMNS].kind;
+        if (kind == HOP_ROCKS) {
+            hop_sprite(fb, x, HOP_GROUND - 6, hop_rock, 7, 0);
+        } else if (kind == HOP_LOG) {
+            hop_sprite(fb, x, HOP_GROUND - 5, hop_log, 6, 0);
+        } else if (kind == HOP_BUSH) {
+            hop_sprite(fb, x, HOP_GROUND - 6, hop_bush, 7, 0);
+        }
+        if (hop_column[col % HOP_COLUMNS].star) {
+            const int star_y = HOP_GROUND - 30 + (int)(sinf(hop_time * 0.15f + col) * 1.5f);
+            if (x < HOP_X + HOP_WIDE && x + 7 > HOP_X && star_y + 7 > my_top - 4) {
+                hop_column[col % HOP_COLUMNS].star = 0;
+                hop_stars = (hop_stars + 1) % 1000;
+                hop_sparkle = 8;
+            } else {
+                hop_sprite(fb, x, star_y, hop_star, 7, 0);
+            }
+        }
+    }
+
+    /* the creature: feet stride with the ground, eyes blink now and then */
+    hop_sprite(fb, HOP_X, my_top, hop_body, 10, 0);
+    if ((int)(hop_time / 4) % 40 == 0) {
+        hop_sprite(fb, HOP_X, my_top + 4, hop_blink, 2, 0);
+    }
+    hop_sprite(fb, HOP_X, my_top + 10, hop_feet[hop_jumping ? 2 : (left / 5) & 1], 2, 0);
+    if (hop_sparkle > 0) {
+        const int reach = 10 - (int)hop_sparkle;
+        for (int i = 0; i < 4; i++) {
+            plot(fb, HOP_X + 6 + (i & 1 ? reach : -reach), my_top - 2 + (i & 2 ? reach : -reach) / 2, HOP_STAR_LIGHT);
+            plot(fb, HOP_X + 6 + (i & 1 ? reach : -reach) / 2, my_top - 2 + (i & 2 ? reach : -reach), HOP_STAR);
+        }
+        hop_sparkle -= in->step;
+    }
+
+    /* stars picked up */
+    char count[4] = {'0' + hop_stars / 100, '0' + hop_stars / 10 % 10, '0' + hop_stars % 10, '\0'};
+    const char *shown = hop_stars >= 100 ? count : hop_stars >= 10 ? count + 1 : count + 2;
+    const int width = 5 * (int)strlen(shown);
+    hop_sprite(fb, FX_W - 12 - width - 9, 6, hop_star, 7, 0);
+    text(fb, FX_W - 12 - width, 6, shown, FX_WHITE);
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 static const struct {
@@ -1253,6 +1603,7 @@ static const struct {
     {"THERMAL", thermal_start, thermal_frame, true},
     {"TRACKER", tracker_start, tracker_frame, true},
     {"LIFE", life_start, life_frame, false},
+    {"HOP", hop_start, hop_frame, false},
 };
 
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
