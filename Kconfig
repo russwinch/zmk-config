@@ -70,22 +70,29 @@ config DONGLE_SCREEN_FX
     help
       The &scr_next key steps from the Prospector module's status screen
       through the animations in src/screen_fx/fx.c and back; &scr_prev goes
-      the other way. Each shows both
-      batteries and the connection along the bottom. Their pictures (about
+      the other way. Each shows both batteries and the connection. Their pictures (about
       60 KB) live in LVGL's drawing buffers, which must be that big: the
       Prospector module's half-screen ones are.
 
 if DONGLE_SCREEN_FX
 
 config DONGLE_SCREEN_FX_START
-    int "Screen shown after power-up"
+    int "Screen shown after power-up, until one has been chosen"
     default 0
-    range 0 9
+    range 0 8
     help
       0 is the Prospector module's status screen; 1 and up are the
-      animations, in the order &scr_next shows them (Warp, Fire,
-      Sparks, Terminal, Code, Thermal, Tracker,
-      Life, Hop).
+      animations, in the order &scr_next shows them (Warp, Fire, Terminal,
+      Code, Thermal, Tracker, Life, Hop). Once a screen has been chosen with
+      the keys it is saved (with CONFIG_SETTINGS) and shown instead; a
+      settings reset brings this one back.
+
+config DONGLE_SCREEN_FX_SAVE_DELAY_MS
+    int "Milliseconds a chosen screen must stay up before it is saved"
+    default 5000
+    help
+      Stepping through the screens doesn't write each one to flash, only
+      the one that is left showing.
 
 config DONGLE_SCREEN_FX_WPM_REFERENCE
     int "Words per minute at which the animations run flat out"

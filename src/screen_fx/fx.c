@@ -58,21 +58,6 @@ static void gradient(uint16_t *palette, const struct stop *stops, int n) {
     }
 }
 
-/* hue 0..255, fully saturated, brightness 0..255 */
-static uint16_t hue_rgb(int hue, int value) {
-    int h = (hue & 255) * 6;
-    int f = h & 255, r, g, b;
-    switch (h >> 8) {
-    case 0: r = 255, g = f, b = 0; break;
-    case 1: r = 255 - f, g = 255, b = 0; break;
-    case 2: r = 0, g = 255, b = f; break;
-    case 3: r = 0, g = 255 - f, b = 255; break;
-    case 4: r = f, g = 0, b = 255; break;
-    default: r = 255, g = 0, b = 255 - f; break;
-    }
-    return rgb(r * value / 255, g * value / 255, b * value / 255);
-}
-
 static inline void plot(uint8_t *buf, int x, int y, uint8_t c) {
     if ((unsigned)x < FX_W && (unsigned)y < FX_H) {
         buf[y * FX_W + x] = c;
@@ -490,84 +475,6 @@ static void fire_frame(uint8_t *fb, const struct fx_input *in) {
                 row[x] = v > 0 ? v : 0;
             }
         }
-    }
-    memcpy(fb, canvas, PIXELS);
-}
-
-/* --- sparks: a firework for every key --------------------------------------- */
-
-#define SPARKS 200
-#define SPARK_HUES 7 /* palette: 7 colours x 32 brightness levels */
-
-static struct {
-    float x, y, vx, vy;
-    uint8_t life, hue;
-} sparks[SPARKS];
-static int spark_next;
-static float spark_timer;
-
-static void sparks_start(uint16_t *palette) {
-    for (int h = 0; h < SPARK_HUES; h++) {
-        for (int l = 0; l < 32; l++) {
-            int hue = h * 256 / SPARK_HUES + 10;
-            /* black, up to the colour, then whitening at the top */
-            uint16_t c = hue_rgb(hue, l < 24 ? l * 255 / 23 : 255);
-            if (l >= 24) {
-                int w = (l - 23) * 28;
-                int r = (c >> 8) & 0xf8, g = (c >> 3) & 0xfc, b = (c << 3) & 0xf8;
-                c = rgb(r + (255 - r) * w / 255, g + (255 - g) * w / 255, b + (255 - b) * w / 255);
-            }
-            palette[h * 32 + l] = c;
-        }
-    }
-    memset(sparks, 0, sizeof(sparks));
-    spark_timer = 10;
-}
-
-static void sparks_burst(int x, int y, int count, float power) {
-    int hue = rnd() % SPARK_HUES;
-    for (int i = 0; i < count; i++) {
-        float angle = (rnd() & 255) * TWO_PI / 256.0f;
-        float v = power * (0.3f + (rnd() & 255) / 365.0f);
-        spark_next = (spark_next + 1) % SPARKS;
-        sparks[spark_next].x = x;
-        sparks[spark_next].y = y;
-        sparks[spark_next].vx = cosf(angle) * v;
-        sparks[spark_next].vy = sinf(angle) * v;
-        sparks[spark_next].life = 20 + (rnd() & 15);
-        sparks[spark_next].hue = hue;
-    }
-}
-
-static void sparks_frame(uint8_t *fb, const struct fx_input *in) {
-    for (int k = 0; k < in->n_keys; k++) {
-        sparks_burst(key_x(in->keys[k]), 20 + (int)(rnd() % 55), 16, 2.2f);
-    }
-    /* a show of its own too: now and then when idle, constantly at speed */
-    spark_timer -= in->step;
-    if (spark_timer <= 0) {
-        sparks_burst(15 + (int)(rnd() % (FX_W - 30)), 15 + (int)(rnd() % 60), 28, 3.0f);
-        spark_timer = 55.0f - in->energy * 45.0f;
-    }
-
-    /* trails: every pixel drops a couple of brightness levels */
-    for (int i = 0; i < PIXELS; i++) {
-        int v = canvas[i];
-        canvas[i] = (v & 31) > 2 ? v - 2 : 0;
-    }
-    for (int i = 0; i < SPARKS; i++) {
-        if (sparks[i].life == 0) {
-            continue;
-        }
-        sparks[i].life--;
-        sparks[i].vy += 0.07f * in->step;
-        sparks[i].vx *= 0.97f;
-        sparks[i].vy *= 0.97f;
-        float x0 = sparks[i].x, y0 = sparks[i].y;
-        sparks[i].x += sparks[i].vx * in->step;
-        sparks[i].y += sparks[i].vy * in->step;
-        int level = sparks[i].life > 15 ? 31 : 10 + sparks[i].life * 21 / 15;
-        line(canvas, (int)x0, (int)y0, (int)sparks[i].x, (int)sparks[i].y, sparks[i].hue * 32 + level);
     }
     memcpy(fb, canvas, PIXELS);
 }
@@ -1597,7 +1504,6 @@ static const struct {
 } effects[] = {
     {"WARP", warp_start, warp_frame, false},
     {"FIRE", fire_start, fire_frame, false},
-    {"SPARKS", sparks_start, sparks_frame, false},
     {"TERMINAL", term_start, term_frame, false},
     {"CODE", code_start, code_frame, false},
     {"THERMAL", thermal_start, thermal_frame, true},

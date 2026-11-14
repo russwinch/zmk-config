@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, previous/next dongle screen (U and I) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, previous/next dongle screen (Y and U) (shown as "Shit" on the screens) |
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
@@ -189,21 +189,22 @@ To try Classic, Radii or Operator, change the layout line in
 
 #### Animated screens
 
-The **Screen +** key on the Config layer (the I key) steps the dongle from
-that status screen through nine full-screen animations and back to it;
-**Screen -** (the U key) goes the other way. They are prototypes:
+The **Screen +** key on the Config layer (the U key) steps the dongle from
+that status screen through eight full-screen animations and back to it;
+**Screen -** (the Y key) goes the other way. The screen you leave it on is
+remembered: once it has been showing for five seconds it is saved, and the
+dongle starts on it after being unplugged. A settings reset forgets it.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
 | 1 | Warp | drifting stars | light speed down a tunnel; each key fires comets out through its place on the screen, and the view leans towards the side being typed on |
 | 2 | Fire | embers | a wall of flame; each key throws in a hot spot under its column |
-| 3 | Sparks | a firework now and then | one per key, above its column |
-| 4 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
-| 5 | Code | a program in an alien script, written slowly | written fast: two characters a key (the same key always gives the same one), lines running off the top |
-| 6 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
-| 7 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 8 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
-| 9 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
+| 3 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
+| 4 | Code | a program in an alien script, written slowly | written fast: two characters a key (the same key always gives the same one), lines running off the top |
+| 5 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
+| 6 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
+| 7 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
+| 8 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
 
 Terminal shows the text itself, passwords included, to anyone who can see the
 dongle; it only does so while it is the screen showing. It works the
@@ -226,8 +227,8 @@ wireless symbol with the Bluetooth profile number (counted from 0, as on the
 Field screen), and nothing when typing over USB. The symbol is cyan when the
 computer is connected, grey when not. With another layout chosen its fonts aren't in
 the firmware, and the animations fall back to small text of their own
-(`85/80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on after
-power-up and the typing speed that counts as flat out are set in
+(`85/80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on
+before one has been chosen and the typing speed that counts as flat out are set in
 `config/<keyboard>_dongle.conf`.
 
 Only the dongle needs flashing to change these (the keymap and the screen
