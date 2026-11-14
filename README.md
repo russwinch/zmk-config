@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, next dongle screen (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, previous/next dongle screen (U and I) (shown as "Shit" on the screens) |
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
@@ -184,8 +184,9 @@ To try Classic, Radii or Operator, change the layout line in
 
 #### Animated screens
 
-The **Screen** key on the Config layer steps the dongle from that status
-screen through nine full-screen animations and back. They are prototypes:
+The **Screen +** key on the Config layer (the I key) steps the dongle from
+that status screen through nine full-screen animations and back to it;
+**Screen -** (the U key) goes the other way. They are prototypes:
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |

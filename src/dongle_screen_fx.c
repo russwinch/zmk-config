@@ -1,7 +1,7 @@
 /*
  * Prospector dongle: full-screen animations that react to typing, as extra
  * "screens" next to the Prospector module's own (src/screen_fx/fx.c draws
- * them; the &scr_next key steps through them, see config/keymap.dtsi).
+ * them; the &scr_next and &scr_prev keys step through them, see config/keymap.dtsi).
  *
  * Screen 0 is the module's status screen, untouched. For the others LVGL is
  * shown an empty screen, so it has nothing to redraw, and the frames are
@@ -385,11 +385,12 @@ static void request_apply(void) {
     }
 }
 
-void dongle_screen_fx_next(void) {
+void dongle_screen_fx_step(int by) {
     if (!zmk_display_is_initialized()) {
         return;
     }
-    atomic_set(&wanted_screen, (atomic_get(&wanted_screen) + 1) % (fx_count() + 1));
+    const int screens = fx_count() + 1;
+    atomic_set(&wanted_screen, (atomic_get(&wanted_screen) + (by < 0 ? screens - 1 : 1)) % screens);
     request_apply();
 }
 
