@@ -35,7 +35,17 @@ struct fx_status {
     bool usb;               /* typing over USB, not Bluetooth */
     bool host_open;         /* Bluetooth: nothing paired on this profile */
     uint8_t profile;        /* Bluetooth: profile number, from 0 */
-    char host[4];           /* "USB", "BT1".. */
+};
+
+/* Colours (RGB565) for the status text drawn over an animation
+ * (status_overlay.c), chosen to suit its picture. */
+struct fx_theme {
+    uint16_t ink;    /* the battery levels, and the Bluetooth profile number */
+    uint16_t dim;    /* the profile number when the computer isn't connected */
+    uint16_t accent; /* the wireless symbol when it is */
+    uint16_t search; /* the symbol when it isn't: this one pulses */
+    uint16_t low;    /* a battery that is nearly flat */
+    uint16_t halo;   /* around all of it: dark for light text, light for dark */
 };
 
 struct fx_input {
@@ -45,15 +55,13 @@ struct fx_input {
     uint8_t keys[FX_MAX_KEYS]; /* their key positions */
     uint8_t n_chars;           /* characters typed since the last frame */
     char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
-    const struct fx_status *status; /* for an animation that draws it itself */
+    const struct fx_status *status; /* for an animation that shows some of it itself */
 };
 
 int fx_count(void);
 const char *fx_name(int fx);
 
-/* The animation shows the batteries and output itself (from fx_input's
- * status): leave them out of fx_draw_status, and draw nothing over it. */
-bool fx_draws_status(int fx);
+const struct fx_theme *fx_theme(int fx);
 
 /* FX_W * FX_H bytes for the animations to keep between frames. Call before
  * fx_start, and again if the memory moves. */
@@ -65,7 +73,7 @@ void fx_start(int fx, uint16_t *palette);
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);
 
-/* Battery and connection text over the frame (`status` NULL: leave it out,
- * the dongle draws its own, src/screen_fx/status_overlay.c); `banner` (or
- * NULL) top left. */
-void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *banner);
+/* The animation's name over the frame, top left, in the small letters. The
+ * batteries and output are drawn over it afterwards, at the panel's own
+ * size: src/screen_fx/status_overlay.c. */
+void fx_draw_banner(uint8_t *fb, const char *banner);

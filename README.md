@@ -219,18 +219,18 @@ Warp's comets are cyan for the left hand, amber for the right and magenta for
 the thumbs. The animations place a key by taking the board as 10 columns by 4
 rows, which is the Waterfowl; on the other boards it is only roughly right.
 
-Tracker and Thermal show the batteries and the output their own way, in the
-animations' small pixel letters: Tracker as a gauge up each side with the
-level under it and the output top right, Thermal as `85/80` bottom left and
-the output bottom right. The others show them along the bottom in small text
-of the same kind (`85/80`, left then right; `USB` or `BT1`..; red for low,
-missing or not connected). With the Field layout chosen instead of Operator,
-its fonts are in the firmware and those animations draw the status as the
-Field screen does, in its fonts and colours: both levels bottom left (`-` for
-a half that isn't connected), and bottom right the wireless symbol with the
-Bluetooth profile number (counted from 0, as on the Field screen), and nothing
-when typing over USB; the symbol is cyan when the computer is connected, grey
-when not. The screen to start on
+Every animation shows the batteries and the output along the bottom, in the
+fonts of the module's Field screen and at the size its battery levels are
+(`src/screen_fx/status_overlay.c`): the left half's level in the bottom left
+corner, the right half's in the bottom right (`-` for a half that isn't
+connected, red at 15% or under), and between them the wireless symbol with
+the Bluetooth profile number (counted from 0, as the Field screen does). The symbol
+is in the animation's colour when the computer is connected and pulses grey
+when it isn't; over USB there is no symbol at all. The text's colours are set
+per animation (the `theme` in the list at the end of `src/screen_fx/fx.c`):
+light with a dark edge on most, black with a pale glow on Fire, where the
+flames behind it are bright. Tracker also has a gauge for each battery up the
+sides. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 
@@ -241,9 +241,9 @@ code both live there): pick the build in
 
 The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 `tools/fx_preview.py` can run it on a computer and save each animation as a
-GIF in `fx_preview_out/` (needs gcc and Pillow): the quick way to try a change
-or a new animation. Its GIFs show the small fallback status text, not the
-Field one (`src/screen_fx/status_overlay.c`, which needs the module's fonts). On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
+GIF in `fx_preview_out/` (needs gcc, git and Pillow): the quick way to try a
+change or a new animation. The status text is drawn as on the dongle; its
+fonts are fetched from the Prospector module the first time. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
 empty screen and writes the frames straight to the panel, a quarter of the
 pixels doubled up. The dongle has no RAM to spare for the pictures, so they
 are kept in one of LVGL's drawing buffers, idle while its screen is parked.

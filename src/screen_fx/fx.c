@@ -4,7 +4,7 @@
  * Each animation is a start function (palette, state) and a frame function.
  * `canvas` is one spare picture they share for whatever has to survive from
  * frame to frame (flame heat, fading trails); the frame handed in is redrawn
- * completely every time, because the status text is written over it. The
+ * completely every time, because the banner is written over it. The
  * caller owns the canvas's memory (fx_set_canvas): the dongle has none to
  * spare for it.
  */
@@ -233,32 +233,6 @@ static int text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
         }
     }
     return x + 5 * (int)strlen(s);
-}
-
-/* A battery level, "--" when its half isn't connected or hasn't said. */
-static int battery_text(uint8_t *fb, int x, int y, uint8_t percent, bool connected) {
-    char buf[3] = "--";
-    if (connected && percent > 0) {
-        if (percent > 99) {
-            percent = 99; /* two digits: "99" reads as full */
-        }
-        buf[0] = '0' + percent / 10;
-        buf[1] = '0' + percent % 10;
-    }
-    return text(fb, x, y, buf, !connected || (percent > 0 && percent <= 15) ? FX_RED : FX_WHITE);
-}
-
-/* The batteries bottom left ("85/80", left then right) and the output bottom
- * right, in the small letters. */
-static void status_text(uint8_t *fb, const struct fx_status *status) {
-    /* kept clear of the panel's rounded corners */
-    const int y = FX_H - 16;
-    int x = battery_text(fb, 10, y, status->battery[0], status->half_connected[0]);
-    x = text(fb, x, y, "/", FX_WHITE);
-    battery_text(fb, x, y, status->battery[1], status->half_connected[1]);
-
-    int len = (int)strlen(status->host);
-    text(fb, FX_W - 10 - 5 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
 }
 
 /* --- warp: a starfield you fly through, steered by where you type ---------- */
@@ -754,8 +728,7 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
  * own place, which spreads and cools from white through red, yellow and
  * green back into the cold blue. Two warm patches wander about so there is
  * something to see when idle, the whole picture warms up with typing speed,
- * and a sight follows the last key pressed. It draws the status itself, in
- * the small letters, as a camera's readout would be.
+ * and a sight follows the last key pressed.
  */
 
 static float thermal_time, thermal_x, thermal_y, thermal_lock;
@@ -844,11 +817,6 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         line(fb, sx + dx * size, sy + dy * size, sx + dx * size, sy + dy * (size - arm), color);
     }
     plot(fb, sx, sy, color);
-
-    /* the status in the camera's own letters, not the Field screen's */
-    if (in->status) {
-        status_text(fb, in->status);
-    }
 }
 
 /* --- tracker: a motion tracker; the faster you type, the closer they get --- */
@@ -858,10 +826,10 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
  * pulse going out across it. Contacts only show, as a smudge that fades,
  * when the pulse passes over them. Idle, there are none; typing brings them
  * in, more of them and nearer with speed, and each key pulls one round to
- * its column. The figure at the bottom is the range of the nearest.
+ * its column. The figure top right is the range of the nearest.
  *
- * This one draws the status itself: a gauge for each half's battery up the
- * sides, with its level under it, and the output at the top.
+ * It adds a gauge for each half's battery up the sides, over the level that
+ * every animation has in its bottom corner.
  */
 
 #define TRACK_CX (FX_W / 2)
@@ -904,16 +872,13 @@ static void half_ring(uint8_t *buf, int r, uint8_t c) {
     }
 }
 
-/* A battery: a gauge from y 16 to 92 at `x`, its level under it. */
-static void track_battery(uint8_t *fb, int x, int text_x, uint8_t percent, bool connected) {
-    const int top = 16, bottom = 92;
+/* A battery: a gauge from y 16 to 90 at `x`. */
+static void track_battery(uint8_t *fb, int x, uint8_t percent, bool connected) {
+    const int top = 16, bottom = 90;
     const bool low = !connected || (percent > 0 && percent <= 15);
-    char level[3] = "--";
     int fill = 0;
     if (connected && percent > 0) {
         fill = (bottom - top - 1) * (percent > 100 ? 100 : percent) / 100;
-        level[0] = '0' + (percent > 99 ? 99 : percent) / 10;
-        level[1] = '0' + (percent > 99 ? 99 : percent) % 10;
     }
     for (int y = top; y <= bottom; y++) {
         for (int dx = -1; dx <= 5; dx++) {
@@ -924,7 +889,6 @@ static void track_battery(uint8_t *fb, int x, int text_x, uint8_t percent, bool 
             plot(fb, x + dx, y, dx < 0 || dx > 4 ? 0 : edge ? TRACK_LINE : inside && !gap ? (low ? FX_RED : TRACK_TEXT) : 0);
         }
     }
-    text(fb, text_x, 104, level, low ? FX_RED : TRACK_TEXT);
 }
 
 static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
@@ -1022,20 +986,18 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
             for (int x = 0; x < 5; x++) {
                 if (rows[y] & (0x10 >> x)) {
                     for (int d = 0; d < 4; d++) {
-                        plot(fb, TRACK_CX - 12 + i * 10 + x * 2 + (d & 1), 102 + y * 2 + (d >> 1),
+                        plot(fb, FX_W - 40 + i * 10 + x * 2 + (d & 1), 6 + y * 2 + (d >> 1),
                              nearest < 30 ? FX_WHITE : TRACK_TEXT);
                     }
                 }
             }
         }
     }
-    glyph(fb, TRACK_CX + 10, 109, 'm', TRACK_TEXT);
+    glyph(fb, FX_W - 18, 13, 'm', TRACK_TEXT);
 
     if (in->status) {
-        track_battery(fb, 5, 10, in->status->battery[0], in->status->half_connected[0]);
-        track_battery(fb, FX_W - 10, FX_W - 20, in->status->battery[1], in->status->half_connected[1]);
-        const int len = (int)strlen(in->status->host);
-        text(fb, FX_W - 12 - 5 * len, 6, in->status->host, in->status->host_connected ? TRACK_TEXT : FX_RED);
+        track_battery(fb, 5, in->status->battery[0], in->status->half_connected[0]);
+        track_battery(fb, FX_W - 10, in->status->battery[1], in->status->half_connected[1]);
     }
 }
 
@@ -1496,29 +1458,49 @@ static void hop_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- the list --------------------------------------------------------------- */
 
+#define RGB565(r, g, b) ((uint16_t)(((r) >> 3) << 11 | ((g) >> 2) << 5 | (b) >> 3))
+#define LOW_RED RGB565(255, 70, 50)
+
 static const struct {
     const char *name;
     void (*start)(uint16_t *palette);
     void (*frame)(uint8_t *fb, const struct fx_input *in);
-    bool draws_status; /* shows the batteries and output its own way */
+    struct fx_theme theme; /* the status text over it: see fx.h */
 } effects[] = {
-    {"WARP", warp_start, warp_frame, false},
-    {"FIRE", fire_start, fire_frame, false},
-    {"TERMINAL", term_start, term_frame, false},
-    {"CODE", code_start, code_frame, false},
-    {"THERMAL", thermal_start, thermal_frame, true},
-    {"TRACKER", tracker_start, tracker_frame, true},
-    {"LIFE", life_start, life_frame, false},
-    {"HOP", hop_start, hop_frame, false},
+    {"WARP", warp_start, warp_frame,
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+    /* the flames are behind the text when typing, and nearly white: dark
+     * text, with a glow round it for when they have died down */
+    {"FIRE", fire_start, fire_frame,
+     {.ink = RGB565(0, 0, 0), .dim = RGB565(90, 40, 0), .accent = RGB565(0, 0, 0),
+      .search = RGB565(120, 60, 20), .low = RGB565(190, 0, 0), .halo = RGB565(255, 230, 140)}},
+    {"TERMINAL", term_start, term_frame,
+     {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
+      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0}},
+    {"CODE", code_start, code_frame,
+     {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0}},
+    {"THERMAL", thermal_start, thermal_frame,
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
+      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0}},
+    {"TRACKER", tracker_start, tracker_frame,
+     {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
+      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14)}},
+    {"LIFE", life_start, life_frame,
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+    {"HOP", hop_start, hop_frame,
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
+      .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}},
 };
-
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 
 int fx_count(void) { return FX_COUNT; }
 
 const char *fx_name(int fx) { return fx >= 0 && fx < FX_COUNT ? effects[fx].name : ""; }
 
-bool fx_draws_status(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].draws_status; }
+const struct fx_theme *fx_theme(int fx) { return &effects[fx >= 0 && fx < FX_COUNT ? fx : 0].theme; }
 
 void fx_start(int fx, uint16_t *palette) {
     if (fx < 0 || fx >= FX_COUNT) {
@@ -1539,12 +1521,9 @@ void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
     }
 }
 
-/* --- status text ------------------------------------------------------------ */
+/* --- the name ---------------------------------------------------------------- */
 
-void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *banner) {
-    if (status) {
-        status_text(fb, status);
-    }
+void fx_draw_banner(uint8_t *fb, const char *banner) {
     if (banner) {
         text(fb, 10, 9, banner, FX_WHITE);
     }
