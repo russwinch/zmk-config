@@ -110,6 +110,7 @@ static uint32_t last_frame_at, status_at, banner_until;
 static uint32_t status_never; /* status_at before the first reading */
 static struct fx_status status;
 static bool overlay; /* the Field-style status text is in use */
+static bool own_status; /* this animation draws the status itself */
 
 static void frame_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
@@ -178,7 +179,7 @@ static void show_frame(void) {
             }
         }
 #if FIELD_STATUS
-        const bool text = overlay && top <= OVERLAY_FRAME_ROW1 && top + BAND_ROWS > OVERLAY_FRAME_ROW0;
+        const bool text = overlay && !own_status && top <= OVERLAY_FRAME_ROW1 && top + BAND_ROWS > OVERLAY_FRAME_ROW0;
 #endif
 
         const int width = (x1 - x0 + 1) * 2;
@@ -246,6 +247,7 @@ static bool borrow_memory(void) {
 static void begin_animation(void) {
     uint16_t native[256];
     fx_start(screen - 1, native);
+    own_status = fx_draws_status(screen - 1);
     for (int i = 0; i < 256; i++) {
         palette[i] = sys_cpu_to_be16(native[i]);
     }
@@ -315,8 +317,9 @@ static void frame_cb(struct k_work *work) {
 #endif
     }
 
+    in.status = &status;
     fx_frame(screen - 1, frame, &in);
-    fx_draw_status(frame, overlay ? NULL : &status,
+    fx_draw_status(frame, overlay || own_status ? NULL : &status,
                    (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
     show_frame();
 

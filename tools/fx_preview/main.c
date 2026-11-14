@@ -58,8 +58,9 @@ int main(int argc, char **argv) {
         }
         in.energy = energy;
 
+        in.status = &status;
         fx_frame(fx, fb, &in);
-        fx_draw_status(fb, &status, f < fps * 2 ? fx_name(fx) : NULL);
+        fx_draw_status(fb, fx_draws_status(fx) ? NULL : &status, f < fps * 2 ? fx_name(fx) : NULL);
 
         for (int y = 0; y < FX_H * 2; y++) {
             for (int x = 0; x < FX_W * 2; x++) {
