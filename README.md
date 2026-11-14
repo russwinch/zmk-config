@@ -190,7 +190,7 @@ To try Classic, Radii or Operator, change the layout line in
 #### Animated screens
 
 The **Screen** key on the Config layer steps the dongle from that status
-screen through seven full-screen animations and back. They are prototypes:
+screen through eight full-screen animations and back. They are prototypes:
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
@@ -201,6 +201,7 @@ screen through seven full-screen animations and back. They are prototypes:
 | 5 | Code | a program in an alien script, written slowly | written fast: two characters a key (the same key always gives the same one), lines running off the top |
 | 6 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
 | 7 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
+| 8 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
 
 Terminal shows the text itself, passwords included, to anyone who can see the
 dongle; it only does so while it is the screen showing. It works the
@@ -212,8 +213,10 @@ Warp's comets are cyan for the left hand, amber for the right and magenta for
 the thumbs. The animations place a key by taking the board as 10 columns by 4
 rows, which is the Waterfowl; on the other boards it is only roughly right.
 
-Tracker shows the batteries and the output its own way: a gauge up each
-side with the level under it, and the output top right. The others show them
+Tracker and Thermal show the batteries and the output their own way, in the
+animations' small pixel letters: Tracker as a gauge up each side with the
+level under it and the output top right, Thermal as `85/80` bottom left and
+the output bottom right. The others show them
 along the bottom as the Field screen
 draws them, in its fonts and colours: both levels bottom left (`85/80`, left
 then right; `-` for a half that isn't connected), and bottom right the

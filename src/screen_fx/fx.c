@@ -250,6 +250,32 @@ static int text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
     return x + 5 * (int)strlen(s);
 }
 
+/* A battery level, "--" when its half isn't connected or hasn't said. */
+static int battery_text(uint8_t *fb, int x, int y, uint8_t percent, bool connected) {
+    char buf[3] = "--";
+    if (connected && percent > 0) {
+        if (percent > 99) {
+            percent = 99; /* two digits: "99" reads as full */
+        }
+        buf[0] = '0' + percent / 10;
+        buf[1] = '0' + percent % 10;
+    }
+    return text(fb, x, y, buf, !connected || (percent > 0 && percent <= 15) ? FX_RED : FX_WHITE);
+}
+
+/* The batteries bottom left ("85/80", left then right) and the output bottom
+ * right, in the small letters. */
+static void status_text(uint8_t *fb, const struct fx_status *status) {
+    /* kept clear of the panel's rounded corners */
+    const int y = FX_H - 16;
+    int x = battery_text(fb, 10, y, status->battery[0], status->half_connected[0]);
+    x = text(fb, x, y, "/", FX_WHITE);
+    battery_text(fb, x, y, status->battery[1], status->half_connected[1]);
+
+    int len = (int)strlen(status->host);
+    text(fb, FX_W - 10 - 5 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
+}
+
 /* --- warp: a starfield you fly through, steered by where you type ---------- */
 
 /*
@@ -821,7 +847,8 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
  * own place, which spreads and cools from white through red, yellow and
  * green back into the cold blue. Two warm patches wander about so there is
  * something to see when idle, the whole picture warms up with typing speed,
- * and a sight follows the last key pressed.
+ * and a sight follows the last key pressed. It draws the status itself, in
+ * the small letters, as a camera's readout would be.
  */
 
 static float thermal_time, thermal_x, thermal_y, thermal_lock;
@@ -910,6 +937,11 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         line(fb, sx + dx * size, sy + dy * size, sx + dx * size, sy + dy * (size - arm), color);
     }
     plot(fb, sx, sy, color);
+
+    /* the status in the camera's own letters, not the Field screen's */
+    if (in->status) {
+        status_text(fb, in->status);
+    }
 }
 
 /* --- tracker: a motion tracker; the faster you type, the closer they get --- */
@@ -1100,6 +1132,111 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
+/* --- life: Conway's Game of Life, fed by the keys --------------------------- */
+
+/*
+ * 70 by 60 cells, joined edge to edge. Each key drops a clump of cells at
+ * its own place on the board; the generations tick over slowly when idle
+ * and quickly at speed. A cell is born white and ages through yellow and
+ * green to blue, and leaves a glow behind when it dies. When the board dies
+ * out or settles into a pattern that only repeats, a new clump is dropped
+ * in somewhere.
+ */
+
+#define LIFE_W (FX_W / 2)
+#define LIFE_H (FX_H / 2)
+#define LIFE_CELLS (LIFE_W * LIFE_H)
+#define LIFE_TRAIL 50 /* palette: 1..50 the glow, 60..251 a live cell by age */
+#define LIFE_OLD 60
+
+static float life_tick;
+static int life_count[2], life_settled; /* cells alive one and two generations ago */
+
+static void life_start(uint16_t *palette) {
+    static const struct stop stops[] = {{0, 0, 0, 0},         {LIFE_TRAIL, 70, 0, 110}, {LIFE_OLD, 0, 60, 170},
+                                        {130, 0, 190, 110},   {200, 210, 235, 0},       {251, 255, 255, 240}};
+    gradient(palette, stops, 6);
+    life_tick = 0;
+    life_count[0] = life_count[1] = life_settled = 0;
+}
+
+/* A clump: about half the cells in a 5x5 square. */
+static void life_seed(int cx, int cy) {
+    uint32_t r = rnd() | rnd() << 16;
+    for (int i = 0; i < 25; i++, r >>= 1) {
+        if (r & 1) {
+            int x = (cx + i % 5 - 2 + LIFE_W) % LIFE_W, y = (cy + i / 5 - 2 + LIFE_H) % LIFE_H;
+            canvas[y * LIFE_W + x] = 251;
+        }
+    }
+}
+
+/* The canvas holds three boards: the cells (0 dead, else its colour), the
+ * next generation while it is worked out, and the glow. */
+static void life_step(void) {
+    uint8_t *now = canvas, *next = canvas + LIFE_CELLS, *glow = canvas + 2 * LIFE_CELLS;
+    int alive = 0;
+    for (int y = 0; y < LIFE_H; y++) {
+        const uint8_t *up = &now[(y + LIFE_H - 1) % LIFE_H * LIFE_W], *row = &now[y * LIFE_W],
+                      *down = &now[(y + 1) % LIFE_H * LIFE_W];
+        for (int x = 0; x < LIFE_W; x++) {
+            const int l = x ? x - 1 : LIFE_W - 1, r = x + 1 < LIFE_W ? x + 1 : 0;
+            const int around = !!up[l] + !!up[x] + !!up[r] + !!row[l] + !!row[r] + !!down[l] + !!down[x] + !!down[r];
+            const int age = row[x];
+            int v = 0;
+            if (age) {
+                if (around == 2 || around == 3) {
+                    v = age > LIFE_OLD + 6 ? age - 6 : LIFE_OLD;
+                } else {
+                    glow[y * LIFE_W + x] = LIFE_TRAIL;
+                }
+            } else if (around == 3) {
+                v = 251;
+            }
+            next[y * LIFE_W + x] = (uint8_t)v;
+            alive += v != 0;
+        }
+    }
+    memcpy(now, next, LIFE_CELLS);
+
+    /* still lifes and blinkers keep the same count from one generation to the
+     * next but one */
+    life_settled = alive == life_count[1] ? life_settled + 1 : 0;
+    life_count[1] = life_count[0];
+    life_count[0] = alive;
+    if (alive < 25 || life_settled > 14) {
+        life_seed((int)(rnd() % LIFE_W), (int)(rnd() % (LIFE_H - 14)));
+        life_settled = 0;
+    }
+}
+
+static void life_frame(uint8_t *fb, const struct fx_input *in) {
+    for (int k = 0; k < in->n_keys; k++) {
+        const int col = key_col(in->keys[k]), row = key_row(in->keys[k]);
+        life_seed((13 + col * 12 + (col >= 5 ? 7 : 0)) / 2, (14 + row * 21) / 2);
+    }
+    /* 3 generations a second idle, 15 flat out */
+    life_tick += in->step * (0.1f + in->energy * 0.4f);
+    for (int n = 0; life_tick >= 1 && n < 2; n++) {
+        life_tick -= 1;
+        life_step();
+    }
+
+    const uint8_t *now = canvas;
+    uint8_t *glow = canvas + 2 * LIFE_CELLS;
+    const int fade = 1 + (int)in->step;
+    for (int y = 0; y < LIFE_H; y++) {
+        uint8_t *out = &fb[y * 2 * FX_W];
+        for (int x = 0; x < LIFE_W; x++) {
+            const int i = y * LIFE_W + x;
+            const uint8_t c = now[i] ? now[i] : glow[i];
+            glow[i] = glow[i] > fade ? glow[i] - fade : 0;
+            out[x * 2] = out[x * 2 + 1] = c;
+        }
+        memcpy(out + FX_W, out, FX_W);
+    }
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 static const struct {
@@ -1113,8 +1250,9 @@ static const struct {
     {"SPARKS", sparks_start, sparks_frame, false},
     {"TERMINAL", term_start, term_frame, false},
     {"CODE", code_start, code_frame, false},
-    {"THERMAL", thermal_start, thermal_frame, false},
+    {"THERMAL", thermal_start, thermal_frame, true},
     {"TRACKER", tracker_start, tracker_frame, true},
+    {"LIFE", life_start, life_frame, false},
 };
 
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
@@ -1146,32 +1284,10 @@ void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
 
 /* --- status text ------------------------------------------------------------ */
 
-/* A battery level, "--" when its half isn't connected or hasn't said. */
-static int battery_text(uint8_t *fb, int x, int y, uint8_t percent, bool connected) {
-    char buf[3] = "--";
-    if (connected && percent > 0) {
-        if (percent > 99) {
-            percent = 99; /* two digits: "99" reads as full */
-        }
-        buf[0] = '0' + percent / 10;
-        buf[1] = '0' + percent % 10;
-    }
-    return text(fb, x, y, buf, !connected || (percent > 0 && percent <= 15) ? FX_RED : FX_WHITE);
-}
-
 void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *banner) {
     if (status) {
-        /* kept clear of the panel's rounded corners */
-        const int y = FX_H - 16;
-        /* left/right, as the Field screen has them */
-        int x = battery_text(fb, 10, y, status->battery[0], status->half_connected[0]);
-        x = text(fb, x, y, "/", FX_WHITE);
-        battery_text(fb, x, y, status->battery[1], status->half_connected[1]);
-
-        int len = (int)strlen(status->host);
-        text(fb, FX_W - 10 - 5 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
+        status_text(fb, status);
     }
-
     if (banner) {
         text(fb, 10, 9, banner, FX_WHITE);
     }
