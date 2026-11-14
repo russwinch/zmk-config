@@ -42,8 +42,11 @@
 #include <zmk/ble.h>
 #include <zmk/display.h>
 #include <zmk/endpoints.h>
+#include <zmk/hid.h>
+#include <dt-bindings/zmk/modifiers.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
+#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/split_central_status_changed.h>
 #include <zmk/events/wpm_state_changed.h>
@@ -92,6 +95,8 @@ static atomic_t halves_connected; /* bit per half */
 static struct k_spinlock keys_lock;
 static uint8_t keys[FX_MAX_KEYS];
 static uint8_t n_keys;
+static char chars[FX_MAX_CHARS]; /* what the keys typed, for the terminal */
+static uint8_t n_chars;
 
 /* --- display work queue only ------------------------------------------------- */
 
@@ -244,6 +249,10 @@ static void begin_animation(void) {
     for (int i = 0; i < 256; i++) {
         palette[i] = sys_cpu_to_be16(native[i]);
     }
+    /* nothing typed before this screen came up belongs on it */
+    K_SPINLOCK(&keys_lock) {
+        n_keys = n_chars = 0;
+    }
     redraw_all = true;
     last_frame_at = k_uptime_get_32();
     status_at = status_never = last_frame_at - STATUS_MS;
@@ -277,6 +286,9 @@ static void frame_cb(struct k_work *work) {
         in.n_keys = n_keys;
         memcpy(in.keys, keys, n_keys);
         n_keys = 0;
+        in.n_chars = n_chars;
+        memcpy(in.chars, chars, n_chars);
+        n_chars = 0;
     }
 
     /* energy: follows words per minute (quick up, slow down), and each key
@@ -380,6 +392,34 @@ void dongle_screen_fx_next(void) {
 
 /* --- events ------------------------------------------------------------------- */
 
+/*
+ * The character a key types, on a US layout (what the keycodes are named
+ * for; a computer set to another layout may print something else for the
+ * symbols). 0 for anything that isn't text, and for shortcuts.
+ */
+static char typed_char(const struct zmk_keycode_state_changed *ev) {
+    static const char plain[] = "\n\0\b\t -=[]\\#;'`,./";
+    static const char shifted[] = "\n\0\b\t _+{}|~:\"~<>?";
+    const uint8_t mods = ev->implicit_modifiers | ev->explicit_modifiers | zmk_hid_get_explicit_mods();
+    const bool shift = (mods & (MOD_LSFT | MOD_RSFT)) != 0;
+    const uint32_t key = ev->keycode;
+
+    if (ev->usage_page != HID_USAGE_KEY || (mods & ~(MOD_LSFT | MOD_RSFT)) != 0) {
+        return 0;
+    }
+    if (key >= HID_USAGE_KEY_KEYBOARD_A && key <= HID_USAGE_KEY_KEYBOARD_Z) {
+        return (shift ? 'A' : 'a') + (key - HID_USAGE_KEY_KEYBOARD_A);
+    }
+    if (key >= HID_USAGE_KEY_KEYBOARD_1_AND_EXCLAMATION && key <= HID_USAGE_KEY_KEYBOARD_0_AND_RIGHT_PARENTHESIS) {
+        const int digit = key - HID_USAGE_KEY_KEYBOARD_1_AND_EXCLAMATION;
+        return shift ? "!@#$%^&*()"[digit] : "1234567890"[digit];
+    }
+    if (key >= HID_USAGE_KEY_KEYBOARD_RETURN_ENTER && key <= HID_USAGE_KEY_KEYBOARD_SLASH_AND_QUESTION_MARK) {
+        return (shift ? shifted : plain)[key - HID_USAGE_KEY_KEYBOARD_RETURN_ENTER];
+    }
+    return 0;
+}
+
 static int screen_fx_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
     if (pos != NULL) {
@@ -387,6 +427,20 @@ static int screen_fx_listener(const zmk_event_t *eh) {
             K_SPINLOCK(&keys_lock) {
                 if (n_keys < FX_MAX_KEYS) {
                     keys[n_keys++] = (uint8_t)pos->position;
+                }
+            }
+        }
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    const struct zmk_keycode_state_changed *code = as_zmk_keycode_state_changed(eh);
+    if (code != NULL) {
+        /* only kept while an animation shows, and only until its next frame */
+        const char c = code->state && atomic_get(&wanted_screen) != 0 ? typed_char(code) : 0;
+        if (c != 0) {
+            K_SPINLOCK(&keys_lock) {
+                if (n_chars < FX_MAX_CHARS) {
+                    chars[n_chars++] = c;
                 }
             }
         }
@@ -424,6 +478,7 @@ static int screen_fx_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(dongle_screen_fx, screen_fx_listener);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_position_state_changed);
+ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_wpm_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_split_central_status_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_activity_state_changed);

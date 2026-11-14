@@ -411,6 +411,276 @@ static void sparks_frame(uint8_t *fb, const struct fx_input *in) {
     memcpy(fb, canvas, PIXELS);
 }
 
+/* --- terminal: what you type, in green, fading away ------------------------ */
+
+#define TERM_COLS 26
+#define TERM_ROWS 10 /* down to just above the status text */
+#define TERM_X 5
+#define TERM_Y 4
+#define TERM_PITCH 9 /* rows; characters are 5 apart */
+#define TERM_LIT 205 /* a character once its first flash is over */
+
+static char term_char[TERM_ROWS][TERM_COLS];
+static uint8_t term_lum[TERM_ROWS][TERM_COLS];
+static int term_row, term_col;
+static bool term_prompt; /* this line starts with one */
+static float term_blink, term_fade;
+
+static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color);
+
+static void term_prompt_line(void) {
+    term_prompt = true;
+    term_char[term_row][0] = '>';
+    term_lum[term_row][0] = 251;
+    term_col = 2;
+}
+
+static void term_start(uint16_t *palette) {
+    static const struct stop stops[] = {{0, 0, 0, 0}, {70, 0, 70, 20}, {TERM_LIT, 40, 255, 90}, {251, 215, 255, 225}};
+    gradient(palette, stops, 4);
+    memset(term_lum, 0, sizeof(term_lum));
+    term_row = 0;
+    term_blink = term_fade = 0;
+    term_prompt_line();
+}
+
+static void term_newline(bool prompt) {
+    if (term_row < TERM_ROWS - 1) {
+        term_row++;
+    } else {
+        memmove(term_char[0], term_char[1], sizeof(term_char) - sizeof(term_char[0]));
+        memmove(term_lum[0], term_lum[1], sizeof(term_lum) - sizeof(term_lum[0]));
+        memset(term_lum[TERM_ROWS - 1], 0, sizeof(term_lum[0]));
+    }
+    term_col = 0;
+    term_prompt = false;
+    if (prompt) {
+        term_prompt_line();
+    }
+}
+
+static void term_type(char c) {
+    if (c == '\n') {
+        term_newline(true);
+    } else if (c == '\b') {
+        if (term_col > (term_prompt ? 2 : 0)) {
+            term_lum[term_row][--term_col] = 0;
+        }
+    } else if (c >= ' ' && c <= '~') {
+        if (term_col >= TERM_COLS) {
+            term_newline(false);
+        }
+        term_char[term_row][term_col] = c;
+        term_lum[term_row][term_col] = 251;
+        term_col++;
+    }
+}
+
+static void term_frame(uint8_t *fb, const struct fx_input *in) {
+    for (int i = 0; i < in->n_chars; i++) {
+        term_type(in->chars[i]);
+    }
+    term_blink = in->n_chars ? 0 : term_blink + in->step;
+
+    /* the flash goes in a moment; after that a character takes about 10 s */
+    term_fade += in->step * 0.7f;
+    int fade = (int)term_fade, flash = 4 + (int)(in->step * 5);
+    term_fade -= fade;
+
+    memset(fb, 0, PIXELS);
+    bool any = false; /* anything lit, this line's prompt aside */
+    for (int r = 0; r < TERM_ROWS; r++) {
+        for (int c = 0; c < TERM_COLS; c++) {
+            int lum = term_lum[r][c];
+            if (lum == 0) {
+                continue;
+            }
+            const bool prompt = term_prompt && r == term_row && c == 0;
+            any = any || !prompt;
+            glyph(fb, TERM_X + c * 5, TERM_Y + r * TERM_PITCH, term_char[r][c], (uint8_t)lum);
+            lum -= lum > TERM_LIT ? flash : fade;
+            /* this line's prompt stays */
+            term_lum[r][c] = lum > (prompt ? 150 : 0) ? lum : prompt ? 150 : 0;
+        }
+    }
+    /* everything has faded: start again at the top */
+    if (!any && !in->n_chars && !(term_row == 0 && term_col == 2 && term_prompt)) {
+        memset(term_lum, 0, sizeof(term_lum));
+        term_row = 0;
+        term_prompt_line();
+    }
+
+    /* the cursor: a block, steady while typing, blinking after */
+    if ((int)(term_blink / 15) % 2 == 0 && term_col < TERM_COLS) {
+        for (int y = 0; y < 7; y++) {
+            for (int x = 0; x < 4; x++) {
+                plot(fb, TERM_X + term_col * 5 + x, TERM_Y + term_row * TERM_PITCH + y, TERM_LIT);
+            }
+        }
+    }
+}
+
+/* --- code: a program being written in an alien script ---------------------- */
+
+/*
+ * Lines of made-up code, with indents, words and comments, written along the
+ * bottom and pushed up and off the top. It writes slowly on its own; each
+ * key adds two characters (the same key always gives the same one), so at
+ * speed the page races. The letters are drawn up afresh from a few strokes
+ * each time the firmware starts.
+ */
+
+#define CODE_COLS 27
+#define CODE_ROWS 14
+#define CODE_PITCH 7  /* rows; characters are 5 apart */
+#define CODE_GLYPHS 64 /* 0 is the space */
+#define CODE_LEVELS 63 /* palette: 4 colours x 63 brightness levels */
+#define CODE_BOTTOM 86 /* top of the line being written */
+
+static struct {
+    uint8_t glyph, hue, heat;
+} code_cell[CODE_ROWS][CODE_COLS];
+static uint32_t code_glyphs[CODE_GLYPHS]; /* 4x5 dots */
+static int code_col, code_indent, code_line_end, code_word, code_hue;
+static bool code_comment;
+static float code_pending, code_scroll;
+
+static void code_make_glyphs(void) {
+    for (int g = 1; g < CODE_GLYPHS; g++) {
+        uint32_t bits = 0;
+        int strokes = 2 + (int)(rnd() % 2);
+        for (int s = 0; s < strokes; s++) {
+            uint32_t r = rnd();
+            int from = (r >> 4) % 3, to = from + 1 + (int)((r >> 8) % 3);
+            if (r & 1) { /* across: on the top, middle or bottom row */
+                int y = (int)((r >> 12) % 3) * 2;
+                for (int x = from; x <= to && x < 4; x++) {
+                    bits |= 1u << (y * 4 + x);
+                }
+            } else { /* down: on either side, or one in */
+                static const uint8_t columns[] = {0, 3, 0, 3, 1, 2};
+                int x = columns[(r >> 12) % 6];
+                for (int y = from; y <= to + 1 && y < 5; y++) {
+                    bits |= 1u << (y * 4 + x);
+                }
+            }
+        }
+        if (rnd() % 3 == 0) {
+            bits |= 1u << (rnd() % 20); /* a dot */
+        }
+        code_glyphs[g] = bits;
+    }
+}
+
+static void code_new_line(void) {
+    memmove(code_cell[0], code_cell[1], sizeof(code_cell) - sizeof(code_cell[0]));
+    memset(code_cell[CODE_ROWS - 1], 0, sizeof(code_cell[0]));
+    code_scroll = CODE_PITCH;
+
+    uint32_t r = rnd();
+    code_indent += (int)(r % 3) - 1;
+    code_indent = code_indent < 0 ? 0 : code_indent > 4 ? 4 : code_indent;
+    code_col = code_indent * 2;
+    code_line_end = code_col + 3 + (int)((r >> 4) % 17);
+    if (code_line_end > CODE_COLS) {
+        code_line_end = CODE_COLS;
+    }
+    code_comment = (r >> 12) % 7 == 0;
+    code_word = 0;
+    if ((r >> 16) % 9 == 0) {
+        code_line_end = code_col; /* a blank line */
+    }
+}
+
+static void code_write(uint8_t glyph) {
+    if (code_col >= code_line_end) {
+        code_new_line();
+        return;
+    }
+    if (code_word == 0) {
+        /* the next word, after a space: mostly green, some cyan and amber */
+        uint32_t r = rnd();
+        code_word = 1 + (int)(r % 6);
+        code_hue = code_comment ? 3 : (r >> 8) % 10 < 6 ? 0 : (r >> 8) % 10 < 8 ? 1 : 2;
+        if (code_col > code_indent * 2) {
+            code_col++;
+            return;
+        }
+    }
+    code_word--;
+    code_cell[CODE_ROWS - 1][code_col].glyph = glyph;
+    code_cell[CODE_ROWS - 1][code_col].hue = (uint8_t)code_hue;
+    code_cell[CODE_ROWS - 1][code_col].heat = CODE_LEVELS - 1;
+    code_col++;
+}
+
+static void code_start(uint16_t *palette) {
+    static const struct stop stops[] = {
+        {0, 0, 0, 0},   {20, 0, 70, 25},   {50, 40, 255, 100},  {62, 220, 255, 225}, /* green */
+        {63, 0, 0, 0},  {83, 0, 60, 80},   {113, 60, 230, 255}, {125, 225, 255, 255},
+        {126, 0, 0, 0}, {146, 90, 50, 0},  {176, 255, 190, 40}, {188, 255, 250, 215},
+        {189, 0, 0, 0}, {209, 40, 70, 60}, {239, 110, 170, 145}, {251, 200, 235, 220}, /* comments */
+    };
+    for (int h = 0; h < 4; h++) {
+        gradient(palette, &stops[h * 4], 4);
+    }
+    if (code_glyphs[1] == 0) {
+        code_make_glyphs();
+    }
+    memset(code_cell, 0, sizeof(code_cell));
+    code_indent = 0;
+    code_pending = code_scroll = 0;
+    code_new_line();
+    code_scroll = 0;
+}
+
+static void code_frame(uint8_t *fb, const struct fx_input *in) {
+    for (int k = 0; k < in->n_keys; k++) {
+        uint8_t glyph = 1 + in->keys[k] * 5 % (CODE_GLYPHS - 1);
+        code_write(glyph);
+        code_write(1 + (glyph + 30) % (CODE_GLYPHS - 1));
+    }
+    code_pending += in->step * (0.07f + in->energy * 0.5f);
+    for (; code_pending >= 1; code_pending -= 1) {
+        code_write(1 + rnd() % (CODE_GLYPHS - 1));
+    }
+    code_scroll -= in->step * 2;
+    if (code_scroll < 0) {
+        code_scroll = 0;
+    }
+
+    memset(fb, 0, PIXELS);
+    int cool = 2 + (int)(in->step * 3);
+    for (int r = 0; r < CODE_ROWS; r++) {
+        int top = CODE_BOTTOM - (CODE_ROWS - 1 - r) * CODE_PITCH + (int)code_scroll;
+        int base = 20 + 26 * r / (CODE_ROWS - 1); /* dimmer on the way up */
+        for (int c = 0; c < CODE_COLS; c++) {
+            if (code_cell[r][c].glyph == 0) {
+                continue;
+            }
+            /* written white hot, cooling to its colour */
+            int heat = code_cell[r][c].heat;
+            code_cell[r][c].heat = heat > cool ? heat - cool : 0;
+            uint8_t color = code_cell[r][c].hue * CODE_LEVELS + (heat > base ? heat : base);
+            uint32_t bits = code_glyphs[code_cell[r][c].glyph];
+            for (int y = 0; y < 5; y++) {
+                for (int x = 0; x < 4; x++, bits >>= 1) {
+                    if (bits & 1) {
+                        plot(fb, 3 + c * 5 + x, top + 1 + y, color);
+                    }
+                }
+            }
+        }
+    }
+    /* the cursor */
+    for (int y = 0; y < 6; y++) {
+        for (int x = 0; x < 4; x++) {
+            plot(fb, 3 + (code_col < CODE_COLS ? code_col : CODE_COLS - 1) * 5 + x,
+                 CODE_BOTTOM + (int)code_scroll + y, CODE_LEVELS - 1);
+        }
+    }
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 static const struct {
@@ -421,6 +691,8 @@ static const struct {
     {"WARP", warp_start, warp_frame},
     {"FIRE", fire_start, fire_frame},
     {"SPARKS", sparks_start, sparks_frame},
+    {"TERMINAL", term_start, term_frame},
+    {"CODE", code_start, code_frame},
 };
 
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
@@ -450,52 +722,117 @@ void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
 
 /* --- status text ------------------------------------------------------------ */
 
-/* 5x7 dots, top row first, left dot in bit 4. Only the characters used. */
-static const struct {
-    char c;
-    uint8_t rows[7];
-} font[] = {
-    {'0', {0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110}},
-    {'1', {0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'2', {0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111}},
-    {'3', {0b11111, 0b00010, 0b00100, 0b00010, 0b00001, 0b10001, 0b01110}},
-    {'4', {0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010}},
-    {'5', {0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110}},
-    {'6', {0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110}},
-    {'7', {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000}},
-    {'8', {0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110}},
-    {'9', {0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100}},
-    {'-', {0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000}},
-    {'A', {0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001}},
-    {'B', {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110}},
-    {'E', {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111}},
-    {'F', {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000}},
-    {'I', {0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'K', {0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001}},
-    {'L', {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111}},
-    {'M', {0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001}},
-    {'N', {0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001}},
-    {'P', {0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000}},
-    {'R', {0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001}},
-    {'S', {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110}},
-    {'T', {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100}},
-    {'U', {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110}},
-    {'W', {0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b11011, 0b10001}},
+/* X11's "5x7" (misc-fixed, public domain), ' ' to '~': top row first, left
+ * dot in bit 4. Characters are 5 apart, the gap included. */
+static const uint8_t font[][7] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /*   */
+    {0x04, 0x04, 0x04, 0x04, 0x00, 0x04, 0x00}, /* ! */
+    {0x0a, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00}, /* " */
+    {0x00, 0x0a, 0x1f, 0x0a, 0x1f, 0x0a, 0x00}, /* # */
+    {0x00, 0x0e, 0x14, 0x0e, 0x05, 0x0e, 0x00}, /* $ */
+    {0x10, 0x12, 0x04, 0x08, 0x12, 0x02, 0x00}, /* % */
+    {0x00, 0x08, 0x14, 0x08, 0x14, 0x0a, 0x00}, /* & */
+    {0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00}, /* ' */
+    {0x04, 0x08, 0x08, 0x08, 0x08, 0x04, 0x00}, /* ( */
+    {0x08, 0x04, 0x04, 0x04, 0x04, 0x08, 0x00}, /* ) */
+    {0x00, 0x0a, 0x04, 0x0e, 0x04, 0x0a, 0x00}, /* * */
+    {0x00, 0x04, 0x04, 0x1f, 0x04, 0x04, 0x00}, /* + */
+    {0x00, 0x00, 0x00, 0x00, 0x06, 0x04, 0x08}, /* , */
+    {0x00, 0x00, 0x00, 0x1e, 0x00, 0x00, 0x00}, /* - */
+    {0x00, 0x00, 0x00, 0x00, 0x0c, 0x0c, 0x00}, /* . */
+    {0x00, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00}, /* / */
+    {0x04, 0x0a, 0x0a, 0x0a, 0x0a, 0x04, 0x00}, /* 0 */
+    {0x04, 0x0c, 0x04, 0x04, 0x04, 0x0e, 0x00}, /* 1 */
+    {0x0c, 0x12, 0x02, 0x04, 0x08, 0x1e, 0x00}, /* 2 */
+    {0x1e, 0x02, 0x0c, 0x02, 0x12, 0x0c, 0x00}, /* 3 */
+    {0x04, 0x0c, 0x14, 0x1e, 0x04, 0x04, 0x00}, /* 4 */
+    {0x1e, 0x10, 0x1c, 0x02, 0x12, 0x0c, 0x00}, /* 5 */
+    {0x0c, 0x10, 0x1c, 0x12, 0x12, 0x0c, 0x00}, /* 6 */
+    {0x1e, 0x02, 0x04, 0x04, 0x08, 0x08, 0x00}, /* 7 */
+    {0x0c, 0x12, 0x0c, 0x12, 0x12, 0x0c, 0x00}, /* 8 */
+    {0x0c, 0x12, 0x12, 0x0e, 0x02, 0x0c, 0x00}, /* 9 */
+    {0x00, 0x0c, 0x0c, 0x00, 0x0c, 0x0c, 0x00}, /* : */
+    {0x00, 0x0c, 0x0c, 0x00, 0x0c, 0x08, 0x10}, /* ; */
+    {0x00, 0x02, 0x04, 0x08, 0x04, 0x02, 0x00}, /* < */
+    {0x00, 0x00, 0x1e, 0x00, 0x1e, 0x00, 0x00}, /* = */
+    {0x00, 0x08, 0x04, 0x02, 0x04, 0x08, 0x00}, /* > */
+    {0x04, 0x0a, 0x02, 0x04, 0x00, 0x04, 0x00}, /* ? */
+    {0x0c, 0x12, 0x16, 0x16, 0x10, 0x0c, 0x00}, /* @ */
+    {0x0c, 0x12, 0x12, 0x1e, 0x12, 0x12, 0x00}, /* A */
+    {0x1c, 0x12, 0x1c, 0x12, 0x12, 0x1c, 0x00}, /* B */
+    {0x0c, 0x12, 0x10, 0x10, 0x12, 0x0c, 0x00}, /* C */
+    {0x1c, 0x12, 0x12, 0x12, 0x12, 0x1c, 0x00}, /* D */
+    {0x1e, 0x10, 0x1c, 0x10, 0x10, 0x1e, 0x00}, /* E */
+    {0x1e, 0x10, 0x1c, 0x10, 0x10, 0x10, 0x00}, /* F */
+    {0x0c, 0x12, 0x10, 0x16, 0x12, 0x0e, 0x00}, /* G */
+    {0x12, 0x12, 0x1e, 0x12, 0x12, 0x12, 0x00}, /* H */
+    {0x0e, 0x04, 0x04, 0x04, 0x04, 0x0e, 0x00}, /* I */
+    {0x02, 0x02, 0x02, 0x02, 0x12, 0x0c, 0x00}, /* J */
+    {0x12, 0x14, 0x18, 0x18, 0x14, 0x12, 0x00}, /* K */
+    {0x10, 0x10, 0x10, 0x10, 0x10, 0x1e, 0x00}, /* L */
+    {0x12, 0x1e, 0x1e, 0x12, 0x12, 0x12, 0x00}, /* M */
+    {0x12, 0x1a, 0x1a, 0x16, 0x16, 0x12, 0x00}, /* N */
+    {0x0c, 0x12, 0x12, 0x12, 0x12, 0x0c, 0x00}, /* O */
+    {0x1c, 0x12, 0x12, 0x1c, 0x10, 0x10, 0x00}, /* P */
+    {0x0c, 0x12, 0x12, 0x12, 0x1a, 0x0c, 0x02}, /* Q */
+    {0x1c, 0x12, 0x12, 0x1c, 0x14, 0x12, 0x00}, /* R */
+    {0x0c, 0x12, 0x08, 0x04, 0x12, 0x0c, 0x00}, /* S */
+    {0x0e, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00}, /* T */
+    {0x12, 0x12, 0x12, 0x12, 0x12, 0x0c, 0x00}, /* U */
+    {0x12, 0x12, 0x12, 0x12, 0x0c, 0x0c, 0x00}, /* V */
+    {0x12, 0x12, 0x12, 0x1e, 0x1e, 0x12, 0x00}, /* W */
+    {0x12, 0x12, 0x0c, 0x0c, 0x12, 0x12, 0x00}, /* X */
+    {0x0a, 0x0a, 0x0a, 0x04, 0x04, 0x04, 0x00}, /* Y */
+    {0x1e, 0x02, 0x04, 0x08, 0x10, 0x1e, 0x00}, /* Z */
+    {0x0e, 0x08, 0x08, 0x08, 0x08, 0x0e, 0x00}, /* [ */
+    {0x00, 0x10, 0x08, 0x04, 0x02, 0x00, 0x00}, /* backslash */
+    {0x0e, 0x02, 0x02, 0x02, 0x02, 0x0e, 0x00}, /* ] */
+    {0x04, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ^ */
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x00}, /* _ */
+    {0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ` */
+    {0x00, 0x00, 0x0e, 0x12, 0x16, 0x0a, 0x00}, /* a */
+    {0x10, 0x10, 0x1c, 0x12, 0x12, 0x1c, 0x00}, /* b */
+    {0x00, 0x00, 0x0c, 0x10, 0x10, 0x0c, 0x00}, /* c */
+    {0x02, 0x02, 0x0e, 0x12, 0x12, 0x0e, 0x00}, /* d */
+    {0x00, 0x00, 0x0c, 0x16, 0x18, 0x0c, 0x00}, /* e */
+    {0x04, 0x0a, 0x08, 0x1c, 0x08, 0x08, 0x00}, /* f */
+    {0x00, 0x00, 0x0e, 0x12, 0x0c, 0x10, 0x0e}, /* g */
+    {0x10, 0x10, 0x1c, 0x12, 0x12, 0x12, 0x00}, /* h */
+    {0x04, 0x00, 0x0c, 0x04, 0x04, 0x0e, 0x00}, /* i */
+    {0x02, 0x00, 0x02, 0x02, 0x02, 0x0a, 0x04}, /* j */
+    {0x10, 0x10, 0x14, 0x18, 0x14, 0x12, 0x00}, /* k */
+    {0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e, 0x00}, /* l */
+    {0x00, 0x00, 0x14, 0x1e, 0x12, 0x12, 0x00}, /* m */
+    {0x00, 0x00, 0x1c, 0x12, 0x12, 0x12, 0x00}, /* n */
+    {0x00, 0x00, 0x0c, 0x12, 0x12, 0x0c, 0x00}, /* o */
+    {0x00, 0x00, 0x1c, 0x12, 0x12, 0x1c, 0x10}, /* p */
+    {0x00, 0x00, 0x0e, 0x12, 0x12, 0x0e, 0x02}, /* q */
+    {0x00, 0x00, 0x1c, 0x12, 0x10, 0x10, 0x00}, /* r */
+    {0x00, 0x00, 0x0e, 0x18, 0x06, 0x1c, 0x00}, /* s */
+    {0x08, 0x08, 0x1c, 0x08, 0x08, 0x06, 0x00}, /* t */
+    {0x00, 0x00, 0x12, 0x12, 0x12, 0x0e, 0x00}, /* u */
+    {0x00, 0x00, 0x0a, 0x0a, 0x0a, 0x04, 0x00}, /* v */
+    {0x00, 0x00, 0x12, 0x12, 0x1e, 0x1e, 0x00}, /* w */
+    {0x00, 0x00, 0x12, 0x0c, 0x0c, 0x12, 0x00}, /* x */
+    {0x00, 0x00, 0x12, 0x12, 0x0a, 0x04, 0x08}, /* y */
+    {0x00, 0x00, 0x1e, 0x04, 0x08, 0x1e, 0x00}, /* z */
+    {0x02, 0x04, 0x0c, 0x04, 0x04, 0x02, 0x00}, /* { */
+    {0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00}, /* | */
+    {0x08, 0x04, 0x06, 0x04, 0x04, 0x08, 0x00}, /* } */
+    {0x0a, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ~ */
 };
 
 static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
-    for (unsigned i = 0; i < sizeof(font) / sizeof(font[0]); i++) {
-        if (font[i].c != c) {
-            continue;
-        }
-        for (int row = 0; row < 7; row++) {
-            for (int col = 0; col < 5; col++) {
-                if (font[i].rows[row] & (0x10 >> col)) {
-                    plot(fb, x + col, y + row, color);
-                }
+    if (c < ' ' || c > '~') {
+        return;
+    }
+    const uint8_t *rows = font[c - ' '];
+    for (int row = 0; row < 7; row++) {
+        for (int col = 0; col < 5; col++) {
+            if (rows[row] & (0x10 >> col)) {
+                plot(fb, x + col, y + row, color);
             }
         }
-        return;
     }
 }
 
@@ -503,7 +840,7 @@ static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
 static int text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
     for (int pass = 0; pass < 2; pass++) {
         int cx = x;
-        for (const char *p = s; *p; p++, cx += 6) {
+        for (const char *p = s; *p; p++, cx += 5) {
             if (pass == 0) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
@@ -515,7 +852,7 @@ static int text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
             }
         }
     }
-    return x + 6 * (int)strlen(s);
+    return x + 5 * (int)strlen(s);
 }
 
 static int battery_text(uint8_t *fb, int x, int y, char side, uint8_t percent, bool connected) {
@@ -538,7 +875,7 @@ void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *ban
         battery_text(fb, x + 5, y, 'R', status->battery[1], status->half_connected[1]);
 
         int len = (int)strlen(status->host);
-        text(fb, FX_W - 10 - 6 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
+        text(fb, FX_W - 10 - 5 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
     }
 
     if (banner) {

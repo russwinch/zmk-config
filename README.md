@@ -185,13 +185,21 @@ To try Classic, Radii or Operator, change the layout line in
 #### Animated screens
 
 The **Screen** key on the Config layer steps the dongle from that status
-screen through three full-screen animations and back. They are prototypes:
+screen through five full-screen animations and back. They are prototypes:
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
 | 1 | Warp | drifting stars | light speed down a tunnel; each key fires comets out through its place on the screen, and the view leans towards the side being typed on |
 | 2 | Fire | embers | a wall of flame; each key throws in a hot spot under its column |
 | 3 | Sparks | a firework now and then | one per key, above its column |
+| 4 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
+| 5 | Code | a program in an alien script, written slowly | written fast: two characters a key (the same key always gives the same one), lines running off the top |
+
+Terminal shows the text itself, passwords included, to anyone who can see the
+dongle; it only does so while it is the screen showing. It works the
+characters out as a US layout would, so on a computer set to another layout
+some symbols will differ from what the computer prints. Shortcuts (anything
+with Ctrl, Alt or Cmd held) aren't shown.
 
 Warp's comets are cyan for the left hand, amber for the right and magenta for
 the thumbs. The animations place a key by taking the board as 10 columns by 4
