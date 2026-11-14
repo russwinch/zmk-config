@@ -1,7 +1,9 @@
 # GitHub Actions build matrix: one entry per half of every keyboard.
 # Keymaps: config/<shield>.keymap -> shared config/keymap.dtsi
-# Settings: config/default.conf (all builds) + config/<shield>.conf. ZMK
-# merges default.conf last, so to make an exception for one build put
+# Settings: config/default.conf (all builds) + config/<shield>.conf for each
+# shield named here: prospector_adapter.conf is every dongle's,
+# nice_view_gem.conf every gem display's, <keyboard>.conf one keyboard's.
+# ZMK merges default.conf last, so to make an exception for one build put
 # `cmake-args: -DCONFIG_...=...` on its entry here (that beats every file).
 ---
 include:

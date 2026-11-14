@@ -75,8 +75,10 @@ while it's on USB power. The sleep timeout is shared by every board in
 | --- | --- |
 | `config/keymap.dtsi` | **The keymap.** All layers and behaviors, written once as 34 core keys. |
 | `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
-| `config/default.conf` | Settings shared by every build (deep sleep). ZMK applies it after the per-board files, so exceptions go in `build.yaml` as `cmake-args`. |
-| `config/<shield>.conf` | Per-board Kconfig (display, encoders, LEDs, Bluetooth power). |
+| `config/default.conf` | Settings shared by every build (deep sleep, Bluetooth power, LED flash times). ZMK applies it after the other `.conf` files, so exceptions go in `build.yaml` as `cmake-args`. |
+| `config/prospector_adapter.conf` | Settings shared by every Prospector dongle (status screen, brightness, animated screens). ZMK reads `config/<shield>.conf` for each shield in a build, and every dongle build has the `prospector_adapter` shield. |
+| `config/nice_view_gem.conf` | The same way, for every half with a nice-view-gem display (Urchin, Aurora Corne). |
+| `config/<keyboard>.conf` | Only what is particular to one keyboard (encoders, LED widget, display options); also read for its dongle. A `config/<keyboard>_dongle.conf` would be read for that dongle alone, but none is needed. |
 | `config/<keyboard>_layout.dtsi` | Glue shared by a keyboard's normal and dongle keymaps (Urchin, Aurora Corne, Waterfowl; the Forager dongle uses `forager.keymap` itself). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module. |
@@ -186,7 +188,7 @@ The dongle's own screen uses the Prospector module's **Operator** layout
 (layer name, battery levels, modifiers, the output and a words-per-minute
 meter with the figure beside it). To try Classic, Radii or Field (a grid of
 lines that animate as you type), change the layout line in
-`config/<keyboard>_dongle.conf`.
+`config/prospector_adapter.conf`.
 
 #### Animated screens
 
@@ -230,7 +232,7 @@ Bluetooth profile number (counted from 0, as on the Field screen), and nothing
 when typing over USB; the symbol is cyan when the computer is connected, grey
 when not. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
-`config/<keyboard>_dongle.conf`.
+`config/prospector_adapter.conf`.
 
 Only the dongle needs flashing to change these (the keymap and the screen
 code both live there): pick the build in

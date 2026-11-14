@@ -6,7 +6,7 @@
  */
 
 // The battery key (&ind_bat) still works from here: the dongle has the widget
-// turned off (splitkb_aurora_corne_dongle.conf), but ZMK passes the key on to
+// turned off (prospector_adapter.conf), but ZMK passes the key on to
 // both halves, which each blink their own battery level on their LED.
 
 #include "splitkb_aurora_corne_layout.dtsi"

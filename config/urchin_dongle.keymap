@@ -5,7 +5,7 @@
  */
 
 // The battery key (&ind_bat) still works from here: the dongle has the widget
-// turned off (urchin_dongle.conf), but ZMK passes the key on to both halves,
+// turned off (prospector_adapter.conf), but ZMK passes the key on to both halves,
 // which each blink their own battery level on their LED.
 
 #include "urchin_layout.dtsi"
