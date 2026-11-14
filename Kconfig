@@ -69,7 +69,8 @@ config DONGLE_SCREEN_FX
     select ZMK_WPM
     help
       The &scr_next key steps from the Prospector module's status screen
-      through the animations in src/screen_fx/fx.c and back. Each shows both
+      through the animations in src/screen_fx/fx.c and back; &scr_prev goes
+      the other way. Each shows both
       batteries and the connection along the bottom. Their pictures (about
       60 KB) live in LVGL's drawing buffers, which must be that big: the
       Prospector module's half-screen ones are.

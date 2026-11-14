@@ -2,5 +2,6 @@
 
 #pragma once
 
-/* Show the next screen: the module's status screen, then each animation. */
-void dongle_screen_fx_next(void);
+/* Step through the screens (the module's status screen, then each
+ * animation, and round again): 1 for the next, -1 for the one before. */
+void dongle_screen_fx_step(int by);

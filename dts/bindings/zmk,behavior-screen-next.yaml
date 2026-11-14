@@ -1,8 +1,13 @@
-# The &scr_next key (config/keymap.dtsi): next screen on the Prospector
-# dongle (src/dongle_screen_fx.c).
+# The &scr_next and &scr_prev keys (config/keymap.dtsi): the next or the
+# previous screen on the Prospector dongle (src/dongle_screen_fx.c).
 
-description: Show the next screen on the Prospector dongle
+description: Show the next (or previous) screen on the Prospector dongle
 
 compatible: "zmk,behavior-screen-next"
 
 include: zero_param.yaml
+
+properties:
+  back:
+    type: boolean
+    description: Step back through the screens instead of forward
