@@ -190,16 +190,17 @@ To try Classic, Radii or Operator, change the layout line in
 #### Animated screens
 
 The **Screen** key on the Config layer steps the dongle from that status
-screen through six full-screen animations and back. They are prototypes:
+screen through three full-screen animations and back. They are prototypes:
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Warp | drifting stars | light speed; each key gives a kick |
-| 2 | Fire | embers | a wall of flame; each key throws in a hot spot |
-| 3 | Plasma | slow colour soup | faster and tighter; each key shifts the colours |
-| 4 | Rain | a drizzle of falling code | a downpour; each key starts a drop |
-| 5 | Sparks | a firework now and then | one per key |
-| 6 | Wire | a slowly turning icosahedron | spins up with trails; each key makes it pulse |
+| 1 | Warp | drifting stars | light speed down a tunnel; each key fires comets out through its place on the screen, and the view leans towards the side being typed on |
+| 2 | Fire | embers | a wall of flame; each key throws in a hot spot under its column |
+| 3 | Sparks | a firework now and then | one per key, above its column |
+
+Warp's comets are cyan for the left hand, amber for the right and magenta for
+the thumbs. The animations place a key by taking the board as 10 columns by 4
+rows, which is the Waterfowl; on the other boards it is only roughly right.
 
 Each shows both batteries bottom left (`L85 R80`; red at 15% or less, `--` in
 red when that half isn't connected) and the output bottom right (`USB` or

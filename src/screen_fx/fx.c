@@ -73,31 +73,21 @@ static uint16_t hue_rgb(int hue, int value) {
     return rgb(r * value / 255, g * value / 255, b * value / 255);
 }
 
-static int8_t sin8[256];
-
-static void init_tables(void) {
-    static bool done;
-    if (done) {
-        return;
-    }
-    for (int i = 0; i < 256; i++) {
-        sin8[i] = (int8_t)(sinf(i * TWO_PI / 256.0f) * 127.0f);
-    }
-    done = true;
-}
-
 static inline void plot(uint8_t *buf, int x, int y, uint8_t c) {
     if ((unsigned)x < FX_W && (unsigned)y < FX_H) {
         buf[y * FX_W + x] = c;
     }
 }
 
-static void line(uint8_t *buf, int x0, int y0, int x1, int y1, uint8_t c) {
+/* A line; with `under`, only where the picture is still black. */
+static void line_on(uint8_t *buf, int x0, int y0, int x1, int y1, uint8_t c, bool under) {
     int dx = x1 > x0 ? x1 - x0 : x0 - x1, sx = x0 < x1 ? 1 : -1;
     int dy = y1 > y0 ? y0 - y1 : y1 - y0, sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
     for (int guard = 0; guard < 400; guard++) {
-        plot(buf, x0, y0, c);
+        if ((unsigned)x0 < FX_W && (unsigned)y0 < FX_H && !(under && buf[y0 * FX_W + x0])) {
+            buf[y0 * FX_W + x0] = c;
+        }
         if (x0 == x1 && y0 == y1) {
             break;
         }
@@ -113,66 +103,187 @@ static void line(uint8_t *buf, int x0, int y0, int x1, int y1, uint8_t c) {
     }
 }
 
-/* Darken the whole canvas by `amount` palette steps. */
-static void fade_canvas(int amount) {
-    for (int i = 0; i < PIXELS; i++) {
-        int v = canvas[i] - amount;
-        canvas[i] = v > 0 ? v : 0;
-    }
+static void line(uint8_t *buf, int x0, int y0, int x1, int y1, uint8_t c) {
+    line_on(buf, x0, y0, x1, y1, c, false);
 }
 
-/* Where across the screen a key lands: its column on a 10-column board. */
-static int key_x(uint8_t key) { return 8 + (key % 10) * 13 + (int)(rnd() % 7); }
+/* Where a key is on the board, taking it for 10 columns by 4 rows (the
+ * Waterfowl; near enough on the others). */
+static inline int key_col(uint8_t key) { return key % 10; }
+static inline int key_row(uint8_t key) { return key / 10 < 3 ? key / 10 : 3; }
 
-/* --- warp: a starfield that goes to light speed as you type ---------------- */
+/* Where across the screen a key lands: its column. */
+static int key_x(uint8_t key) { return 8 + key_col(key) * 13 + (int)(rnd() % 7); }
+
+/* --- warp: a starfield you fly through, steered by where you type ---------- */
+
+/*
+ * Stars come out of a vanishing point that wanders, and leans towards the
+ * side of the board being typed on. Each key fires a few coloured comets out
+ * through that key's place on the screen (left hand cyan, right hand amber,
+ * thumbs magenta). At speed, the rings of a tunnel come past, in the colour
+ * of the last key.
+ */
 
 #define STARS 110
+#define COMETS_PER_KEY 4
+#define WARP_RINGS 8
+#define WARP_LEVELS 63    /* palette: 4 colours x 63 brightness levels */
+#define WARP_SCALE 70.0f  /* pixels from the vanishing point, for 1 across at depth 1 */
+#define RING_FAR 2.0f     /* depth a ring appears at */
+#define RING_RADIUS 0.55f /* 38 pixels at depth 1 */
 
 static struct {
     float x, y, z;
+    uint8_t hue, comet;
 } stars[STARS];
-static float warp_kick;
+static struct {
+    float z, turn; /* z <= 0: not in use */
+    uint8_t hue;
+} rings[WARP_RINGS];
+static float warp_kick, warp_time, warp_ring_gap;
+static float warp_cx, warp_cy;       /* the vanishing point */
+static float warp_lean_x, warp_lean_y; /* -1..1: where the typing is */
+static int warp_next, warp_hue;
 
 static void star_spawn(int i, float z) {
     stars[i].x = rndf();
     stars[i].y = rndf();
     stars[i].z = z;
+    stars[i].hue = 0;
+    stars[i].comet = 0;
 }
 
 static void warp_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 0}, {90, 30, 50, 140}, {200, 170, 200, 255}, {251, 255, 255, 255}};
-    gradient(palette, stops, 4);
+    static const struct stop stops[] = {
+        {0, 0, 0, 0},   {22, 30, 50, 140},   {50, 170, 200, 255},  {62, 255, 255, 255}, /* stars */
+        {63, 0, 0, 0},  {85, 0, 80, 110},    {113, 40, 240, 230},  {125, 220, 255, 255},
+        {126, 0, 0, 0}, {148, 130, 45, 0},   {176, 255, 180, 30},  {188, 255, 250, 210},
+        {189, 0, 0, 0}, {211, 110, 0, 120},  {239, 255, 70, 220},  {251, 255, 225, 255},
+    };
+    for (int h = 0; h < 4; h++) {
+        gradient(palette, &stops[h * 4], 4);
+    }
     for (int i = 0; i < STARS; i++) {
         star_spawn(i, 0.05f + (rnd() & 1023) / 1080.0f);
     }
-    warp_kick = 0;
+    memset(rings, 0, sizeof(rings));
+    warp_kick = warp_time = warp_ring_gap = 0;
+    warp_cx = FX_W / 2;
+    warp_cy = FX_H / 2;
+    warp_lean_x = warp_lean_y = 0;
+    warp_hue = 0;
+}
+
+static void warp_key(uint8_t key) {
+    /* the key's place, as a direction from the vanishing point */
+    float tx = (key_col(key) - 4.5f) / 4.5f, ty = (key_row(key) - 1.5f) / 1.5f;
+    warp_hue = key_row(key) == 3 ? 3 : key_col(key) < 5 ? 1 : 2;
+    warp_lean_x = clampf(warp_lean_x + tx * 0.3f, -1.0f, 1.0f);
+    warp_lean_y = clampf(warp_lean_y + ty * 0.3f, -1.0f, 1.0f);
+
+    for (int i = 0; i < COMETS_PER_KEY; i++) {
+        warp_next = (warp_next + 1) % STARS;
+        /* starts close in, and is at the key's place by depth 0.4 */
+        stars[warp_next].x = (tx * 0.8f + rndf() * 0.07f) * 0.4f;
+        stars[warp_next].y = (ty * 0.6f + rndf() * 0.07f) * 0.4f;
+        stars[warp_next].z = 1.6f + rndf() * 0.3f;
+        stars[warp_next].hue = warp_hue;
+        stars[warp_next].comet = 1;
+    }
 }
 
 static void warp_frame(uint8_t *fb, const struct fx_input *in) {
     warp_kick = warp_kick * 0.85f + in->n_keys * 0.012f;
     float speed = (0.003f + in->energy * 0.045f + warp_kick) * in->step;
+    warp_time += in->step;
 
-    fade_canvas(30 + (int)(60 * (1.0f - in->energy)));
+    for (int k = 0; k < in->n_keys; k++) {
+        warp_key(in->keys[k]);
+    }
+
+    /* the vanishing point: a slow wander, plus the lean, which eases back */
+    float ease = clampf(0.08f * in->step, 0.0f, 1.0f);
+    warp_lean_x -= warp_lean_x * ease * 0.3f;
+    warp_lean_y -= warp_lean_y * ease * 0.3f;
+    warp_cx += (FX_W / 2 + sinf(warp_time * 0.011f) * 9 + warp_lean_x * 28 - warp_cx) * ease;
+    warp_cy += (FX_H / 2 + sinf(warp_time * 0.017f + 1) * 6 + warp_lean_y * 16 - warp_cy) * ease;
+    int cx = (int)warp_cx, cy = (int)warp_cy;
+
+    /* trails: short when idle, long at speed. Each colour fades to its own black. */
+    int fade = 8 + (int)(15 * (1.0f - in->energy));
+    uint8_t faded[FX_COLORS];
+    for (int i = 0; i < FX_COLORS; i++) {
+        faded[i] = i % WARP_LEVELS > fade ? i - fade : 0;
+    }
+    for (int i = 0; i < PIXELS; i++) {
+        canvas[i] = faded[canvas[i]];
+    }
 
     for (int i = 0; i < STARS; i++) {
         float z0 = stars[i].z;
-        float z1 = z0 - speed;
+        /* comets fly even when the stars are only drifting */
+        float z1 = z0 - speed - (stars[i].comet ? 0.03f * in->step : 0);
         if (z1 < 0.03f) {
             star_spawn(i, 1.0f);
             continue;
         }
-        int x0 = FX_W / 2 + (int)(stars[i].x / z0 * (FX_W / 2));
-        int y0 = FX_H / 2 + (int)(stars[i].y / z0 * (FX_H / 2));
-        int x1 = FX_W / 2 + (int)(stars[i].x / z1 * (FX_W / 2));
-        int y1 = FX_H / 2 + (int)(stars[i].y / z1 * (FX_H / 2));
+        int x0 = cx + (int)(stars[i].x / z0 * WARP_SCALE), y0 = cy + (int)(stars[i].y / z0 * WARP_SCALE);
+        int x1 = cx + (int)(stars[i].x / z1 * WARP_SCALE), y1 = cy + (int)(stars[i].y / z1 * WARP_SCALE);
         stars[i].z = z1;
         if ((unsigned)x1 >= FX_W || (unsigned)y1 >= FX_H) {
             star_spawn(i, 1.0f);
             continue;
         }
-        line(canvas, x0, y0, x1, y1, (uint8_t)(60 + (1.0f - z1) * 191));
+        int level = stars[i].comet ? 40 + (int)((RING_FAR - z1) * 14) : 15 + (int)((1.0f - z1) * 47);
+        uint8_t c = stars[i].hue * WARP_LEVELS + (level > 62 ? 62 : level);
+        line(canvas, x0, y0, x1, y1, c);
+        if (stars[i].comet) {
+            /* twice as thick */
+            line(canvas, x0 + 1, y0, x1 + 1, y1, c);
+            line(canvas, x0, y0 + 1, x1, y1 + 1, c);
+        }
     }
     memcpy(fb, canvas, PIXELS);
+
+    /* the tunnel: hexagons, each turned a little from the one before. They
+     * fade in from a fifth of full speed, and go behind the stars. */
+    float show = clampf((in->energy - 0.2f) * 2.5f, 0.0f, 1.0f);
+    warp_ring_gap += speed;
+    bool spawn = warp_ring_gap > 0.24f;
+    if (spawn) {
+        warp_ring_gap = 0;
+    }
+    for (int i = 0; i < WARP_RINGS; i++) {
+        if (rings[i].z <= 0) {
+            if (spawn && show > 0) {
+                rings[i].z = RING_FAR;
+                rings[i].turn = warp_time * 0.02f;
+                rings[i].hue = warp_hue;
+                spawn = false;
+            }
+            continue;
+        }
+        rings[i].z -= speed;
+        float radius = RING_RADIUS / rings[i].z * WARP_SCALE;
+        if (rings[i].z < 0.05f || radius > 115) { /* past the corners */
+            rings[i].z = 0;
+            continue;
+        }
+        int level = (int)(show * (3 + (RING_FAR - rings[i].z) * 15));
+        if (level < 1) {
+            continue;
+        }
+        uint8_t c = rings[i].hue * WARP_LEVELS + level;
+        int px = cx + (int)(cosf(rings[i].turn) * radius), py = cy + (int)(sinf(rings[i].turn) * radius);
+        for (int corner = 1; corner <= 6; corner++) {
+            float angle = rings[i].turn + corner * (TWO_PI / 6);
+            int qx = cx + (int)(cosf(angle) * radius), qy = cy + (int)(sinf(angle) * radius);
+            line_on(fb, px, py, qx, qy, c, true);
+            px = qx;
+            py = qy;
+        }
+    }
 }
 
 /* --- fire: embers when idle, a wall of flame at full speed ----------------- */
@@ -217,128 +328,6 @@ static void fire_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
     memcpy(fb, canvas, PIXELS);
-}
-
-/* --- plasma: slow colour soup that speeds up and tightens ------------------ */
-
-static float plasma_t;
-static int plasma_shift;
-
-static void plasma_start(uint16_t *palette) {
-    /* a loop of colour with dark bands in it, so it has some shape */
-    for (int i = 0; i < FX_COLORS; i++) {
-        int phase = i * 256 / FX_COLORS;
-        palette[i] = hue_rgb(phase, 150 + (sin8[(phase * 3) & 255] * 105) / 127);
-    }
-    plasma_t = 0;
-    plasma_shift = 0;
-}
-
-static void plasma_frame(uint8_t *fb, const struct fx_input *in) {
-    plasma_t += in->step * (0.5f + in->energy * 5.0f);
-    plasma_shift += in->n_keys * 20;
-    int t = (int)plasma_t;
-    int zoom = 2 + (int)(in->energy * 3);
-
-    /* everything that depends on only x or only y, worked out once per frame */
-    static int16_t col_a[FX_W], col_b[FX_W], col_c[FX_W];
-    static int16_t row_a[FX_H], row_b[FX_H], row_c[FX_H];
-    int cx = FX_W / 2 + sin8[(t / 2) & 255] / 3, cy = FX_H / 2 + sin8[(t / 3 + 64) & 255] / 3;
-    for (int x = 0; x < FX_W; x++) {
-        col_a[x] = sin8[(x * zoom + t) & 255];
-        col_b[x] = x * (zoom + 1) + sin8[(x + t * 2) & 255] / 4;
-        col_c[x] = (x - cx) * (x - cx) / 6;
-    }
-    for (int y = 0; y < FX_H; y++) {
-        row_a[y] = sin8[(y * (zoom + 1) - t * 2) & 255];
-        row_b[y] = y * zoom - t + sin8[(y * 2 - t) & 255] / 4;
-        row_c[y] = (y - cy) * (y - cy) / 6 - t * 3;
-    }
-
-    int shift = plasma_shift + t * 2;
-    uint8_t *p = fb;
-    for (int y = 0; y < FX_H; y++) {
-        for (int x = 0; x < FX_W; x++) {
-            int v = col_a[x] + row_a[y] + sin8[(col_b[x] + row_b[y]) & 255] +
-                    sin8[(col_c[x] + row_c[y]) & 255];
-            *p++ = (uint8_t)((((v >> 1) + shift) & 255) * FX_COLORS >> 8);
-        }
-    }
-}
-
-/* --- rain: falling code, one new drop for every key ------------------------ */
-
-#define RAIN_COLS 28 /* 5 pixels each */
-#define RAIN_ROWS 20 /* 6 pixels each */
-
-static uint8_t rain_lum[RAIN_COLS][RAIN_ROWS];
-static uint32_t rain_glyph[RAIN_COLS][RAIN_ROWS]; /* 4x5 dots */
-static float rain_head[RAIN_COLS];                /* row of the falling head, <0: none */
-static float rain_speed[RAIN_COLS];
-
-static void rain_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 0}, {120, 0, 110, 30}, {225, 40, 255, 90}, {251, 220, 255, 230}};
-    gradient(palette, stops, 4);
-    memset(rain_lum, 0, sizeof(rain_lum));
-    for (int c = 0; c < RAIN_COLS; c++) {
-        rain_head[c] = -1;
-    }
-}
-
-static void rain_drop(int c) {
-    if (rain_head[c] < 0) {
-        rain_head[c] = 0;
-        rain_speed[c] = 0.25f + (rnd() & 255) / 600.0f;
-    }
-}
-
-static void rain_frame(uint8_t *fb, const struct fx_input *in) {
-    for (int k = 0; k < in->n_keys; k++) {
-        rain_drop(key_x(in->keys[k]) / 5);
-    }
-    /* background drizzle, a downpour at speed */
-    uint32_t chance = (uint32_t)((0.004f + in->energy * 0.06f) * in->step * 65536);
-    float fall = in->step * (0.6f + in->energy * 2.2f);
-    int decay = 6 + (int)(in->step * 5);
-
-    memset(fb, 0, PIXELS);
-    for (int c = 0; c < RAIN_COLS; c++) {
-        if ((rnd() & 0xffff) < chance) {
-            rain_drop(c);
-        }
-        if (rain_head[c] >= 0) {
-            int from = (int)rain_head[c];
-            rain_head[c] += rain_speed[c] * fall;
-            for (int r = from; r <= (int)rain_head[c] && r < RAIN_ROWS; r++) {
-                rain_lum[c][r] = 251;
-                rain_glyph[c][r] = rnd() | (1u << (rnd() % 20)); /* never empty */
-            }
-            if (rain_head[c] >= RAIN_ROWS) {
-                rain_head[c] = -1;
-            }
-        }
-        for (int r = 0; r < RAIN_ROWS; r++) {
-            int lum = rain_lum[c][r];
-            if (lum == 0) {
-                continue;
-            }
-            if ((rnd() & 63) == 0) {
-                rain_glyph[c][r] ^= 1u << (rnd() % 20); /* the code flickers */
-            }
-            uint32_t bits = rain_glyph[c][r];
-            uint8_t *cell = &fb[r * 6 * FX_W + c * 5];
-            for (int y = 0; y < 5; y++, cell += FX_W) {
-                for (int x = 0; x < 4; x++, bits >>= 1) {
-                    if (bits & 1) {
-                        cell[x] = (uint8_t)lum;
-                    }
-                }
-            }
-            /* the head is white for a moment, then drops into the green */
-            lum = lum > 225 ? lum - 13 : lum - decay;
-            rain_lum[c][r] = lum > 0 ? lum : 0;
-        }
-    }
 }
 
 /* --- sparks: a firework for every key --------------------------------------- */
@@ -419,84 +408,6 @@ static void sparks_frame(uint8_t *fb, const struct fx_input *in) {
     memcpy(fb, canvas, PIXELS);
 }
 
-/* --- wire: a spinning icosahedron that winds up as you type ---------------- */
-
-#define WIRE_VERTS 12
-#define WIRE_EDGES 30
-#define PHI 1.618034f
-
-static const float wire_verts[WIRE_VERTS][3] = {
-    {0, 1, PHI},  {0, -1, PHI},  {0, 1, -PHI},  {0, -1, -PHI}, {1, PHI, 0},  {-1, PHI, 0},
-    {1, -PHI, 0}, {-1, -PHI, 0}, {PHI, 0, 1},   {-PHI, 0, 1},  {PHI, 0, -1}, {-PHI, 0, -1},
-};
-static uint8_t wire_edges[WIRE_EDGES][2];
-static float wire_a, wire_b, wire_c, wire_pulse;
-
-static void wire_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 0}, {80, 70, 0, 120}, {180, 0, 190, 255}, {251, 240, 255, 255}};
-    gradient(palette, stops, 4);
-
-    /* edges join the vertices that are 2 apart */
-    int n = 0;
-    for (int i = 0; i < WIRE_VERTS; i++) {
-        for (int j = i + 1; j < WIRE_VERTS && n < WIRE_EDGES; j++) {
-            float dx = wire_verts[i][0] - wire_verts[j][0], dy = wire_verts[i][1] - wire_verts[j][1],
-                  dz = wire_verts[i][2] - wire_verts[j][2];
-            float d2 = dx * dx + dy * dy + dz * dz;
-            if (d2 > 3.9f && d2 < 4.1f) {
-                wire_edges[n][0] = i;
-                wire_edges[n][1] = j;
-                n++;
-            }
-        }
-    }
-    wire_a = wire_b = wire_c = wire_pulse = 0;
-}
-
-static void wire_frame(uint8_t *fb, const struct fx_input *in) {
-    float spin = (0.012f + in->energy * 0.16f) * in->step;
-    wire_a += spin;
-    wire_b += spin * 0.71f;
-    wire_c += spin * 0.37f;
-    wire_pulse = wire_pulse * 0.8f + in->n_keys * 0.12f;
-    if (wire_pulse > 0.5f) {
-        wire_pulse = 0.5f;
-    }
-
-    float sa = sinf(wire_a), ca = cosf(wire_a), sb = sinf(wire_b), cb = cosf(wire_b);
-    float sc = sinf(wire_c), cc = cosf(wire_c);
-    float size = 21.0f * (1.0f + wire_pulse + in->energy * 0.25f);
-
-    int px[WIRE_VERTS], py[WIRE_VERTS];
-    float pz[WIRE_VERTS];
-    for (int i = 0; i < WIRE_VERTS; i++) {
-        float x = wire_verts[i][0], y = wire_verts[i][1], z = wire_verts[i][2];
-        float t = x * ca - y * sa; /* about z */
-        y = x * sa + y * ca;
-        x = t;
-        t = x * cb + z * sb; /* about y */
-        z = -x * sb + z * cb;
-        x = t;
-        t = y * cc - z * sc; /* about x */
-        z = y * sc + z * cc;
-        y = t;
-        float depth = 5.0f / (5.0f + z);
-        px[i] = FX_W / 2 + (int)(x * size * depth);
-        py[i] = FX_H / 2 + (int)(y * size * depth);
-        pz[i] = z;
-    }
-
-    /* long trails when spinning fast */
-    fade_canvas(70 - (int)(in->energy * 45));
-    for (int e = 0; e < WIRE_EDGES; e++) {
-        int a = wire_edges[e][0], b = wire_edges[e][1];
-        /* nearer edges are brighter (z runs about -1.9..1.9, negative is near) */
-        float closeness = clampf(0.5f - (pz[a] + pz[b]) / 7.6f, 0.0f, 1.0f);
-        line(canvas, px[a], py[a], px[b], py[b], (uint8_t)(110 + closeness * 141));
-    }
-    memcpy(fb, canvas, PIXELS);
-}
-
 /* --- the list --------------------------------------------------------------- */
 
 static const struct {
@@ -504,9 +415,9 @@ static const struct {
     void (*start)(uint16_t *palette);
     void (*frame)(uint8_t *fb, const struct fx_input *in);
 } effects[] = {
-    {"WARP", warp_start, warp_frame},       {"FIRE", fire_start, fire_frame},
-    {"PLASMA", plasma_start, plasma_frame}, {"RAIN", rain_start, rain_frame},
-    {"SPARKS", sparks_start, sparks_frame}, {"WIRE", wire_start, wire_frame},
+    {"WARP", warp_start, warp_frame},
+    {"FIRE", fire_start, fire_frame},
+    {"SPARKS", sparks_start, sparks_frame},
 };
 
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
@@ -519,7 +430,6 @@ void fx_start(int fx, uint16_t *palette) {
     if (fx < 0 || fx >= FX_COUNT) {
         return;
     }
-    init_tables();
     memset(canvas, 0, PIXELS);
     memset(palette, 0, 256 * sizeof(palette[0]));
     effects[fx].start(palette);
