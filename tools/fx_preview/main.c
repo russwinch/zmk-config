@@ -21,7 +21,8 @@ int main(int argc, char **argv) {
     static uint8_t fb[FX_W * FX_H], canvas[FX_W * FX_H];
     static uint8_t out[FX_W * 2 * 3];
     uint16_t palette[256];
-    struct fx_status status = {{85, 12}, {true, true}, true, "USB"};
+    struct fx_status status = {.battery = {85, 12}, .half_connected = {true, true}, .host_connected = true,
+                               .usb = true, .host = "USB"};
 
     fx_set_canvas(canvas);
     fx_start(fx, palette);

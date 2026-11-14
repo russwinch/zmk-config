@@ -20,6 +20,12 @@
  * (borrow_memory). Nothing has to be handed back: LVGL simply draws over it
  * when its own screen returns.
  *
+ * The batteries and the output are drawn over the picture as the module's
+ * Field screen draws them, when that is the layout in use and so its fonts
+ * are in the firmware (src/screen_fx/status_overlay.c). Otherwise, and if
+ * the borrowed buffer has no room for it, in the animations' own small
+ * letters.
+ *
  * Settings: Kconfig at the repo root.
  */
 
@@ -46,6 +52,12 @@
 
 #include "dongle_screen_fx.h"
 #include "screen_fx/fx.h"
+
+/* The status text in the Field screen's style needs that screen's fonts. */
+#define FIELD_STATUS IS_ENABLED(CONFIG_PROSPECTOR_STATUS_SCREEN_FIELD)
+#if FIELD_STATUS
+#include "screen_fx/status_overlay.h"
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -90,7 +102,9 @@ static bool start_pending; /* the animation has still to be set up */
 static bool redraw_all;
 static float energy;
 static uint32_t last_frame_at, status_at, banner_until;
+static uint32_t status_never; /* status_at before the first reading */
 static struct fx_status status;
+static bool overlay; /* the Field-style status text is in use */
 
 static void frame_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
@@ -105,18 +119,30 @@ static void read_status(void) {
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
     }
 
-    if (zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB) {
+    status.usb = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
+    status.profile = CLAMP(zmk_ble_active_profile_index(), 0, 8);
+    status.host_open = zmk_ble_active_profile_is_open();
+    if (status.usb) {
         strcpy(status.host, "USB");
         status.host_connected = zmk_usb_is_hid_ready();
     } else {
-        int profile = zmk_ble_active_profile_index();
+        int profile = status.profile;
         status.host[0] = 'B';
         status.host[1] = 'T';
-        status.host[2] = '1' + CLAMP(profile, 0, 8);
+        status.host[2] = '1' + profile;
         status.host[3] = '\0';
         status.host_connected = zmk_ble_active_profile_is_connected();
     }
 }
+
+#if FIELD_STATUS
+static bool same_status(const struct fx_status *a, const struct fx_status *b) {
+    return a->battery[0] == b->battery[0] && a->battery[1] == b->battery[1] &&
+           a->half_connected[0] == b->half_connected[0] && a->half_connected[1] == b->half_connected[1] &&
+           a->host_connected == b->host_connected && a->usb == b->usb && a->host_open == b->host_open &&
+           a->profile == b->profile;
+}
+#endif
 
 /* Send what changed in the frame (or all of it) to the panel. */
 static void show_frame(void) {
@@ -146,6 +172,9 @@ static void show_frame(void) {
                 continue;
             }
         }
+#if FIELD_STATUS
+        const bool text = overlay && top <= OVERLAY_FRAME_ROW1 && top + BAND_ROWS > OVERLAY_FRAME_ROW0;
+#endif
 
         const int width = (x1 - x0 + 1) * 2;
         uint16_t *out = band;
@@ -155,6 +184,12 @@ static void show_frame(void) {
                 out[x] = out[x + 1] = palette[*in++];
             }
             memcpy(out + width, out, width * sizeof(*band));
+#if FIELD_STATUS
+            if (text) {
+                overlay_blend_row(out, x0 * 2, y * 2, width);
+                overlay_blend_row(out + width, x0 * 2, y * 2 + 1, width);
+            }
+#endif
             out += width * 2;
         }
 
@@ -192,6 +227,14 @@ static bool borrow_memory(void) {
     shown = frame + PIXELS;
     fx_set_canvas(shown + PIXELS);
     band = (uint16_t *)(shown + 2 * PIXELS); /* 3 * PIXELS is a multiple of 4 */
+#if FIELD_STATUS
+    overlay = buf->data_size >= needed + OVERLAY_BYTES;
+    if (overlay) {
+        overlay_set_memory(buf->data + needed);
+    } else {
+        LOG_WRN("screen fx: no room for the Field status text");
+    }
+#endif
     return true;
 }
 
@@ -203,7 +246,7 @@ static void begin_animation(void) {
     }
     redraw_all = true;
     last_frame_at = k_uptime_get_32();
-    status_at = last_frame_at - STATUS_MS;
+    status_at = status_never = last_frame_at - STATUS_MS;
     banner_until = last_frame_at + BANNER_MS;
 }
 
@@ -245,12 +288,24 @@ static void frame_cb(struct k_work *work) {
     in.energy = energy;
 
     if (now - status_at >= STATUS_MS) {
+#if FIELD_STATUS
+        const struct fx_status was = status;
+        const bool first = status_at == status_never;
+#endif
         status_at = now;
         read_status();
+#if FIELD_STATUS
+        /* the text is only worked out again when it changes */
+        if (overlay && (first || !same_status(&was, &status))) {
+            overlay_render(&status);
+            redraw_all = true;
+        }
+#endif
     }
 
     fx_frame(screen - 1, frame, &in);
-    fx_draw_status(frame, &status, (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
+    fx_draw_status(frame, overlay ? NULL : &status,
+                   (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
     show_frame();
 
     /* always leave the queue a moment for LVGL's own tick and the backlight */

@@ -528,13 +528,15 @@ static int battery_text(uint8_t *fb, int x, int y, char side, uint8_t percent, b
 }
 
 void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *banner) {
-    /* kept clear of the panel's rounded corners */
-    const int y = FX_H - 16;
-    int x = battery_text(fb, 10, y, 'L', status->battery[0], status->half_connected[0]);
-    battery_text(fb, x + 5, y, 'R', status->battery[1], status->half_connected[1]);
+    if (status) {
+        /* kept clear of the panel's rounded corners */
+        const int y = FX_H - 16;
+        int x = battery_text(fb, 10, y, 'L', status->battery[0], status->half_connected[0]);
+        battery_text(fb, x + 5, y, 'R', status->battery[1], status->half_connected[1]);
 
-    int len = (int)strlen(status->host);
-    text(fb, FX_W - 10 - 6 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
+        int len = (int)strlen(status->host);
+        text(fb, FX_W - 10 - 6 * len + 1, y, status->host, status->host_connected ? FX_WHITE : FX_RED);
+    }
 
     if (banner) {
         text(fb, 10, 9, banner, FX_WHITE);
