@@ -34,7 +34,12 @@
 #include <string.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/hci.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/hwinfo.h>
+#include <zephyr/sys/mem_stats.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
@@ -42,8 +47,12 @@
 #include <zephyr/settings/settings.h>
 #include <lvgl.h>
 
+#include <zmk/activity.h>
 #include <zmk/ble.h>
 #include <zmk/display.h>
+#include <zmk/keymap.h>
+#include <zmk/events/battery_state_changed.h>
+#include <zmk/events/sensor_event.h>
 #include <zmk/endpoints.h>
 #include <zmk/hid.h>
 #include <dt-bindings/zmk/modifiers.h>
@@ -67,6 +76,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define PANEL_H (FX_H * 2)
 #define BAND_ROWS 8 /* frame rows sent per write */
 #define FRAME_MS 33
+#define DEBUG_FRAME_MS 100
 #define STATUS_MS 500
 #define BANNER_MS 2000
 /* after leaving the module's screen: time for LVGL to finish with the panel */
@@ -98,6 +108,22 @@ static uint8_t n_keys;
 static char chars[FX_MAX_CHARS]; /* what the keys typed, for the terminal */
 static uint8_t n_chars;
 
+/*
+ * For the Debug screen (fx_is_debug), kept up whichever screen shows, so
+ * that it has the history when it is turned to: the last few events, the
+ * keys held, and what has gone wrong with the Bluetooth links. The rest of
+ * what it shows is read when it is drawn (read_debug).
+ */
+#define BOUNCE_KEYS 40
+#define BOUNCE_WITHIN_MS 1000 /* a key back down sooner than this after going up is timed */
+
+static struct k_spinlock debug_lock;
+static struct fx_debug debug;
+static uint32_t last_event_at;
+static uint32_t released_at[BOUNCE_KEYS]; /* 0: not yet */
+static uint32_t battery_at[2];            /* 0: no report yet */
+static const struct bt_conn *half_conn[2]; /* only ever compared, never used */
+
 /* --- display work queue only ------------------------------------------------- */
 
 static int screen; /* the one showing */
@@ -113,6 +139,9 @@ static bool overlay;    /* there was room for the status text */
 static bool pulsing;    /* its wireless symbol is one that pulses */
 static bool pulse_due;  /* and has changed since it was last sent */
 static int pulse_level;
+static bool is_debug;        /* the Debug screen is the one showing */
+static struct fx_debug debug_shown;
+static uint32_t frames_since, fps_at;
 
 static void frame_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
@@ -140,11 +169,134 @@ static bool same_status(const struct fx_status *a, const struct fx_status *b) {
            a->profile == b->profile;
 }
 
+/* --- the Debug screen's readings ---------------------------------------------- */
+
+#if IS_ENABLED(CONFIG_BT_CTLR_CONN_RSSI)
+/* How strongly the dongle hears the other end of a link, from the radio. */
+static bool read_rssi(uint16_t handle, int8_t *rssi) {
+    struct net_buf *buf = bt_hci_cmd_create(BT_HCI_OP_READ_RSSI, sizeof(struct bt_hci_cp_read_rssi));
+    struct net_buf *rsp = NULL;
+    if (buf == NULL) {
+        return false;
+    }
+    struct bt_hci_cp_read_rssi *cp = net_buf_add(buf, sizeof(*cp));
+    cp->handle = sys_cpu_to_le16(handle);
+    if (bt_hci_cmd_send_sync(BT_HCI_OP_READ_RSSI, buf, &rsp) != 0) {
+        return false;
+    }
+    const struct bt_hci_rp_read_rssi *rp = (const void *)rsp->data;
+    const bool ok = rp->status == 0;
+    *rssi = rp->rssi;
+    net_buf_unref(rsp);
+    return ok;
+}
+#endif
+
+struct link_reading {
+    struct fx_link *link[3]; /* left, right, the computer */
+    uint16_t handle[3];
+    bool found[3];
+};
+
+static void read_link(struct bt_conn *conn, void *data) {
+    struct link_reading *reading = data;
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) != 0 || info.state != BT_CONN_STATE_CONNECTED) {
+        return;
+    }
+    int which = -1;
+    if (info.role == BT_CONN_ROLE_CENTRAL) {
+        K_SPINLOCK(&debug_lock) {
+            which = conn == half_conn[0] ? 0 : conn == half_conn[1] ? 1 : -1;
+        }
+    } else if (bt_addr_le_eq(info.le.dst, zmk_ble_active_profile_addr())) {
+        which = 2;
+    }
+    if (which < 0) {
+        return;
+    }
+    struct fx_link *link = reading->link[which];
+    link->up = true;
+    link->interval = info.le.interval;
+    link->latency = info.le.latency;
+    reading->found[which] = bt_hci_get_conn_handle(conn, &reading->handle[which]) == 0;
+}
+
+/* What lvgl_heap_stats fills in needs CONFIG_SYS_HEAP_RUNTIME_STATS. */
+void lvgl_heap_stats(struct sys_memory_stats *stats);
+
+static uint32_t reset_cause;
+
+static void read_debug(uint32_t now) {
+    static uint32_t rssi_at;
+
+    K_SPINLOCK(&debug_lock) {
+        debug_shown = debug;
+        for (int half = 0; half < 2; half++) {
+            debug_shown.battery_age_s[half] = battery_at[half] ? MIN((now - battery_at[half]) / 1000, UINT16_MAX) : 0;
+        }
+    }
+    struct fx_debug *d = &debug_shown;
+    d->uptime_s = (uint32_t)(k_uptime_get() / 1000);
+    d->reset_cause = reset_cause;
+    d->activity = (uint8_t)zmk_activity_get_state();
+    d->wpm = (uint16_t)atomic_get(&wpm);
+    d->mods = zmk_hid_get_explicit_mods();
+    d->usb = (uint8_t)zmk_usb_get_conn_state();
+    for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
+        d->profile_state[i] = i >= ZMK_BLE_PROFILE_COUNT || zmk_ble_profile_is_open(i) ? 0
+                              : zmk_ble_profile_is_connected(i) ? 2 : 1;
+    }
+    d->layer = zmk_keymap_highest_layer_active();
+    d->layer_name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(d->layer));
+    d->layers = zmk_keymap_layer_state();
+
+#if IS_ENABLED(CONFIG_SYS_HEAP_RUNTIME_STATS) && !IS_ENABLED(CONFIG_LV_Z_MEM_POOL_HEAP_LIB_C)
+    struct sys_memory_stats heap = {0};
+    lvgl_heap_stats(&heap);
+    const size_t total = heap.allocated_bytes + heap.free_bytes;
+    if (total > 0) {
+        d->heap_known = true;
+        d->heap_used = (uint8_t)(heap.allocated_bytes * 100 / total);
+        d->heap_peak = (uint8_t)MIN(heap.max_allocated_bytes * 100 / total, 100);
+    }
+#endif
+
+    /* the links as they are now; their signal strength once a second */
+    static struct fx_link now_link[3];
+    struct link_reading reading = {.link = {&now_link[0], &now_link[1], &now_link[2]}};
+    for (int i = 0; i < 3; i++) {
+        now_link[i].up = false;
+    }
+    bt_conn_foreach(BT_CONN_TYPE_LE, read_link, &reading);
+    const bool rssi_due = now - rssi_at >= 1000;
+    for (int i = 0; i < 3; i++) {
+        if (!now_link[i].up) {
+            now_link[i].rssi_known = false;
+        }
+#if IS_ENABLED(CONFIG_BT_CTLR_CONN_RSSI)
+        else if (rssi_due && reading.found[i]) {
+            now_link[i].rssi_known = read_rssi(reading.handle[i], &now_link[i].rssi);
+        }
+#endif
+        struct fx_link *out = i < 2 ? &d->half[i] : &d->host;
+        out->up = now_link[i].up;
+        out->interval = now_link[i].interval;
+        out->latency = now_link[i].latency;
+        out->rssi_known = now_link[i].rssi_known;
+        out->rssi = now_link[i].rssi;
+    }
+    if (rssi_due) {
+        rssi_at = now;
+    }
+}
+
 /* Send what changed in the frame (or all of it) to the panel. */
 static void show_frame(void) {
     for (int top = 0; top < FX_H; top += BAND_ROWS) {
         int x0 = 0, x1 = FX_W - 1;
-        const bool text = overlay && top <= OVERLAY_FRAME_ROW1 && top + BAND_ROWS > OVERLAY_FRAME_ROW0;
+        const bool text =
+            overlay && !is_debug && top <= OVERLAY_FRAME_ROW1 && top + BAND_ROWS > OVERLAY_FRAME_ROW0;
 
         if (!redraw_all) {
             /* the columns this band differs in */
@@ -238,6 +390,7 @@ static void begin_animation(void) {
     fx_start(screen - 1, native);
     overlay_set_theme(fx_theme(screen - 1));
     pulsing = false;
+    is_debug = fx_is_debug(screen - 1);
     for (int i = 0; i < 256; i++) {
         palette[i] = sys_cpu_to_be16(native[i]);
     }
@@ -246,7 +399,8 @@ static void begin_animation(void) {
         n_keys = n_chars = 0;
     }
     redraw_all = true;
-    last_frame_at = k_uptime_get_32();
+    last_frame_at = fps_at = k_uptime_get_32();
+    frames_since = 0;
     status_at = status_never = last_frame_at - STATUS_MS;
     banner_until = last_frame_at + BANNER_MS;
 }
@@ -297,10 +451,30 @@ static void frame_cb(struct k_work *work) {
         status_at = now;
         read_status();
         /* the text is only worked out again when it changes */
-        if (overlay && (first || !same_status(&was, &status))) {
+        if (overlay && !is_debug && (first || !same_status(&was, &status))) {
             pulsing = overlay_render(&status);
             redraw_all = true;
         }
+    }
+    if (is_debug) {
+        static uint8_t fps, frame_ms;
+        if (now - fps_at >= 1000) {
+            fps = (uint8_t)MIN(frames_since * 1000 / (now - fps_at), 99);
+            fps_at = now;
+            frames_since = 0;
+        }
+        read_debug(now);
+        debug_shown.fps = fps;
+        debug_shown.frame_ms = frame_ms;
+        in.debug = &debug_shown;
+        in.status = &status;
+        fx_frame(screen - 1, frame, &in);
+        show_frame();
+        frames_since++;
+        frame_ms = (uint8_t)MIN(k_uptime_get_32() - now, 255);
+        /* text doesn't need the animations' frame rate */
+        schedule_frame(DEBUG_FRAME_MS);
+        return;
     }
     if (pulsing) {
         const int level = overlay_pulse_at(now);
@@ -485,9 +659,90 @@ static char typed_char(const struct zmk_keycode_state_changed *ev) {
     return 0;
 }
 
+/* Add to the Debug screen's log of raw events. Call with debug_lock held. */
+static void log_event(struct fx_event event, uint32_t now) {
+    event.gap_ms = (uint16_t)MIN(now - last_event_at, 9999);
+    last_event_at = now;
+    if (debug.n_log == FX_DEBUG_LOG) {
+        memmove(&debug.log[0], &debug.log[1], sizeof(debug.log) - sizeof(debug.log[0]));
+        debug.n_log--;
+    }
+    debug.log[debug.n_log++] = event;
+}
+
+static void debug_position(const struct zmk_position_state_changed *pos) {
+    const uint32_t now = k_uptime_get_32(), key = pos->position;
+    K_SPINLOCK(&debug_lock) {
+        if (key < 64) {
+            debug.held = (debug.held & ~BIT64(key)) | (pos->state ? BIT64(key) : 0);
+        }
+        if (pos->state) {
+            debug.presses++;
+        }
+        if (key < BOUNCE_KEYS) {
+            if (!pos->state) {
+                released_at[key] = now | 1;
+            } else if (released_at[key] != 0) {
+                /* events from a half arrive a connection interval apart at
+                 * best, so this can't see a bounce shorter than that */
+                const uint32_t gap = MAX(now - released_at[key], 1);
+                if (gap < BOUNCE_WITHIN_MS && (debug.bounce_ms == 0 || gap < debug.bounce_ms)) {
+                    debug.bounce_ms = (uint16_t)gap;
+                    debug.bounce_key = (uint8_t)key;
+                }
+            }
+        }
+        log_event((struct fx_event){.kind = 'P', .down = pos->state, .source = pos->source, .a = (uint16_t)key}, now);
+    }
+}
+
+/* Which half a connection is: the slot ZMK keeps its address in. */
+static int half_of(struct bt_conn *conn) {
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) != 0 || info.type != BT_CONN_TYPE_LE || info.role != BT_CONN_ROLE_CENTRAL) {
+        return -1;
+    }
+    const int slot = zmk_ble_put_peripheral_addr(bt_conn_get_dst(conn));
+    return slot >= 0 && slot < 2 ? slot : -1;
+}
+
+static void link_connected(struct bt_conn *conn, uint8_t err) {
+    const int half = err ? -1 : half_of(conn);
+    if (half >= 0) {
+        K_SPINLOCK(&debug_lock) {
+            half_conn[half] = conn;
+        }
+    }
+}
+
+static void link_disconnected(struct bt_conn *conn, uint8_t reason) {
+    K_SPINLOCK(&debug_lock) {
+        struct fx_link *link = conn == half_conn[0] ? &debug.half[0] : conn == half_conn[1] ? &debug.half[1] : NULL;
+        if (link != NULL) {
+            half_conn[link == &debug.half[1]] = NULL;
+        } else {
+            struct bt_conn_info info;
+            /* a computer, on any profile; not a half that never got as far as its slot */
+            if (bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_PERIPHERAL) {
+                link = &debug.host;
+            }
+        }
+        if (link != NULL) {
+            link->drops = MIN(link->drops + 1, UINT16_MAX);
+            link->reason = reason;
+        }
+    }
+}
+
+BT_CONN_CB_DEFINE(screen_fx_links) = {
+    .connected = link_connected,
+    .disconnected = link_disconnected,
+};
+
 static int screen_fx_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
     if (pos != NULL) {
+        debug_position(pos);
         if (pos->state) {
             K_SPINLOCK(&keys_lock) {
                 if (n_keys < FX_MAX_KEYS) {
@@ -500,6 +755,12 @@ static int screen_fx_listener(const zmk_event_t *eh) {
 
     const struct zmk_keycode_state_changed *code = as_zmk_keycode_state_changed(eh);
     if (code != NULL) {
+        K_SPINLOCK(&debug_lock) {
+            log_event((struct fx_event){.kind = 'K', .down = code->state, .a = code->usage_page,
+                                        .b = (uint16_t)code->keycode,
+                                        .mods = code->implicit_modifiers | code->explicit_modifiers},
+                      k_uptime_get_32());
+        }
         /* only kept while an animation shows, and only until its next frame */
         const char c = code->state && atomic_get(&wanted_screen) != 0 ? typed_char(code) : 0;
         if (c != 0) {
@@ -530,6 +791,26 @@ static int screen_fx_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
+    const struct zmk_peripheral_battery_state_changed *battery = as_zmk_peripheral_battery_state_changed(eh);
+    if (battery != NULL) {
+        if (battery->source < 2) {
+            K_SPINLOCK(&debug_lock) {
+                battery_at[battery->source] = k_uptime_get_32() | 1;
+            }
+        }
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    const struct zmk_sensor_event *sensor = as_zmk_sensor_event(eh);
+    if (sensor != NULL) {
+        K_SPINLOCK(&debug_lock) {
+            log_event((struct fx_event){.kind = 'E', .source = 2, .a = sensor->sensor_index,
+                                        .b = (uint16_t)(int16_t)sensor->channel_data[0].value.val1},
+                      k_uptime_get_32());
+        }
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
     const struct zmk_activity_state_changed *activity = as_zmk_activity_state_changed(eh);
     if (activity != NULL) {
         /* the panel is switched off while idle (src/dongle_idle_backlight.c) */
@@ -547,6 +828,8 @@ ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_wpm_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_split_central_status_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_activity_state_changed);
+ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_peripheral_battery_state_changed);
+ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_sensor_event);
 
 /* --- the screen to start on ----------------------------------------------------- */
 
@@ -570,6 +853,13 @@ static int screen_fx_init(void) {
     /* after the module's screen has drawn itself once, and ZMK has loaded
      * the settings (the saved screen among them) */
     k_work_schedule(&start_work, K_MSEC(1500));
+#if IS_ENABLED(CONFIG_HWINFO)
+    /* why the dongle last restarted, for the Debug screen; cleared, or the
+     * chip would keep adding every restart since power-up to it */
+    if (hwinfo_get_reset_cause(&reset_cause) == 0) {
+        hwinfo_clear_reset_cause();
+    }
+#endif
     return 0;
 }
 

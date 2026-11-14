@@ -30,6 +30,16 @@ int main(int argc, char **argv) {
     uint16_t palette[256];
     struct fx_status status = {.battery = {100, 12}, .half_connected = {true, true}, .profile = 1};
     int stage = -1;
+    /* made-up readings for the Debug screen */
+    static struct fx_debug debug = {
+        .uptime_s = 4365, .reset_cause = 2, .fps = 15, .frame_ms = 38, .heap_known = true, .heap_used = 62,
+        .heap_peak = 71,
+        .half = {{.up = true, .rssi_known = true, .rssi = -52, .interval = 6, .latency = 30, .drops = 2, .reason = 0x08},
+                 {.up = true, .rssi_known = true, .rssi = -71, .interval = 6, .latency = 30}},
+        .host = {.up = true, .rssi_known = true, .rssi = -48, .interval = 12, .drops = 1, .reason = 0x13},
+        .battery_age_s = {12, 340}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
+        .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
+    };
 
     fx_set_canvas(canvas);
     fx_start(fx, palette);
@@ -55,6 +65,19 @@ int main(int argc, char **argv) {
             key_debt -= 1;
             key_seed = key_seed * 1103515245 + 12345;
             in.keys[in.n_keys++] = (key_seed >> 16) % 34;
+            /* the Debug screen's log: the press, then the keycode it sent */
+            const struct fx_event events[2] = {
+                {.kind = 'P', .down = true, .source = in.keys[in.n_keys - 1] % 10 >= 5, .a = in.keys[in.n_keys - 1],
+                 .gap_ms = (uint16_t)(12000 / (wpm + 1))},
+                {.kind = 'K', .down = true, .a = 7, .b = 4 + in.keys[in.n_keys - 1] % 26, .gap_ms = 1},
+            };
+            debug.log[0] = debug.log[2];
+            debug.log[1] = events[0];
+            debug.log[2] = events[1];
+            debug.n_log = 3;
+            debug.presses++;
+            debug.held = 1ull << in.keys[in.n_keys - 1];
+            debug.mods = debug.presses % 7 == 0 ? 0x02 : 0;
             in.chars[in.n_chars++] = typed[typed_at++ % (sizeof(typed) - 1)];
             energy += 0.03f;
         }
@@ -76,8 +99,14 @@ int main(int argc, char **argv) {
         overlay_set_pulse(overlay_pulse_at((uint32_t)(f * 1000 / fps)));
 
         in.status = &status;
+        debug.uptime_s = 4365 + (uint32_t)(f / fps);
+        debug.wpm = (uint16_t)wpm;
+        debug.host.up = status.host_connected && !status.usb;
+        debug.usb = status.usb ? 2 : 1;
+        in.debug = &debug;
         fx_frame(fx, fb, &in);
-        fx_draw_banner(fb, f < fps * 2 ? fx_name(fx) : NULL);
+        const bool plain = fx_is_debug(fx);
+        fx_draw_banner(fb, f < fps * 2 && !plain ? fx_name(fx) : NULL);
 
         for (int y = 0; y < FX_H * 2; y++) {
             /* as the dongle does: the panel's byte order, then the text */
@@ -85,7 +114,9 @@ int main(int argc, char **argv) {
                 uint16_t c = palette[fb[(y / 2) * FX_W + x / 2]];
                 row[x] = (uint16_t)(c >> 8 | c << 8);
             }
-            overlay_blend_row(row, 0, y, FX_W * 2);
+            if (!plain) {
+                overlay_blend_row(row, 0, y, FX_W * 2);
+            }
             for (int x = 0; x < FX_W * 2; x++) {
                 uint16_t c = (uint16_t)(row[x] >> 8 | row[x] << 8);
                 out[x * 3] = (c >> 8) & 0xf8;

@@ -15,7 +15,7 @@
 
 #include <lvgl.h>
 
-LV_FONT_DECLARE(FR_Regular_30);
+LV_FONT_DECLARE(FR_Regular_36);
 LV_FONT_DECLARE(FG_Medium_26);
 LV_FONT_DECLARE(Symbols_Regular_28);
 LV_FONT_DECLARE(Symbols_Bold_26);
@@ -181,8 +181,9 @@ bool overlay_render(const struct fx_status *status) {
     const struct area output = {output_mask, OVERLAY_OUTPUT_X, OVERLAY_OUTPUT_W};
     memset(left_mask, 0, OVERLAY_BYTES);
 
-    const lv_font_t *font = &FR_Regular_30;
-    const int top = LINE_BOTTOM - font->line_height;
+    const lv_font_t *font = &FR_Regular_36;
+    /* on the baseline the Field screen's smaller levels have */
+    const int top = LINE_BOTTOM - 5 - (font->line_height - font->base_line);
     char level[4];
     uint8_t color = level_text(level, status->battery[0], status->half_connected[0]);
     draw_text(&left, font, level, SIDE, top, -1, color, true);

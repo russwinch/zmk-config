@@ -67,10 +67,16 @@ config DONGLE_SCREEN_FX
     depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_DISPLAY && ZMK_SPLIT_ROLE_CENTRAL
     depends on ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     select ZMK_WPM
+    select HWINFO
+    select SYS_HEAP_RUNTIME_STATS
+    imply BT_CTLR_CONN_RSSI
     help
       The &scr_next key steps from the Prospector module's status screen
       through the animations in src/screen_fx/fx.c and back; &scr_prev goes
-      the other way. Each shows both batteries and the connection. Their pictures (about
+      the other way. Each shows both batteries and the connection. After
+      the animations comes a Debug screen of readings, for which this turns
+      on the reset cause (HWINFO), LVGL's memory figures and, in the
+      Bluetooth controller, signal strength. Their pictures (about
       60 KB) live in LVGL's drawing buffers, which must be that big: the
       Prospector module's half-screen ones are.
 
@@ -79,11 +85,11 @@ if DONGLE_SCREEN_FX
 config DONGLE_SCREEN_FX_START
     int "Screen shown after power-up, until one has been chosen"
     default 0
-    range 0 8
+    range 0 9
     help
       0 is the Prospector module's status screen; 1 and up are the
       animations, in the order &scr_next shows them (Warp, Fire, Terminal,
-      Code, Thermal, Tracker, Life, Hop). Once a screen has been chosen with
+      Code, Thermal, Tracker, Life, Hop) and 9 the Debug screen. Once a screen has been chosen with
       the keys it is saved (with CONFIG_SETTINGS) and shown instead; a
       settings reset brings this one back.
 

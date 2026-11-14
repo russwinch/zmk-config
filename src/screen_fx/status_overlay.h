@@ -1,8 +1,9 @@
 /*
  * Battery levels and the output, drawn over the dongle's animations in the
- * fonts of the Prospector module's Field screen (the module builds all its
- * fonts whichever layout is chosen; the linker keeps the ones used here), at
- * the panel's full 280x240 rather than the animation's doubled pixels.
+ * fonts of the Prospector module's Field screen, the battery levels a size
+ * up from there (the module builds all its fonts whichever layout is chosen;
+ * the linker keeps the ones used here), at the panel's full 280x240 rather
+ * than the animation's doubled pixels.
  *
  * Left battery bottom left, right battery bottom right, and between them
  * the wireless symbol with the Bluetooth profile number (nothing over USB).
@@ -21,13 +22,13 @@
 
 #include "fx.h"
 
-#define OVERLAY_ROWS 34
-#define OVERLAY_BATTERY_W 66 /* "100" */
+#define OVERLAY_ROWS 35
+#define OVERLAY_BATTERY_W 75 /* "100" */
 #define OVERLAY_OUTPUT_W 72
 #define OVERLAY_BYTES ((2 * OVERLAY_BATTERY_W + OVERLAY_OUTPUT_W) * OVERLAY_ROWS)
 
 /* On the panel: the rows the masks cover, and the output's columns. */
-#define OVERLAY_TOP 188
+#define OVERLAY_TOP 185
 #define OVERLAY_OUTPUT_X ((FX_W * 2 - OVERLAY_OUTPUT_W) / 2)
 
 /* First and last frame row (FX_H of them) the masks touch. */

@@ -12,6 +12,7 @@
 #include "fx.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #define PIXELS (FX_W * FX_H)
@@ -1456,6 +1457,284 @@ static void hop_frame(uint8_t *fb, const struct fx_input *in) {
     text(fb, FX_W - 12 - width, 6, shown, FX_WHITE);
 }
 
+/* --- debug: everything the dongle knows, as text ---------------------------- */
+
+/*
+ * Not an animation: a page of readings for finding faults with connections,
+ * switches and the firmware (README, "Debug screen"). Top to bottom: the
+ * dongle itself; a table of the three Bluetooth links; the profiles, USB
+ * and the output in use; layer, typing speed and modifiers; then the last
+ * few raw events beside a map of the keys, and the worst key bounce seen.
+ */
+
+enum { DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN, DBG_HEAT /* ..DBG_HEAT + 15 */ };
+
+static uint8_t debug_heat[40]; /* how lately each key was pressed */
+static float debug_fade;
+
+static void debug_start(uint16_t *palette) {
+    palette[DBG_BG] = rgb(0, 5, 14);
+    palette[DBG_DIM] = rgb(0, 45, 70);
+    palette[DBG_LABEL] = rgb(50, 120, 150);
+    palette[DBG_TEXT] = rgb(150, 220, 245);
+    palette[DBG_BRIGHT] = rgb(255, 255, 255);
+    palette[DBG_GOOD] = rgb(70, 235, 130);
+    palette[DBG_WARN] = rgb(255, 190, 40);
+    for (int i = 0; i < 16; i++) {
+        palette[DBG_HEAT + i] = rgb(i * 6, 45 + i * 12, 70 + i * 11);
+    }
+    memset(debug_heat, 0, sizeof(debug_heat));
+}
+
+/* Text with nothing round it. Returns the next x. */
+static int put(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
+    for (; *s; s++, x += 5) {
+        glyph(fb, x, y, *s, color);
+    }
+    return x;
+}
+
+/* The same, ending at `right`. */
+static void put_right(uint8_t *fb, int right, int y, const char *s, uint8_t color) {
+    put(fb, right - 5 * (int)strlen(s), y, s, color);
+}
+
+static void rule(uint8_t *fb, int y) { line(fb, 4, y, FX_W - 5, y, DBG_DIM); }
+
+/* Signal strength as four bars, 7 wide and 7 high. */
+static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
+    const int rssi = link->rssi;
+    const int lit = !link->up || !link->rssi_known ? 0 : rssi > -55 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : rssi > -85 ? 1 : 0;
+    const uint8_t color = lit >= 3 ? DBG_GOOD : lit == 2 ? DBG_WARN : FX_RED;
+    for (int bar = 0; bar < 4; bar++) {
+        const int high = 1 + bar * 2;
+        for (int dy = 0; dy < high; dy++) {
+            plot(fb, x + bar * 2, y + 6 - dy, bar < lit ? color : DBG_DIM);
+        }
+    }
+}
+
+/* Column right edges of the links table. */
+#define DBG_COL_LEVEL 39
+#define DBG_COL_RSSI 59
+#define DBG_COL_INTERVAL 81
+#define DBG_COL_LATENCY 96
+#define DBG_COL_DROPS 111
+#define DBG_COL_REASON 124
+#define DBG_COL_AGE 138
+
+/* One row of the table: `level` is the battery, or the output for the computer. */
+static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
+                       uint8_t level_color, int age_s) {
+    char buf[12];
+    const char label[2] = {name, '\0'};
+    put(fb, 5, y, label, link->up ? DBG_BRIGHT : FX_RED);
+    signal_bars(fb, 12, y, link);
+    put_right(fb, DBG_COL_LEVEL, y, level, level_color);
+    if (link->up) {
+        if (link->rssi_known) {
+            snprintf(buf, sizeof(buf), "%d", link->rssi);
+            put_right(fb, DBG_COL_RSSI, y, buf,
+                      link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED);
+        }
+        /* 1.25 ms units, to a tenth of a millisecond when that isn't .0 */
+        const int tenths = link->interval * 25 / 2;
+        if (tenths % 10 == 0 || tenths >= 1000) {
+            snprintf(buf, sizeof(buf), "%d", tenths / 10);
+        } else {
+            snprintf(buf, sizeof(buf), "%d.%d", tenths / 10, tenths % 10);
+        }
+        put_right(fb, DBG_COL_INTERVAL, y, buf, DBG_TEXT);
+        snprintf(buf, sizeof(buf), "%d", link->latency > 99 ? 99 : link->latency);
+        put_right(fb, DBG_COL_LATENCY, y, buf, DBG_TEXT);
+    } else {
+        put_right(fb, DBG_COL_RSSI, y, "--", FX_RED);
+    }
+    snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
+    put_right(fb, DBG_COL_DROPS, y, buf, link->drops ? DBG_WARN : DBG_LABEL);
+    if (link->reason) {
+        snprintf(buf, sizeof(buf), "%02X", link->reason);
+        put_right(fb, DBG_COL_REASON, y, buf, DBG_WARN);
+    }
+    if (age_s >= 0) {
+        snprintf(buf, sizeof(buf), "%d", age_s > 999 ? 999 : age_s);
+        put_right(fb, DBG_COL_AGE, y, buf, age_s > 600 ? DBG_WARN : DBG_TEXT);
+    }
+}
+
+static const char *reset_name(uint32_t cause) {
+    /* Zephyr's RESET_* bits, the likeliest fault first */
+    static const struct {
+        uint16_t bit;
+        const char *name;
+    } names[] = {{1 << 4, "WDOG"}, {1 << 8, "LOCK"}, {1 << 2, "BRWN"}, {1 << 1, "SOFT"},
+                 {1 << 0, "PIN"},  {1 << 7, "WAKE"}, {1 << 5, "DBG"},  {1 << 3, "POR"}};
+    for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (cause & names[i].bit) {
+            return names[i].name;
+        }
+    }
+    return cause ? "?" : "POR";
+}
+
+static void debug_frame(uint8_t *fb, const struct fx_input *in) {
+    static const struct fx_debug none;
+    const struct fx_debug *d = in->debug ? in->debug : &none;
+    char buf[32];
+
+    memset(fb, DBG_BG, PIXELS);
+
+    /* the dongle: up time, activity, this screen's speed; why it last
+     * restarted and how full LVGL's memory is */
+    int x = put(fb, 12, 4, "DBG", DBG_BRIGHT) + 5;
+    snprintf(buf, sizeof(buf), "%u:%02u:%02u", (unsigned)(d->uptime_s / 3600), (unsigned)(d->uptime_s / 60 % 60),
+             (unsigned)(d->uptime_s % 60));
+    x = put(fb, x, 4, buf, DBG_TEXT) + 5;
+    x = put(fb, x, 4, d->activity == 0 ? "ACT" : d->activity == 1 ? "IDL" : "SLP", d->activity ? DBG_WARN : DBG_GOOD) + 5;
+    snprintf(buf, sizeof(buf), "%uF %uMS", d->fps, d->frame_ms);
+    put(fb, x, 4, buf, DBG_TEXT);
+
+    x = put(fb, 7, 12, "RST", DBG_LABEL) + 3;
+    const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
+    x = put(fb, x, 12, reset_name(d->reset_cause), fault ? FX_RED : DBG_TEXT) + 3;
+    snprintf(buf, sizeof(buf), "%02X", (unsigned)(d->reset_cause & 0xff));
+    put(fb, x, 12, buf, DBG_LABEL);
+    if (d->heap_known) {
+        x = put(fb, 73, 12, "MEM", DBG_LABEL) + 3;
+        snprintf(buf, sizeof(buf), "%u%%", d->heap_used);
+        x = put(fb, x, 12, buf, d->heap_used > 90 ? FX_RED : DBG_TEXT) + 3;
+        snprintf(buf, sizeof(buf), "^%u", d->heap_peak);
+        put(fb, x, 12, buf, d->heap_peak > 95 ? FX_RED : DBG_LABEL);
+    }
+    rule(fb, 21);
+
+    /* the links */
+    put_right(fb, DBG_COL_LEVEL, 23, "BAT", DBG_LABEL);
+    put_right(fb, DBG_COL_RSSI, 23, "DBM", DBG_LABEL);
+    put_right(fb, DBG_COL_INTERVAL, 23, "MS", DBG_LABEL);
+    put_right(fb, DBG_COL_LATENCY, 23, "LT", DBG_LABEL);
+    put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
+    put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
+    put_right(fb, DBG_COL_AGE, 23, "S", DBG_LABEL);
+    for (int half = 0; half < 2; half++) {
+        const uint8_t level = in->status ? in->status->battery[half] : 0;
+        if (level) {
+            snprintf(buf, sizeof(buf), "%u", level);
+        } else {
+            strcpy(buf, "--");
+        }
+        debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
+                   level == 0 ? DBG_LABEL : level <= 15 ? FX_RED : DBG_TEXT, level ? d->battery_age_s[half] : -1);
+    }
+    const bool usb_out = in->status && in->status->usb;
+    snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
+    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, -1);
+    rule(fb, 56);
+
+    /* the five profiles: a filled circle is connected, a ring paired, a
+     * dot free; the one in use is underlined. Then USB and the output. */
+    for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
+        static const char *const shapes[3][5] = {{".....", ".....", "..o..", ".....", "....."},
+                                                 {".ooo.", "o...o", "o...o", "o...o", ".ooo."},
+                                                 {".ooo.", "ooooo", "ooooo", "ooooo", ".ooo."}};
+        const int state = d->profile_state[i] > 2 ? 2 : d->profile_state[i], cx = 6 + i * 8;
+        const bool active = in->status && in->status->profile == i;
+        for (int row = 0; row < 5; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (shapes[state][row][col] == 'o') {
+                    plot(fb, cx + col, 59 + row, state == 2 ? DBG_GOOD : state == 1 ? DBG_TEXT : DBG_LABEL);
+                }
+            }
+        }
+        if (active) {
+            line(fb, cx, 65, cx + 4, 65, DBG_BRIGHT);
+        }
+    }
+    x = put(fb, 50, 59, "USB", DBG_LABEL) + 3;
+    x = put(fb, x, 59, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--", d->usb == 2 ? DBG_GOOD : DBG_TEXT) + 6;
+    x = put(fb, x, 59, "OUT", DBG_LABEL) + 3;
+    put(fb, x, 59, usb_out ? "USB" : "BLE", in->status && in->status->host_connected ? DBG_GOOD : FX_RED);
+
+    /* layer (number, name, all that are on), typing speed */
+    snprintf(buf, sizeof(buf), "L%u", d->layer);
+    x = put(fb, 5, 68, buf, DBG_BRIGHT) + 3;
+    if (d->layer_name) {
+        snprintf(buf, sizeof(buf), "%.7s", d->layer_name);
+        for (char *c = buf; *c; c++) {
+            *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c; /* the small letters are for typed text */
+        }
+        x = put(fb, x, 68, buf, DBG_TEXT) + 3;
+    }
+    snprintf(buf, sizeof(buf), "%04X", (unsigned)(d->layers & 0xffff));
+    put(fb, x, 68, buf, DBG_LABEL);
+    snprintf(buf, sizeof(buf), "%uWPM", d->wpm);
+    put_right(fb, FX_W - 4, 68, buf, DBG_TEXT);
+
+    /* modifiers, lit while held (either side), and the presses counted */
+    static const char *const mods[] = {"CTL", "SFT", "ALT", "GUI"};
+    for (int i = 0; i < 4; i++) {
+        const bool on = (d->mods & (0x11 << i)) != 0;
+        if (on) {
+            for (int dy = -1; dy <= 7; dy++) {
+                line(fb, 4 + i * 20, 76 + dy, 4 + i * 20 + 16, 76 + dy, DBG_TEXT);
+            }
+        }
+        put(fb, 5 + i * 20, 76, mods[i], on ? DBG_BG : DBG_LABEL);
+    }
+    snprintf(buf, sizeof(buf), "N%u", (unsigned)(d->presses % 1000000));
+    put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);
+    rule(fb, 85);
+
+    /* the last raw events, the newest at the bottom and brightest */
+    for (int i = 0; i < d->n_log && i < FX_DEBUG_LOG; i++) {
+        const struct fx_event *e = &d->log[i];
+        const char who = e->source == 0 ? 'L' : e->source == 1 ? 'R' : ' ';
+        int n = snprintf(buf, sizeof(buf), "+%04u ", e->gap_ms > 9999 ? 9999 : e->gap_ms);
+        if (e->kind == 'P') {
+            snprintf(buf + n, sizeof(buf) - n, "P%02u%c %c", e->a, e->down ? 'v' : '^', who);
+        } else if (e->kind == 'K') {
+            snprintf(buf + n, sizeof(buf) - n, "K%X:%02X%c %02X", e->a & 0xf, e->b & 0xff, e->down ? 'v' : '^', e->mods);
+        } else {
+            snprintf(buf + n, sizeof(buf) - n, "E%u %+d %c", e->a, (int16_t)e->b, who);
+        }
+        put(fb, 5, 88 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
+    }
+
+    /* the keys: white while held, glowing for a moment after */
+    for (int k = 0; k < in->n_keys; k++) {
+        if (in->keys[k] < sizeof(debug_heat)) {
+            debug_heat[in->keys[k]] = 15;
+        }
+    }
+    for (int key = 0; key < 34; key++) {
+        /* the four thumb keys sit under the middle of the board */
+        const int col = key_row(key) == 3 ? key_col(key) + 3 : key_col(key);
+        const int kx = 88 + col * 5 + (col >= 5 ? 1 : 0), ky = 88 + key_row(key) * 5;
+        const bool held = (d->held >> key) & 1;
+        const uint8_t color = held ? DBG_BRIGHT : debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM;
+        for (int i = 0; i < 16; i++) {
+            plot(fb, kx + (i & 3), ky + (i >> 2), color);
+        }
+    }
+    debug_fade += in->step;
+    if (debug_fade >= 2) { /* the glow is gone in a second */
+        debug_fade = 0;
+        for (unsigned key = 0; key < sizeof(debug_heat); key++) {
+            debug_heat[key] -= debug_heat[key] > 0;
+        }
+    }
+
+    /* the quickest a key has come back down after going up: a switch that
+     * bounces shows here as a few milliseconds */
+    x = put(fb, 14, 112, "BNC", DBG_LABEL) + 3;
+    if (d->bounce_ms) {
+        snprintf(buf, sizeof(buf), "%uMS P%02u", d->bounce_ms, d->bounce_key);
+        put(fb, x, 112, buf, d->bounce_ms < 30 ? FX_RED : DBG_TEXT);
+    } else {
+        put(fb, x, 112, "--", DBG_LABEL);
+    }
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 #define RGB565(r, g, b) ((uint16_t)(((r) >> 3) << 11 | ((g) >> 2) << 5 | (b) >> 3))
@@ -1466,39 +1745,43 @@ static const struct {
     void (*start)(uint16_t *palette);
     void (*frame)(uint8_t *fb, const struct fx_input *in);
     struct fx_theme theme; /* the status text over it: see fx.h */
+    bool debug;            /* see fx_is_debug */
 } effects[] = {
     {"WARP", warp_start, warp_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}, false},
     /* the flames are behind the text when typing, and nearly white: dark
      * text, with a glow round it for when they have died down */
     {"FIRE", fire_start, fire_frame,
      {.ink = RGB565(0, 0, 0), .dim = RGB565(90, 40, 0), .accent = RGB565(0, 0, 0),
-      .search = RGB565(120, 60, 20), .low = RGB565(190, 0, 0), .halo = RGB565(255, 230, 140)}},
+      .search = RGB565(120, 60, 20), .low = RGB565(190, 0, 0), .halo = RGB565(255, 230, 140)}, false},
     {"TERMINAL", term_start, term_frame,
      {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
-      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0}},
+      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0}, false},
     {"CODE", code_start, code_frame,
      {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0}},
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0}, false},
     {"THERMAL", thermal_start, thermal_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
-      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0}},
+      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0}, false},
     {"TRACKER", tracker_start, tracker_frame,
      {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
-      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14)}},
+      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14)}, false},
     {"LIFE", life_start, life_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}, false},
     {"HOP", hop_start, hop_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
-      .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}},
+      .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}, false},
+    {"DEBUG", debug_start, debug_frame, {0}, true},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 
 int fx_count(void) { return FX_COUNT; }
 
 const char *fx_name(int fx) { return fx >= 0 && fx < FX_COUNT ? effects[fx].name : ""; }
+
+bool fx_is_debug(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].debug; }
 
 const struct fx_theme *fx_theme(int fx) { return &effects[fx >= 0 && fx < FX_COUNT ? fx : 0].theme; }
 

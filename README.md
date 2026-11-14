@@ -193,7 +193,8 @@ lines that animate as you type), change the layout line in
 #### Animated screens
 
 The **Screen +** key on the Config layer (the U key) steps the dongle from
-that status screen through eight full-screen animations and back to it;
+that status screen through eight full-screen animations, then the
+[Debug screen](#debug-screen), and back to it;
 **Screen -** (the Y key) goes the other way. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
@@ -220,7 +221,7 @@ the thumbs. The animations place a key by taking the board as 10 columns by 4
 rows, which is the Waterfowl; on the other boards it is only roughly right.
 
 Every animation shows the batteries and the output along the bottom, in the
-fonts of the module's Field screen and at the size its battery levels are
+fonts of the module's Field screen, the levels a size up from its own
 (`src/screen_fx/status_overlay.c`): the left half's level in the bottom left
 corner, the right half's in the bottom right (`-` for a half that isn't
 connected, red at 15% or under), and between them the wireless symbol with
@@ -233,6 +234,43 @@ flames behind it are bright. Tracker also has a gauge for each battery up the
 sides. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
+
+#### Debug screen
+
+The last screen in the cycle is a page of readings rather than an animation,
+for chasing connection, switch and firmware faults. It is a first pass with
+everything on it that the dongle can get at. Top to bottom:
+
+| Line | Shows |
+| --- | --- |
+| `DBG 1:12:46 ACT 10F 38MS` | time since the dongle started; `ACT`ive, `IDL`e or `SLP`; this screen's frames a second and the time one takes to draw and send |
+| `RST SOFT 02  MEM 62% ^71` | why the dongle last restarted (`POR` power on, `PIN` reset button, `SOFT` asked to, e.g. into the bootloader; in red `WDOG` watchdog, `LOCK` CPU lock-up, `BRWN` brown-out) and the raw bits; how full LVGL's memory is and the fullest it has been |
+| `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
+| profile circles, `USB`, `OUT` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type; the output in use, green when the computer is listening |
+| `L3 NAV 0009   51WPM` | the highest active layer and its name, a bit for every active layer (hex), typing speed |
+| `CTL SFT ALT GUI   N29` | modifiers, lit while held; key presses since the dongle started |
+| three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
+| key map | every key position: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle |
+| `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
+
+The link rows' columns:
+
+| Column | Shows |
+| --- | --- |
+| bars | signal strength, from `DBM` |
+| `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
+| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, below -80 is marginal |
+| `MS` | connection interval, how often the two ends talk |
+| `LT` | how many of those the other end may skip to save power |
+| `DR` | times the link has dropped since the dongle started |
+| `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
+| `S` | seconds since that half last reported its battery |
+
+The halves don't report their battery voltage to the dongle, only the percent,
+so there is no voltage here. Key timings are taken when an event reaches the
+dongle, and a half sends at most once per connection interval, so a bounce
+shorter than that (7.5 ms) can't be seen from here. The counts start again
+when the dongle restarts.
 
 Only the dongle needs flashing to change these (the keymap and the screen
 code both live there): pick the build in
