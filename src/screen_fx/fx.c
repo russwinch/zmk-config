@@ -203,6 +203,8 @@ static const uint8_t font[][7] = {
     {0x0a, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ~ */
 };
 
+const uint8_t *fx_glyph_rows(char c) { return c < ' ' || c > '~' ? NULL : font[c - ' ']; }
+
 static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
     if (c < ' ' || c > '~') {
         return;
@@ -409,6 +411,11 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- fire: embers when idle, a wall of flame at full speed ----------------- */
 
+/* The flames are too bright to read anything over, so they burn above a
+ * black bar along the bottom that the status text sits in (the theme's
+ * `drop` puts it there). */
+#define FIRE_BAR 17
+
 static void fire_start(uint16_t *palette) {
     /* white only at the very top, which just the keys' hot spots reach: the
      * flames themselves stop at yellow, so they keep their shape at speed */
@@ -451,7 +458,8 @@ static void fire_frame(uint8_t *fb, const struct fx_input *in) {
             }
         }
     }
-    memcpy(fb, canvas, PIXELS);
+    memcpy(fb, canvas + FIRE_BAR * FX_W, PIXELS - FIRE_BAR * FX_W);
+    memset(fb + PIXELS - FIRE_BAR * FX_W, 0, FIRE_BAR * FX_W);
 }
 
 /* --- terminal: what you type, in green, fading away ------------------------ */
@@ -830,7 +838,8 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
  * its column. The figure top right is the range of the nearest.
  *
  * It adds a gauge for each half's battery up the sides, over the level that
- * every animation has in its bottom corner.
+ * every animation has in its bottom corner: here in the small letters, and
+ * moved down clear of the line across the bottom.
  */
 
 #define TRACK_CX (FX_W / 2)
@@ -1739,6 +1748,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
 #define RGB565(r, g, b) ((uint16_t)(((r) >> 3) << 11 | ((g) >> 2) << 5 | (b) >> 3))
 #define LOW_RED RGB565(255, 70, 50)
+#define FIRE_DROP 16  /* the text's foot 9 rows from the bottom of the panel */
+#define TRACK_DROP 12 /* under the line at TRACK_CY */
 
 static const struct {
     const char *name;
@@ -1750,23 +1761,23 @@ static const struct {
     {"WARP", warp_start, warp_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
       .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}, false},
-    /* the flames are behind the text when typing, and nearly white: dark
-     * text, with a glow round it for when they have died down */
+    /* in the black bar under the flames (FIRE_BAR) */
     {"FIRE", fire_start, fire_frame,
-     {.ink = RGB565(0, 0, 0), .dim = RGB565(90, 40, 0), .accent = RGB565(0, 0, 0),
-      .search = RGB565(120, 60, 20), .low = RGB565(190, 0, 0), .halo = RGB565(255, 230, 140)}, false},
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(255, 170, 40),
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .drop = FIRE_DROP}, false},
     {"TERMINAL", term_start, term_frame,
      {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
-      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0}, false},
+      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}, false},
     {"CODE", code_start, code_frame,
      {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0}, false},
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}, false},
     {"THERMAL", thermal_start, thermal_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
-      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0}, false},
+      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0, .font = FX_FONT_PIXEL}, false},
     {"TRACKER", tracker_start, tracker_frame,
      {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
-      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14)}, false},
+      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14), .font = FX_FONT_PIXEL,
+      .drop = TRACK_DROP}, false},
     {"LIFE", life_start, life_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
       .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}, false},

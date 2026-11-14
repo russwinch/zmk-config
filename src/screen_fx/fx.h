@@ -46,7 +46,12 @@ struct fx_theme {
     uint16_t search; /* the symbol when it isn't: this one pulses */
     uint16_t low;    /* a battery that is nearly flat */
     uint16_t halo;   /* around all of it: dark for light text, light for dark */
+    uint8_t font;    /* FX_FONT_FIELD, or FX_FONT_PIXEL where the picture has letters of its own */
+    uint8_t drop;    /* panel rows to move it all down by (and two thirds of that in from the sides) */
 };
+
+#define FX_FONT_FIELD 0 /* the Prospector module's Field screen fonts */
+#define FX_FONT_PIXEL 1 /* the animations' own 5x7 letters, three panel pixels to a dot */
 
 /* --- what the Debug screen shows -------------------------------------------- */
 
@@ -112,6 +117,10 @@ int fx_count(void);
 const char *fx_name(int fx);
 
 const struct fx_theme *fx_theme(int fx);
+
+/* The 7 rows of a character in the animations' letters (top first, left dot
+ * in bit 4), or NULL if there is none. */
+const uint8_t *fx_glyph_rows(char c);
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text or banner over it. */

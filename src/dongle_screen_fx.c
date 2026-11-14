@@ -296,7 +296,7 @@ static void show_frame(void) {
     for (int top = 0; top < FX_H; top += BAND_ROWS) {
         int x0 = 0, x1 = FX_W - 1;
         const bool text =
-            overlay && !is_debug && top <= OVERLAY_FRAME_ROW1 && top + BAND_ROWS > OVERLAY_FRAME_ROW0;
+            overlay && !is_debug && top <= overlay_frame_row1() && top + BAND_ROWS > overlay_frame_row0();
 
         if (!redraw_all) {
             /* the columns this band differs in */

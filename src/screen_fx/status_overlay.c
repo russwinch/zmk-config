@@ -1,7 +1,8 @@
 /*
  * See status_overlay.h. The fonts, sizes and the way the output is laid out
  * are the Field layout's (prospector-zmk-module, src/layouts/field/
- * battery_label.c and output.c).
+ * battery_label.c and output.c), except that a theme can ask for the numbers
+ * in the animations' own letters.
  *
  * A mask byte is a colour number (high four bits) and how solid the pixel is
  * (low four: the fonts have 16 levels). Colour 0 is the halo around the text
@@ -31,6 +32,7 @@ LV_FONT_DECLARE(Symbols_Bold_26);
 #define OUTPUT_BOX ((PANEL_W - 68) / 2) /* the Field output box, 68 x 34 */
 #define LINE_BOTTOM 220
 #define LOW_BATTERY 15
+#define PIXEL_SCALE 3 /* FX_FONT_PIXEL: panel pixels to a dot (the animations' own text has 2) */
 
 enum {
     HALO,
@@ -45,8 +47,18 @@ enum {
 /* RGB565 */
 static uint16_t colors[COLORS];
 static int pulse = OVERLAY_PULSE_MAX;
+static bool pixel_font;
+static int drop, inset; /* panel rows down, and columns in from the sides */
+
+int overlay_frame_row0(void) { return (OVERLAY_TOP + drop) / 2; }
+int overlay_frame_row1(void) { return (OVERLAY_TOP + drop + OVERLAY_ROWS - 1) / 2; }
 
 void overlay_set_theme(const struct fx_theme *theme) {
+    pixel_font = theme->font == FX_FONT_PIXEL;
+    /* no lower than the panel */
+    drop = theme->drop < FX_H * 2 - OVERLAY_TOP - OVERLAY_ROWS ? theme->drop : FX_H * 2 - OVERLAY_TOP - OVERLAY_ROWS;
+    /* in from the sides too: the panel's corners are round */
+    inset = drop * 2 / 3;
     colors[HALO] = theme->halo;
     colors[INK] = theme->ink;
     colors[DIM] = theme->dim;
@@ -78,7 +90,7 @@ struct area {
 
 static void put(const struct area *area, int x, int y, uint8_t color, uint8_t alpha) {
     x -= area->x;
-    y -= OVERLAY_TOP;
+    y -= OVERLAY_TOP + drop;
     if (alpha == 0 || (unsigned)x >= (unsigned)area->width || (unsigned)y >= OVERLAY_ROWS) {
         return;
     }
@@ -129,6 +141,27 @@ static int draw_text(const struct area *area, const lv_font_t *font, const char 
     return width;
 }
 
+/* The same in the animations' 5x7 letters, `scale` panel pixels to a dot,
+ * the top of the letters at `top`. */
+static int draw_pixel_text(const struct area *area, const char *s, int x, int top, int scale, uint8_t color,
+                           bool draw) {
+    int width = 0;
+    for (; *s; s++, width += 5 * scale) {
+        const uint8_t *rows = fx_glyph_rows(*s);
+        if (!draw || rows == NULL) {
+            continue;
+        }
+        for (int row = 0; row < 7 * scale; row++) {
+            for (int col = 0; col < 5 * scale; col++) {
+                if (rows[row / scale] & (0x10 >> col / scale)) {
+                    put(area, x + width + col, top + row, color, 15);
+                }
+            }
+        }
+    }
+    return width - scale; /* less the last letter's gap */
+}
+
 /* The halo around the text: full up to two pixels from it, half at three. */
 static void add_shadow(const struct area *area) {
     for (int y = 0; y < OVERLAY_ROWS; y++) {
@@ -176,23 +209,30 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected) {
 }
 
 bool overlay_render(const struct fx_status *status) {
-    const struct area left = {left_mask, LEFT_X, OVERLAY_BATTERY_W};
-    const struct area right = {right_mask, RIGHT_X, OVERLAY_BATTERY_W};
+    const struct area left = {left_mask, LEFT_X + inset, OVERLAY_BATTERY_W};
+    const struct area right = {right_mask, RIGHT_X - inset, OVERLAY_BATTERY_W};
     const struct area output = {output_mask, OVERLAY_OUTPUT_X, OVERLAY_OUTPUT_W};
     memset(left_mask, 0, OVERLAY_BYTES);
 
+    /* everything stands on the line the Field screen's smaller levels do */
+    const int line_bottom = LINE_BOTTOM + drop, foot = line_bottom - 5;
     const lv_font_t *font = &FR_Regular_36;
-    /* on the baseline the Field screen's smaller levels have */
-    const int top = LINE_BOTTOM - 5 - (font->line_height - font->base_line);
+    const int top = foot - (font->line_height - font->base_line);
+    const int pixel_top = foot - 6 * PIXEL_SCALE; /* the digits leave the 7th row empty */
     char level[4];
-    uint8_t color = level_text(level, status->battery[0], status->half_connected[0]);
-    draw_text(&left, font, level, SIDE, top, -1, color, true);
-    add_shadow(&left);
-
-    color = level_text(level, status->battery[1], status->half_connected[1]);
-    const int wide = draw_text(&right, font, level, 0, 0, -1, 0, false);
-    draw_text(&right, font, level, PANEL_W - SIDE - wide, top, -1, color, true);
-    add_shadow(&right);
+    for (int half = 0; half < 2; half++) {
+        const struct area *area = half ? &right : &left;
+        const uint8_t color = level_text(level, status->battery[half], status->half_connected[half]);
+        const int wide = pixel_font ? draw_pixel_text(area, level, 0, 0, PIXEL_SCALE, 0, false)
+                                    : draw_text(area, font, level, 0, 0, -1, 0, false);
+        const int x = half ? PANEL_W - SIDE - inset - wide : SIDE + inset;
+        if (pixel_font) {
+            draw_pixel_text(area, level, x, pixel_top, PIXEL_SCALE, color, true);
+        } else {
+            draw_text(area, font, level, x, top, -1, color, true);
+        }
+        add_shadow(area);
+    }
 
     /* The output, as the Field screen has it: nothing over USB; on Bluetooth
      * the waves and the profile number, laid out as in its 68 x 34 box (the
@@ -204,16 +244,22 @@ bool overlay_render(const struct fx_status *status) {
     const bool solid = status->host_connected;
     const lv_font_t *symbols = solid ? &Symbols_Bold_26 : &Symbols_Regular_28;
     /* both symbol fonts end up on the same baseline, one above the number's */
-    const int symbol_top = LINE_BOTTOM - 7 - (symbols->line_height - symbols->base_line);
+    const int symbol_top = line_bottom - 7 - (symbols->line_height - symbols->base_line);
     const int symbol_wide = draw_glyph(&output, symbols, SYMBOL_WAVES_UP, 0, 0, 0, 0, false);
     draw_glyph(&output, symbols, SYMBOL_WAVES_UP, 0, OUTPUT_BOX + 8 + (30 - symbol_wide) / 2, symbol_top,
                solid ? ACCENT : SEARCH, true);
 
     const char number[2] = {(char)('0' + status->profile % 10), '\0'};
-    const int number_top = LINE_BOTTOM - 6 - (FG_Medium_26.line_height - FG_Medium_26.base_line);
-    const int number_wide = draw_text(&output, &FG_Medium_26, number, 0, 0, 0, 0, false);
-    draw_text(&output, &FG_Medium_26, number, OUTPUT_BOX + 68 - 5 - number_wide, number_top, 0,
-              solid ? INK : DIM, true);
+    if (pixel_font) {
+        const int number_wide = draw_pixel_text(&output, number, 0, 0, PIXEL_SCALE, 0, false);
+        draw_pixel_text(&output, number, OUTPUT_BOX + 68 - 5 - number_wide, pixel_top, PIXEL_SCALE,
+                        solid ? INK : DIM, true);
+    } else {
+        const int number_top = line_bottom - 6 - (FG_Medium_26.line_height - FG_Medium_26.base_line);
+        const int number_wide = draw_text(&output, &FG_Medium_26, number, 0, 0, 0, 0, false);
+        draw_text(&output, &FG_Medium_26, number, OUTPUT_BOX + 68 - 5 - number_wide, number_top, 0,
+                  solid ? INK : DIM, true);
+    }
     add_shadow(&output);
     return !solid;
 }
@@ -252,13 +298,13 @@ static void blend(uint16_t *pixels, const uint8_t *mask, int count) {
 }
 
 void overlay_blend_row(uint16_t *pixels, int x, int y, int count) {
-    y -= OVERLAY_TOP;
+    y -= OVERLAY_TOP + drop;
     if ((unsigned)y >= OVERLAY_ROWS) {
         return;
     }
     const struct area areas[] = {
-        {left_mask, LEFT_X, OVERLAY_BATTERY_W},
-        {right_mask, RIGHT_X, OVERLAY_BATTERY_W},
+        {left_mask, LEFT_X + inset, OVERLAY_BATTERY_W},
+        {right_mask, RIGHT_X - inset, OVERLAY_BATTERY_W},
         {output_mask, OVERLAY_OUTPUT_X, OVERLAY_OUTPUT_W},
     };
     for (int a = 0; a < 3; a++) {

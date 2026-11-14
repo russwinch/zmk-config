@@ -229,9 +229,12 @@ the Bluetooth profile number (counted from 0, as the Field screen does). The sym
 is in the animation's colour when the computer is connected and pulses grey
 when it isn't; over USB there is no symbol at all. The text's colours are set
 per animation (the `theme` in the list at the end of `src/screen_fx/fx.c`):
-light with a dark edge on most, black with a pale glow on Fire, where the
-flames behind it are bright. Tracker also has a gauge for each battery up the
-sides. The screen to start on
+light with a dark edge. The theme also says which letters the numbers are in
+and how low they sit: Terminal, Code, Thermal and Tracker have them in the
+animations' own small pixel letters, a size down from the Field font; on Fire
+the flames burn above a black bar along the bottom that holds the text; and
+on Tracker it sits under the line across the bottom, with a gauge for each
+battery up the sides. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 
