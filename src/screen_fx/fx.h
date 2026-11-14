@@ -38,6 +38,9 @@ struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
     bool host_connected;    /* the computer */
+    bool usb;               /* typing over USB, not Bluetooth */
+    bool host_open;         /* Bluetooth: nothing paired on this profile */
+    uint8_t profile;        /* Bluetooth: profile number, from 0 */
     char host[4];           /* "USB", "BT1".. */
 };
 
@@ -54,5 +57,7 @@ void fx_start(int fx, uint16_t *palette);
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);
 
-/* Battery and connection text over the frame; `banner` (or NULL) top left. */
+/* Battery and connection text over the frame (`status` NULL: leave it out,
+ * the dongle draws its own, src/screen_fx/status_overlay.c); `banner` (or
+ * NULL) top left. */
 void fx_draw_status(uint8_t *fb, const struct fx_status *status, const char *banner);

@@ -202,9 +202,14 @@ Warp's comets are cyan for the left hand, amber for the right and magenta for
 the thumbs. The animations place a key by taking the board as 10 columns by 4
 rows, which is the Waterfowl; on the other boards it is only roughly right.
 
-Each shows both batteries bottom left (`L85 R80`; red at 15% or less, `--` in
-red when that half isn't connected) and the output bottom right (`USB` or
-`BT1`..; red when the computer isn't connected). The screen to start on after
+Each shows the batteries and the output along the bottom as the Field screen
+draws them, in its fonts and colours: both levels bottom left (`85/80`, left
+then right; `-` for a half that isn't connected), and bottom right the
+wireless symbol with the Bluetooth profile number (counted from 0, as on the
+Field screen), or a link symbol for USB. The symbol is cyan when the computer
+is connected, grey when not. With another layout chosen its fonts aren't in
+the firmware, and the animations fall back to small text of their own
+(`L85 R80`, `USB` or `BT1`..; red for low, missing or not connected). The screen to start on after
 power-up and the typing speed that counts as flat out are set in
 `config/<keyboard>_dongle.conf`.
 
@@ -216,7 +221,8 @@ code both live there): pick the build in
 The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 `tools/fx_preview.py` can run it on a computer and save each animation as a
 GIF in `fx_preview_out/` (needs gcc and Pillow): the quick way to try a change
-or a new animation. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
+or a new animation. Its GIFs show the small fallback status text, not the
+Field one (`src/screen_fx/status_overlay.c`, which needs the module's fonts). On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
 empty screen and writes the frames straight to the panel, a quarter of the
 pixels doubled up. The dongle has no RAM to spare for the pictures, so they
 are kept in one of LVGL's drawing buffers, idle while its screen is parked.
