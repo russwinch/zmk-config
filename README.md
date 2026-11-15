@@ -195,19 +195,19 @@ layout line there picks Classic, Radii or Field instead.
 #### Animated screens
 
 The **Screen next** key on the Config layer (the U key) steps the dongle
-through four full-screen animations, then the Keys screen and the
-[Debug screen](#debug-screen), and round again; **Screen prev** (the Y key)
+through the Keys screen, the [Debug screen](#debug-screen) and three
+full-screen animations, and round again; **Screen prev** (the Y key)
 goes the other way. It starts on Keys. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
-| 2 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
-| 3 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 4 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
-| 5 | Keys | the three links, a picture of the keys, and how busy it is: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 1 | Keys | the three links, a picture of the keys and the typing speed: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 2 | Debug | a page of readings: [see below](#debug-screen) | |
+| 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
+| 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
+| 5 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Config layer's
@@ -225,8 +225,7 @@ The first key starts the way back, which then runs its 9 seconds
 whether or not you keep typing: the screensaver reacts to the typing, starts
 to glitch lightly after 2 seconds and harder and harder until, in the last
 second, the screen you had cuts back in through it block by block. An
-animation that comes back starts afresh:
-Hop's stars are counted from none again. The wait is
+animation that comes back starts afresh. The wait is
 `CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver, the power key's
 included).
 
@@ -242,10 +241,10 @@ when it is plugged in.
 | Part | Shows |
 | --- | --- |
 | top left, top right | the left and the right half: battery percent (red at 10% or under, flashing at 5% or under, `--` when not known), signal strength as bars and in dBm (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds |
-| top middle | the computer: the output in use (`BT0`...`BT4` or `USB`), green when the computer is listening and red when it isn't; the signal of the Bluetooth link to it, the same way |
+| top middle, on Bluetooth | the computer: the profile in use (`BT0`...`BT4`), green when the computer is connected and red when it isn't; the signal of the link to it, the same way |
+| top middle, over USB | `USB`, green when the computer is listening; what the port is doing (`READY` to type, `ASLEEP` when the computer has suspended it, `POWER` when it is only being powered); and the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the selected one underlined). USB has no signal to measure |
 | the keys | every key position of the keyboard the dongle is built for |
-| under the keys, left and right | each hand's key presses a second over the last 45 seconds, moving along a place a second; between them the typing speed |
-| bottom line | the last key event (`+0142 P27v R`: 142 ms after the one before, position 27 went down, from the right half), the key presses counted since the dongle started, and how long this screen takes to draw and send a frame |
+| under the keys | the typing speed: the figure on the left, the fastest of the last two minutes on the right (`^90`), and a chart of those two minutes that moves along a place a second, a mark on its line every ten seconds. The chart's height is 60 wpm, or that fastest if it is more |
 
 The battery levels and the output aren't drawn along the bottom of this
 screen as they are over the animations: they are in the blocks at the top.
@@ -295,7 +294,7 @@ before one has been chosen and the typing speed that counts as flat out are set 
 
 #### Debug screen
 
-The last screen in the cycle is a page of readings rather than an animation,
+The second screen is a page of readings rather than an animation,
 for chasing connection, switch and firmware faults. It is a first pass with
 everything on it that the dongle can get at. Top to bottom:
 
@@ -340,7 +339,7 @@ The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 GIF in `fx_preview_out/` (needs gcc, git and Pillow): the quick way to try a
 change or a new animation. The status text is drawn as on the dongle; its
 fonts are fetched from the Prospector module the first time.
-`tools/fx_preview.py --saver hop` saves each screensaver coming over that
+`tools/fx_preview.py --saver thermal` saves each screensaver coming over that
 animation and going again, and `--power keys` the panel going off and
 coming back on. Only one animation can run at a time (they share
 their memory), so the other picture in a transition is a still: the last

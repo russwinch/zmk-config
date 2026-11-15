@@ -50,6 +50,7 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/hwinfo.h>
+#include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/sys/atomic.h>
@@ -338,6 +339,7 @@ static void read_debug(uint32_t now) {
     d->wpm = (uint16_t)atomic_get(&wpm);
     read_keys(d);
     d->usb = (uint8_t)zmk_usb_get_conn_state();
+    d->usb_asleep = zmk_usb_get_status() == USB_DC_SUSPEND;
     for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
         d->profile_state[i] = i >= ZMK_BLE_PROFILE_COUNT || zmk_ble_profile_is_open(i) ? 0
                               : zmk_ble_profile_is_connected(i) ? 2 : 1;

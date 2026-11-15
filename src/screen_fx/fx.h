@@ -96,6 +96,7 @@ struct fx_debug {
     uint16_t battery_age_s[2]; /* since each half last reported its level */
     uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */
+    bool usb_asleep;      /* the computer has suspended the port: it is asleep */
     uint8_t layer;        /* the highest one active */
     const char *layer_name; /* or NULL */
     uint32_t layers;      /* a bit for each active layer */

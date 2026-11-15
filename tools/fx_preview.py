@@ -7,7 +7,7 @@ draw, without flashing anything:
 
     tools/fx_preview.py              # every animation -> fx_preview_out/*.gif
     tools/fx_preview.py --fps 30     # what a faster screen link would give
-    tools/fx_preview.py --saver hop  # the screensaver coming over Hop, and going
+    tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
     tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
 
 The battery levels and the output are drawn over them as on the dongle

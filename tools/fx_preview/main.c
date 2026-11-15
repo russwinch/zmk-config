@@ -236,6 +236,7 @@ int main(int argc, char **argv) {
         debug.wpm = (uint16_t)wpm;
         debug.host.up = status.host_connected && !status.usb;
         debug.usb = status.usb ? 2 : 1;
+        debug.usb_asleep = at >= 0.94f;
         /* readings that wander, as the real ones do */
         key_seed = key_seed * 1103515245 + 12345;
         debug.frame_ms = (uint8_t)(36 + (key_seed >> 16) % 5);

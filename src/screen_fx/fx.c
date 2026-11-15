@@ -1316,356 +1316,6 @@ static void life_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
-/* --- hop: a little creature running through a platform game ---------------- */
-
-/*
- * It runs by itself, slowly when idle and fast at speed, and jumps the
- * ponds, rocks, logs and bushes in its way, picking up the stars over them
- * (counted top right). Each key plants a flower under its column and, when
- * nothing is coming, gets a little hop out of it. Clouds, two rows of hills
- * and the ground scroll at different speeds.
- *
- * Places in the world are whole pixels, 24 bits that wrap; hop_at() says
- * where one is on the screen.
- */
-
-enum {
-    HOP_NONE, /* see-through, in a sprite */
-    HOP_SKY,  /* 6 shades, top to horizon */
-    HOP_SUN = HOP_SKY + 6,
-    HOP_SUN_RIM,
-    HOP_CLOUD,
-    HOP_CLOUD_SHADE,
-    HOP_HILL_FAR,
-    HOP_HILL_NEAR,
-    HOP_GRASS_TOP,
-    HOP_GRASS,
-    HOP_DIRT,
-    HOP_DIRT_DARK,
-    HOP_WATER,
-    HOP_WATER_LIGHT,
-    HOP_ROCK,
-    HOP_ROCK_LIGHT,
-    HOP_ROCK_DARK,
-    HOP_WOOD,
-    HOP_WOOD_LIGHT,
-    HOP_LEAF,
-    HOP_LEAF_DARK,
-    HOP_BERRY,
-    HOP_OUTLINE,
-    HOP_BODY,
-    HOP_BELLY,
-    HOP_CHEEK,
-    HOP_FEET,
-    HOP_STAR,
-    HOP_STAR_LIGHT,
-    HOP_FLOWER, /* 4 colours */
-};
-
-#define HOP_GROUND 92 /* the top of the grass */
-#define HOP_X 30      /* the creature's left edge */
-#define HOP_WIDE 12
-#define HOP_COLUMNS 32 /* of 8 pixels: the screen is 18 */
-#define HOP_FLOWERS 12
-
-enum { HOP_FLAT, HOP_POND, HOP_ROCKS, HOP_LOG, HOP_BUSH };
-
-static struct {
-    uint8_t kind, star;
-} hop_column[HOP_COLUMNS];
-static struct {
-    uint32_t at;
-    uint8_t color, grown;
-} hop_flower[HOP_FLOWERS];
-static uint32_t hop_pos;   /* the left of the screen, in 256ths of a pixel */
-static uint32_t hop_made;  /* the next column to make up */
-static int hop_clear, hop_more; /* columns before the next thing; pond still to come */
-static bool hop_jumping;
-static uint32_t hop_jump_from;
-static int hop_jump_far, hop_jump_high;
-static int hop_stars, hop_next_flower;
-static float hop_sparkle, hop_time;
-
-/* Where a place in the world is across the screen (can be off either side). */
-static inline int hop_at(uint32_t place) { return (int32_t)((place - (hop_pos >> 8)) << 8) >> 8; }
-
-static void hop_start(uint16_t *palette) {
-    static const uint8_t colors[][3] = {
-        [HOP_SKY] = {70, 150, 255},       {95, 170, 255},  {120, 190, 255}, {150, 210, 255}, {180, 225, 255}, {210, 240, 255},
-        [HOP_SUN] = {255, 240, 120},      [HOP_SUN_RIM] = {255, 215, 70},
-        [HOP_CLOUD] = {255, 255, 255},    [HOP_CLOUD_SHADE] = {215, 232, 250},
-        [HOP_HILL_FAR] = {130, 205, 170}, [HOP_HILL_NEAR] = {90, 190, 110},
-        [HOP_GRASS_TOP] = {150, 235, 90}, [HOP_GRASS] = {70, 190, 70},
-        [HOP_DIRT] = {190, 125, 70},      [HOP_DIRT_DARK] = {150, 90, 50},
-        [HOP_WATER] = {40, 120, 230},     [HOP_WATER_LIGHT] = {150, 215, 255},
-        [HOP_ROCK] = {150, 150, 165},     [HOP_ROCK_LIGHT] = {200, 200, 215}, [HOP_ROCK_DARK] = {105, 105, 125},
-        [HOP_WOOD] = {150, 95, 45},       [HOP_WOOD_LIGHT] = {225, 180, 115},
-        [HOP_LEAF] = {40, 160, 60},       [HOP_LEAF_DARK] = {20, 110, 45},    [HOP_BERRY] = {235, 50, 70},
-        [HOP_OUTLINE] = {70, 35, 30},     [HOP_BODY] = {255, 150, 50},        [HOP_BELLY] = {255, 235, 190},
-        [HOP_CHEEK] = {255, 120, 150},    [HOP_FEET] = {210, 90, 30},
-        [HOP_STAR] = {255, 215, 40},      [HOP_STAR_LIGHT] = {255, 250, 190},
-        [HOP_FLOWER] = {255, 90, 120},    {255, 255, 255}, {190, 120, 255}, {255, 170, 40},
-    };
-    for (unsigned i = 0; i < sizeof(colors) / sizeof(colors[0]); i++) {
-        palette[i] = rgb(colors[i][0], colors[i][1], colors[i][2]);
-    }
-    memset(hop_column, 0, sizeof(hop_column));
-    memset(hop_flower, 0, sizeof(hop_flower));
-    hop_pos = hop_made = 0;
-    hop_clear = 20;
-    hop_more = 0;
-    hop_jumping = false;
-    hop_stars = 0;
-    hop_sparkle = hop_time = 0;
-}
-
-/* A sprite drawn as text, a letter a pixel; `tint` is the colour for 'c'. */
-static void hop_sprite(uint8_t *fb, int x, int y, const char *const *rows, int n, uint8_t tint) {
-    for (int row = 0; row < n; row++) {
-        for (int col = 0; rows[row][col]; col++) {
-            uint8_t c;
-            switch (rows[row][col]) {
-            case 'k': c = HOP_OUTLINE; break;
-            case 'o': c = HOP_BODY; break;
-            case 'b': c = HOP_BELLY; break;
-            case 'p': c = HOP_CHEEK; break;
-            case 'f': c = HOP_FEET; break;
-            case 'W': c = FX_WHITE; break;
-            case 'K': c = FX_BLACK; break;
-            case 'w': c = HOP_CLOUD; break;
-            case 's': c = HOP_CLOUD_SHADE; break;
-            case 'g': c = HOP_ROCK; break;
-            case 'G': c = HOP_ROCK_LIGHT; break;
-            case 'd': c = HOP_ROCK_DARK; break;
-            case 'n': c = HOP_WOOD; break;
-            case 'N': c = HOP_WOOD_LIGHT; break;
-            case 'l': c = HOP_LEAF; break;
-            case 'L': c = HOP_LEAF_DARK; break;
-            case 'r': c = HOP_BERRY; break;
-            case 'y': c = HOP_STAR; break;
-            case 'Y': c = HOP_STAR_LIGHT; break;
-            case 'c': c = tint; break;
-            default: continue;
-            }
-            plot(fb, x + col, y + row, c);
-        }
-    }
-}
-
-static const char *const hop_body[] = {
-    "..kk....kk..",
-    ".kook..kook.",
-    ".kooookoook.",
-    "kooooooooook",
-    "koooWKooWKok",
-    "koooWKooWKok",
-    "kopoooooopok",
-    "koobbbbbbook",
-    ".kobbbbbbok.",
-    "..kkkkkkkk..",
-};
-static const char *const hop_blink[] = {"kooooooooook", "kookkkookkok"};
-static const char *const hop_feet[][2] = {
-    {"..ff....ff..", "............"}, /* standing */
-    {".ff......ff.", "............"}, /* striding */
-    {"...ff..ff...", "............"}, /* tucked up */
-};
-static const char *const hop_cloud[] = {
-    "....www...........", "..wwwwwww..www....", ".wwwwwwwwwwwwwww..",
-    "wwwwwwwwwwwwwwwwww", "swwwwwwwwwwwwwwwws", ".sssssssssssssss..",
-};
-static const char *const hop_rock[] = {"..gGGg..", ".gGGggg.", "gGGggggd", "gGgggggd", "gggggddd", "ggggdddd", "gdgddddd"};
-static const char *const hop_log[] = {".nnnnnn.", "nNNnnnnn", "nNnNnnnn", "nNNnnnnn", "nnnnnnnn", ".nnnnnn."};
-static const char *const hop_bush[] = {"..l..l..", ".lll.ll.", "lllrlllL", "llllllLL", "lrllLlrL", "lllLLLLL", ".lLLLLL."};
-static const char *const hop_star[] = {"...y...", "..yYy..", "yyyYyyy", ".yYYYy.", "..yYy..", ".yy.yy.", "y.....y"};
-static const char *const hop_bloom[] = {".c.", "cyc", ".c."};
-
-static void hop_make_column(float energy) {
-    uint8_t kind = HOP_FLAT, star = 0;
-    if (hop_more > 0) {
-        kind = HOP_POND;
-        hop_more--;
-    } else if (hop_clear > 0) {
-        hop_clear--;
-    } else {
-        const uint32_t r = rnd();
-        kind = r % 10 < 3 ? HOP_POND : HOP_ROCKS + (r >> 4) % 3;
-        /* wider ponds once it is moving */
-        hop_more = kind == HOP_POND && energy > 0.35f && (r & 0x100) ? 1 : 0;
-        star = (r >> 10) % 3 != 0;
-        hop_clear = 5 + (int)((r >> 12) % 7);
-    }
-    hop_column[hop_made % HOP_COLUMNS].kind = kind;
-    hop_column[hop_made % HOP_COLUMNS].star = star;
-    hop_made++;
-}
-
-static void hop_frame(uint8_t *fb, const struct fx_input *in) {
-    hop_time += in->step;
-    hop_pos += (uint32_t)((0.7f + in->energy * 3.0f) * in->step * 256);
-    const uint32_t left = hop_pos >> 8, me = left + HOP_X;
-
-    while (hop_at(hop_made * 8) < FX_W + 24) {
-        hop_make_column(in->energy);
-    }
-
-    /* the jump: its shape is fixed by where it must land, so a change of
-     * speed in the air can't drop it short */
-    int lift = 0;
-    if (hop_jumping) {
-        const int gone = hop_at(me) - hop_at(hop_jump_from);
-        if (gone >= hop_jump_far) {
-            hop_jumping = false;
-        } else {
-            lift = 4 * hop_jump_high * gone * (hop_jump_far - gone) / (hop_jump_far * hop_jump_far);
-        }
-    }
-    if (!hop_jumping) {
-        /* the first thing in the way within 5 columns of its nose */
-        const uint32_t nose = me + HOP_WIDE;
-        int ahead = -1;
-        for (int i = 0; i < 6 && ahead < 0; i++) {
-            if (hop_column[(nose / 8 + i) % HOP_COLUMNS].kind != HOP_FLAT) {
-                ahead = i;
-            }
-        }
-        if (ahead >= 0) {
-            uint32_t starts = (nose / 8 + ahead) * 8, ends = starts + 8;
-            while (hop_column[(ends / 8) % HOP_COLUMNS].kind != HOP_FLAT) {
-                ends += 8;
-            }
-            if (hop_at(starts) - hop_at(nose) <= 7) {
-                hop_jumping = true;
-                hop_jump_from = me;
-                hop_jump_far = hop_at(ends) + 5 - hop_at(me);
-                hop_jump_high = hop_jump_far * 6 / 10;
-                hop_jump_high = hop_jump_high < 16 ? 16 : hop_jump_high > 27 ? 27 : hop_jump_high;
-            }
-        } else if (in->n_keys) {
-            hop_jumping = true; /* a hop for the key */
-            hop_jump_from = me;
-            hop_jump_far = 16;
-            hop_jump_high = 7;
-        }
-    }
-
-    /* each key plants a flower under its column, if there is ground there */
-    for (int k = 0; k < in->n_keys; k++) {
-        const uint32_t at = left + key_x(in->keys[k]);
-        if (hop_column[(at / 8) % HOP_COLUMNS].kind == HOP_FLAT) {
-            hop_next_flower = (hop_next_flower + 1) % HOP_FLOWERS;
-            hop_flower[hop_next_flower].at = at;
-            hop_flower[hop_next_flower].color = HOP_FLOWER + rnd() % 4;
-            hop_flower[hop_next_flower].grown = 1;
-        }
-    }
-
-    /* sky, sun, clouds */
-    for (int y = 0; y < HOP_GROUND; y++) {
-        memset(&fb[y * FX_W], HOP_SKY + y * 6 / HOP_GROUND, FX_W);
-    }
-    for (int y = -8; y <= 8; y++) {
-        for (int x = -8; x <= 8; x++) {
-            if (x * x + y * y <= 64) {
-                plot(fb, 112 + x, 22 + y, x * x + y * y <= 42 ? HOP_SUN : HOP_SUN_RIM);
-            }
-        }
-    }
-    for (int i = 0; i < 3; i++) {
-        static const uint8_t cloud_x[] = {20, 95, 160}, cloud_y[] = {10, 30, 17};
-        hop_sprite(fb, (int)((cloud_x[i] - left / 6) % 200) - 30, cloud_y[i], hop_cloud, 6, 0);
-    }
-
-    /* hills, far and near */
-    for (int x = 0; x < FX_W; x++) {
-        const float far = (x + (left / 4) % 4096) * 0.0491f, near = (x + (left / 2) % 4096) * 0.0736f;
-        const int far_top = HOP_GROUND - 20 - (int)(sinf(far) * 9 + sinf(far * 3 + 1) * 4);
-        const int near_top = HOP_GROUND - 9 - (int)(sinf(near + 2) * 6 + sinf(near * 2) * 3);
-        for (int y = far_top; y < HOP_GROUND; y++) {
-            fb[y * FX_W + x] = y >= near_top ? HOP_HILL_NEAR : HOP_HILL_FAR;
-        }
-    }
-
-    /* the ground and the ponds */
-    for (int x = 0; x < FX_W; x++) {
-        const uint32_t place = left + x;
-        const bool pond = hop_column[(place / 8) % HOP_COLUMNS].kind == HOP_POND;
-        for (int y = HOP_GROUND; y < FX_H; y++) {
-            uint8_t c;
-            if (pond) {
-                const int surface = HOP_GROUND + 4 + (((place + (uint32_t)(hop_time / 6)) & 7) < 3);
-                c = y < HOP_GROUND + 4 ? HOP_SKY + 5 : y <= surface ? HOP_WATER_LIGHT : HOP_WATER;
-            } else {
-                c = y == HOP_GROUND ? HOP_GRASS_TOP
-                    : y < HOP_GROUND + 4 + ((place & 3) == 1) ? HOP_GRASS
-                    : ((place * 7 + y * 13) % 23) < 3 ? HOP_DIRT_DARK : HOP_DIRT;
-            }
-            fb[y * FX_W + x] = c;
-        }
-    }
-
-    for (int i = 0; i < HOP_FLOWERS; i++) {
-        const int x = hop_at(hop_flower[i].at), grown = hop_flower[i].grown;
-        if (grown == 0 || x < -4 || x > FX_W + 4) {
-            hop_flower[i].grown = x < -4 ? 0 : grown;
-            continue;
-        }
-        for (int stem = 1; stem <= grown / 2; stem++) {
-            plot(fb, x, HOP_GROUND - stem, HOP_LEAF);
-        }
-        if (grown >= 6) {
-            hop_sprite(fb, x - 1, HOP_GROUND - grown / 2 - 3, hop_bloom, 3, hop_flower[i].color);
-        }
-        hop_flower[i].grown = grown < 10 ? grown + 1 : grown;
-    }
-
-    /* what is in the way, and the stars over it */
-    const int my_top = HOP_GROUND - 12 - lift;
-    for (uint32_t col = left / 8; hop_at(col * 8) < FX_W; col++) {
-        const int x = hop_at(col * 8);
-        const uint8_t kind = hop_column[col % HOP_COLUMNS].kind;
-        if (kind == HOP_ROCKS) {
-            hop_sprite(fb, x, HOP_GROUND - 6, hop_rock, 7, 0);
-        } else if (kind == HOP_LOG) {
-            hop_sprite(fb, x, HOP_GROUND - 5, hop_log, 6, 0);
-        } else if (kind == HOP_BUSH) {
-            hop_sprite(fb, x, HOP_GROUND - 6, hop_bush, 7, 0);
-        }
-        if (hop_column[col % HOP_COLUMNS].star) {
-            const int star_y = HOP_GROUND - 30 + (int)(sinf(hop_time * 0.15f + col) * 1.5f);
-            if (x < HOP_X + HOP_WIDE && x + 7 > HOP_X && star_y + 7 > my_top - 4) {
-                hop_column[col % HOP_COLUMNS].star = 0;
-                hop_stars = (hop_stars + 1) % 1000;
-                hop_sparkle = 8;
-            } else {
-                hop_sprite(fb, x, star_y, hop_star, 7, 0);
-            }
-        }
-    }
-
-    /* the creature: feet stride with the ground, eyes blink now and then */
-    hop_sprite(fb, HOP_X, my_top, hop_body, 10, 0);
-    if ((int)(hop_time / 4) % 40 == 0) {
-        hop_sprite(fb, HOP_X, my_top + 4, hop_blink, 2, 0);
-    }
-    hop_sprite(fb, HOP_X, my_top + 10, hop_feet[hop_jumping ? 2 : (left / 5) & 1], 2, 0);
-    if (hop_sparkle > 0) {
-        const int reach = 10 - (int)hop_sparkle;
-        for (int i = 0; i < 4; i++) {
-            plot(fb, HOP_X + 6 + (i & 1 ? reach : -reach), my_top - 2 + (i & 2 ? reach : -reach) / 2, HOP_STAR_LIGHT);
-            plot(fb, HOP_X + 6 + (i & 1 ? reach : -reach) / 2, my_top - 2 + (i & 2 ? reach : -reach), HOP_STAR);
-        }
-        hop_sparkle -= in->step;
-    }
-
-    /* stars picked up */
-    char count[4] = {'0' + hop_stars / 100, '0' + hop_stars / 10 % 10, '0' + hop_stars % 10, '\0'};
-    const char *shown = hop_stars >= 100 ? count : hop_stars >= 10 ? count + 1 : count + 2;
-    const int width = 5 * (int)strlen(shown);
-    hop_sprite(fb, FX_W - 12 - width - 9, 6, hop_star, 7, 0);
-    text(fb, FX_W - 12 - width, 6, shown, FX_WHITE);
-}
-
 /* --- debug: everything the dongle knows, as text ---------------------------- */
 
 /*
@@ -1817,6 +1467,27 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     }
 }
 
+/* The five Bluetooth profiles, from (x, y): a filled circle is connected, a
+ * ring paired, a dot free; the one in use is underlined. */
+static void profiles(uint8_t *fb, const struct fx_debug *d, const struct fx_status *status, int x, int y) {
+    static const char *const shapes[3][5] = {{".....", ".....", "..o..", ".....", "....."},
+                                             {".ooo.", "o...o", "o...o", "o...o", ".ooo."},
+                                             {".ooo.", "ooooo", "ooooo", "ooooo", ".ooo."}};
+    for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
+        const int state = d->profile_state[i] > 2 ? 2 : d->profile_state[i], cx = x + i * 8;
+        for (int row = 0; row < 5; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (shapes[state][row][col] == 'o') {
+                    plot(fb, cx + col, y + row, state == 2 ? DBG_GOOD : state == 1 ? DBG_TEXT : DBG_LABEL);
+                }
+            }
+        }
+        if (status && status->profile == i) {
+            line(fb, cx, y + 6, cx + 4, y + 6, DBG_BRIGHT);
+        }
+    }
+}
+
 /* A raw event as text: the time since the one before, then what it was. */
 static void event_text(char *buf, size_t size, const struct fx_event *e) {
     const char who = e->source == 0 ? 'L' : e->source == 1 ? 'R' : ' ';
@@ -1899,25 +1570,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, -1);
     rule(fb, 56);
 
-    /* the five profiles: a filled circle is connected, a ring paired, a
-     * dot free; the one in use is underlined. Then USB and the output. */
-    for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
-        static const char *const shapes[3][5] = {{".....", ".....", "..o..", ".....", "....."},
-                                                 {".ooo.", "o...o", "o...o", "o...o", ".ooo."},
-                                                 {".ooo.", "ooooo", "ooooo", "ooooo", ".ooo."}};
-        const int state = d->profile_state[i] > 2 ? 2 : d->profile_state[i], cx = 6 + i * 8;
-        const bool active = in->status && in->status->profile == i;
-        for (int row = 0; row < 5; row++) {
-            for (int col = 0; col < 5; col++) {
-                if (shapes[state][row][col] == 'o') {
-                    plot(fb, cx + col, 59 + row, state == 2 ? DBG_GOOD : state == 1 ? DBG_TEXT : DBG_LABEL);
-                }
-            }
-        }
-        if (active) {
-            line(fb, cx, 65, cx + 4, 65, DBG_BRIGHT);
-        }
-    }
+    /* the profiles, then USB and the output */
+    profiles(fb, d, in->status, 6, 59);
     x = put(fb, 50, 59, "USB", DBG_LABEL) + 3;
     x = put(fb, x, 59, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--", d->usb == 2 ? DBG_GOOD : DBG_TEXT) + 6;
     x = put(fb, x, 59, "OUT", DBG_LABEL) + 3;
@@ -1985,31 +1639,36 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  *
  *   the board, colours as `board` has them;
  *
- *   each hand's key presses a second over the last ACTIVITY_W seconds, with
- *   the typing speed between them; then the last key event (the time since
- *   the one before, the position, the half), the key presses counted, and
- *   how long a frame of this screen takes.
+ *   the typing speed: the figure, the fastest of the last SPEED_W seconds,
+ *   and a chart of those seconds that moves along one place a second, with
+ *   a mark on its line every ten so that it is seen to move when idle. Its
+ *   height is set by that fastest, or SPEED_FULL if nothing was faster.
+ *
+ * Over USB the middle block has no radio link to show: it says what the USB
+ * port is doing, and where the signal history would be, the five Bluetooth
+ * profiles as the Debug screen draws them.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
 #define SIGNAL_W 40
 #define SIGNAL_H 9
-#define ACTIVITY_W 45
-#define ACTIVITY_H 10
+#define SPEED_W 116
+#define SPEED_H 12
+#define SPEED_FULL 60 /* words a minute that fill the chart, unless it has been faster */
 #define KEYS_BOARD_TOP 39
 #define KEYS_BOARD_H 52
 
 static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
-static uint8_t keys_activity[2][ACTIVITY_W]; /* the same: left hand, right hand */
-static uint8_t keys_presses[2];              /* this second's, so far */
+static uint8_t keys_speed[SPEED_W];          /* words a minute, the newest last, 255 at most */
+static uint32_t keys_seconds;                /* how many have gone into it */
 static float keys_time, keys_second;         /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
     memset(keys_signal, 0, sizeof(keys_signal));
-    memset(keys_activity, 0, sizeof(keys_activity));
-    memset(keys_presses, 0, sizeof(keys_presses));
+    memset(keys_speed, 0, sizeof(keys_speed));
+    keys_seconds = 0;
     keys_time = keys_second = 0;
 }
 
@@ -2080,10 +1739,6 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     char buf[32];
 
     /* the histories move on a place a second */
-    for (int k = 0; k < in->n_keys; k++) {
-        uint8_t *presses = &keys_presses[board_col(in->keys[k]) >= board_cols / 2];
-        *presses += *presses < 255;
-    }
     keys_time += in->step;
     keys_second += in->step;
     if (keys_second >= 30) {
@@ -2097,11 +1752,8 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
-        for (int hand = 0; hand < 2; hand++) {
-            /* 5 presses a second from one hand fills it: about 120 words a minute */
-            history_add(keys_activity[hand], ACTIVITY_W, (uint8_t)(keys_presses[hand] * 2));
-            keys_presses[hand] = 0;
-        }
+        history_add(keys_speed, SPEED_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
+        keys_seconds++;
     }
     const bool flash_off = (int)(keys_time / 15) & 1; /* half a second on, half off */
 
@@ -2120,9 +1772,18 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         keys_link(fb, half * 2, half ? "R" : "L", buf, color, links[half * 2], true);
     }
     const bool usb = in->status && in->status->usb;
-    snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-    keys_link(fb, 1, "", usb ? "USB" : buf, in->status && in->status->host_connected ? DBG_GOOD : FX_RED, &d->host,
-              !usb);
+    if (usb) {
+        /* no radio in it: the port, and the Bluetooth profiles kept in reserve */
+        const bool ready = in->status->host_connected;
+        put(fb, (FX_W - 15 + 1) / 2, 6, "USB", ready ? DBG_GOOD : FX_RED);
+        const char *state = d->usb_asleep ? "ASLEEP" : d->usb == 2 ? "READY" : d->usb == 1 ? "POWER" : "--";
+        put(fb, (FX_W - 5 * (int)strlen(state) + 1) / 2, 15, state,
+            d->usb_asleep ? DBG_WARN : d->usb == 2 ? DBG_TEXT : DBG_LABEL);
+        profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 26);
+    } else {
+        snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
+        keys_link(fb, 1, "", buf, in->status && in->status->host_connected ? DBG_GOOD : FX_RED, &d->host, true);
+    }
     rule(fb, 35);
 
     /* the board: as big as fits across, and no taller than its space */
@@ -2140,30 +1801,31 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
           KEYS_BOARD_TOP + (KEYS_BOARD_H - (rows * (high + gap) - gap)) / 2, pitch, high, gap, split);
     rule(fb, 92);
 
-    /* each hand's presses, and the typing speed */
-    spark(fb, 5, 94, keys_activity[0], ACTIVITY_W, ACTIVITY_H, DBG_TEXT);
-    spark(fb, FX_W - 5 - ACTIVITY_W, 94, keys_activity[1], ACTIVITY_W, ACTIVITY_H, DBG_TEXT);
+    /* the typing speed: now, the fastest in the chart, and the chart */
+    int fastest = 0;
+    for (int i = 0; i < SPEED_W; i++) {
+        fastest = keys_speed[i] > fastest ? keys_speed[i] : fastest;
+    }
     snprintf(buf, sizeof(buf), "%u", d->wpm);
-    int x = (FX_W - 5 * ((int)strlen(buf) + 3) + 1) / 2;
-    x = put(fb, x, 96, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
-    put(fb, x, 96, "WPM", DBG_LABEL);
+    int x = put(fb, 12, 95, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
+    put(fb, x + 1, 95, "WPM", DBG_LABEL);
+    snprintf(buf, sizeof(buf), "^%d", fastest);
+    put_right(fb, FX_W - 12, 95, buf, DBG_LABEL);
 
-    /* the last thing a key did (not the keycode it sent, which is long), the
-     * presses counted, this screen's speed */
-    const struct fx_event *last = NULL;
-    for (int i = 0; i < d->n_log && i < FX_DEBUG_LOG; i++) {
-        if (d->log[i].kind != 'K') {
-            last = &d->log[i];
+    const int full = fastest > SPEED_FULL ? fastest : SPEED_FULL, left = (FX_W - SPEED_W) / 2, foot = 104 + SPEED_H;
+    for (int i = 0; i < SPEED_W; i++) {
+        /* which second this column is, so the marks move along with it */
+        const uint32_t second = keys_seconds + (uint32_t)i;
+        plot(fb, left + i, foot, second % 10 == 0 ? DBG_TEXT : DBG_DIM);
+        if (second % 10 == 0) {
+            plot(fb, left + i, foot + 1, DBG_LABEL);
+        }
+        const int high = (keys_speed[i] * SPEED_H + full - 1) / full;
+        for (int up = 1; up <= high; up++) {
+            /* brighter the higher up, and the top of each column brightest */
+            plot(fb, left + i, foot - up, up == high ? DBG_BRIGHT : DBG_HEAT + 3 + up * 12 / SPEED_H);
         }
     }
-    if (last != NULL) {
-        event_text(buf, sizeof(buf), last);
-        put(fb, 12, 108, buf, DBG_TEXT);
-    }
-    snprintf(buf, sizeof(buf), "N%u", (unsigned)(d->presses % 10000));
-    put_right(fb, FX_W - 37, 108, buf, DBG_LABEL);
-    snprintf(buf, sizeof(buf), "%uMS", d->frame_ms > 99 ? 99 : d->frame_ms);
-    put_right(fb, FX_W - 12, 108, buf, DBG_TEXT);
 }
 
 /* --- the list --------------------------------------------------------------- */
@@ -2181,17 +1843,8 @@ static const struct {
     bool keys;             /* see fx_shows_keys */
     uint8_t saver;         /* can be the screensaver: the way into it (FX_TR_*) */
 } effects[] = {
-    {"WARP", warp_start, warp_frame,
-     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
-     .saver = FX_TR_HYPERSPACE},
-    {"TERMINAL", term_start, term_frame,
-     {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
-      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
-    {"CODE", code_start, code_frame,
-     {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL, .dots = true},
-     .saver = FX_TR_MELT},
+    {"KEYS", keys_start, keys_frame, {0}, .keys = true},
+    {"DEBUG", debug_start, debug_frame, {0}, .debug = true},
     {"THERMAL", thermal_start, thermal_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
       .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0, .font = FX_FONT_PIXEL}},
@@ -2199,15 +1852,21 @@ static const struct {
      {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
       .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14), .font = FX_FONT_PIXEL,
       .drop = TRACK_DROP}},
+    {"TERMINAL", term_start, term_frame,
+     {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
+      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
+    {"WARP", warp_start, warp_frame,
+     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
+     .saver = FX_TR_HYPERSPACE},
+    {"CODE", code_start, code_frame,
+     {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL, .dots = true},
+     .saver = FX_TR_MELT},
     {"LIFE", life_start, life_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
       .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
      .saver = FX_TR_INFECT},
-    {"HOP", hop_start, hop_frame,
-     {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
-      .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}},
-    {"KEYS", keys_start, keys_frame, {0}, .keys = true},
-    {"DEBUG", debug_start, debug_frame, {0}, .debug = true},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 

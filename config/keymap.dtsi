@@ -115,8 +115,8 @@
             bindings = <&kp>, <&kp>;
         };
 
-        // Next and previous screen on the Prospector dongle: the animations,
-        // the Keys screen and the Debug screen, and round again
+        // Next and previous screen on the Prospector dongle: the Keys
+        // screen, the Debug screen and the animations, and round again
         // (src/dongle_screen_fx.c). They do nothing without the dongle.
         scr_next: scr_next {
             compatible = "zmk,behavior-screen-next";

@@ -75,7 +75,7 @@ config DONGLE_SCREEN_FX
       The &scr_next key steps through the animations in
       src/screen_fx/fx.c (those that aren't screensavers) and round again;
       &scr_prev goes the other way. Each shows both batteries and the
-      connection. After the animations come the Keys screen and a Debug
+      connection. Before the animations come the Keys screen and a Debug
       screen of readings, for which this turns
       on the reset cause (HWINFO), LVGL's memory figures and, in the
       Bluetooth controller, signal strength. They take the place of the
@@ -95,12 +95,12 @@ config DONGLE_SCREEN_FX_MODULE_SCREEN
 
 config DONGLE_SCREEN_FX_START
     int "Screen shown after power-up, until one has been chosen"
-    default 4
-    range 0 6
+    default 0
+    range 0 5
     help
-      Counted through the screens in the order &scr_next shows them: 0
-      Terminal, 1 Thermal, 2 Tracker, 3 Hop, 4 the Keys screen and 5 the
-      Debug screen. With DONGLE_SCREEN_FX_MODULE_SCREEN the module's screen
+      Counted through the screens in the order &scr_next shows them: 0 the
+      Keys screen, 1 the Debug screen, 2 Thermal, 3 Tracker, 4 Terminal.
+      With DONGLE_SCREEN_FX_MODULE_SCREEN the module's screen
       is 0 and each of those one more.
       The screensavers aren't among them. Once a screen has been chosen with
       the keys it is saved (with CONFIG_SETTINGS) and shown instead; a
