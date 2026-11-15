@@ -252,7 +252,7 @@ Every animation shows the batteries and the output along the bottom, in the
 fonts of the module's Field screen, the levels a size up from its own
 (`src/screen_fx/status_overlay.c`): the left half's level in the bottom left
 corner, the right half's in the bottom right (`-` for a half that isn't
-connected, red at 15% or under), and between them the wireless symbol with
+connected, red at 10% or under), and between them the wireless symbol with
 the Bluetooth profile number (counted from 0, as the Field screen does). The symbol
 is in the animation's colour when the computer is connected and pulses grey
 when it isn't; over USB there is no symbol at all. The text's colours are set
@@ -261,7 +261,8 @@ light with a dark edge. The theme also says which letters the numbers are in
 and how low they sit: Terminal, Code, Thermal and Tracker have them in the
 animations' own small pixel letters, a size down from the Field font; on
 Tracker it sits under the line across the bottom; and Thermal and Tracker
-add a gauge for each battery up the sides. The screen to start on
+add a gauge for each battery up the sides. The screensavers show none of
+this: only a red dot in the corner of a half at 10% or under. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 

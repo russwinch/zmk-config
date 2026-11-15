@@ -31,7 +31,7 @@ LV_FONT_DECLARE(Symbols_Bold_26);
 #define SIDE 9
 #define OUTPUT_BOX ((PANEL_W - 68) / 2) /* the Field output box, 68 x 34 */
 #define LINE_BOTTOM 220
-#define LOW_BATTERY 15
+#define DOT_RADIUS 6
 #define PIXEL_SCALE 3 /* FX_FONT_PIXEL: panel pixels to a dot (the animations' own text has 2) */
 
 enum {
@@ -39,7 +39,7 @@ enum {
     INK,      /* the batteries, and the profile number */
     DIM,      /* the profile number when the computer isn't connected */
     ACCENT,   /* the symbol, connected */
-    LOW,      /* a battery at LOW_BATTERY or under */
+    LOW,      /* a battery at FX_LOW_BATTERY or under */
     SEARCH,   /* the symbol, not connected: pulses */
     COLORS,
 };
@@ -47,7 +47,7 @@ enum {
 /* RGB565 */
 static uint16_t colors[COLORS];
 static int pulse = OVERLAY_PULSE_MAX;
-static bool pixel_font;
+static bool pixel_font, dots;
 static int drop, inset; /* panel rows down, and columns in from the sides */
 
 int overlay_frame_row0(void) { return (OVERLAY_TOP + drop) / 2; }
@@ -55,6 +55,7 @@ int overlay_frame_row1(void) { return (OVERLAY_TOP + drop + OVERLAY_ROWS - 1) / 
 
 void overlay_set_theme(const struct fx_theme *theme) {
     pixel_font = theme->font == FX_FONT_PIXEL;
+    dots = theme->dots;
     /* no lower than the panel */
     drop = theme->drop < FX_H * 2 - OVERLAY_TOP - OVERLAY_ROWS ? theme->drop : FX_H * 2 - OVERLAY_TOP - OVERLAY_ROWS;
     /* in from the sides too: the panel's corners are round */
@@ -190,6 +191,23 @@ static void add_shadow(const struct area *area) {
     }
 }
 
+/* A round dot, its middle at (cx, cy): the edge is smoothed by counting how
+ * much of each pixel is inside, on a 4 x 4 grid. */
+static void draw_dot(const struct area *area, int cx, int cy, uint8_t color) {
+    const int reach = (2 * DOT_RADIUS + 1) * 4; /* half a pixel past the radius, in eighths of a pixel */
+    for (int dy = -DOT_RADIUS; dy <= DOT_RADIUS; dy++) {
+        for (int dx = -DOT_RADIUS; dx <= DOT_RADIUS; dx++) {
+            int inside = 0;
+            for (int sub = 0; sub < 16; sub++) {
+                /* the sample's place from the dot's middle, in eighths too */
+                const int px = 8 * dx + 2 * (sub % 4) - 3, py = 8 * dy + 2 * (sub / 4) - 3;
+                inside += px * px + py * py <= reach * reach;
+            }
+            put(area, cx + dx, cy + dy, color, (uint8_t)(inside * 15 / 16));
+        }
+    }
+}
+
 /* A battery level, "-" when its half isn't connected or hasn't said. */
 static uint8_t level_text(char *p, uint8_t percent, bool connected) {
     if (!connected || percent == 0) {
@@ -205,7 +223,7 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected) {
     }
     *p++ = '0' + percent % 10;
     *p = '\0';
-    return percent <= LOW_BATTERY ? LOW : INK;
+    return percent <= FX_LOW_BATTERY ? LOW : INK;
 }
 
 bool overlay_render(const struct fx_status *status) {
@@ -223,6 +241,15 @@ bool overlay_render(const struct fx_status *status) {
     for (int half = 0; half < 2; half++) {
         const struct area *area = half ? &right : &left;
         const uint8_t color = level_text(level, status->battery[half], status->half_connected[half]);
+        if (dots) {
+            /* where the level's outer digit would be, at half its height */
+            if (color == LOW) {
+                const int out = SIDE + inset + DOT_RADIUS;
+                draw_dot(area, half ? PANEL_W - 1 - out : out, foot - (pixel_font ? 9 : 12), LOW);
+                add_shadow(area);
+            }
+            continue;
+        }
         const int wide = pixel_font ? draw_pixel_text(area, level, 0, 0, PIXEL_SCALE, 0, false)
                                     : draw_text(area, font, level, 0, 0, -1, 0, false);
         const int x = half ? PANEL_W - SIDE - inset - wide : SIDE + inset;
@@ -237,8 +264,8 @@ bool overlay_render(const struct fx_status *status) {
     /* The output, as the Field screen has it: nothing over USB; on Bluetooth
      * the waves and the profile number, laid out as in its 68 x 34 box (the
      * symbol in the middle of a 30 wide space 8 in, the number 5 from the
-     * right), with that box in the bottom middle. */
-    if (status->usb) {
+     * right), with that box in the bottom middle. Not on a screensaver. */
+    if (status->usb || dots) {
         return false;
     }
     const bool solid = status->host_connected;

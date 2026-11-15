@@ -11,7 +11,9 @@
  * and pulses grey when it isn't. Colours come from the animation's theme
  * (fx_theme), so the text can be dark where the picture is bright. The theme
  * can also have the numbers in the animations' own 5x7 letters, smaller, and
- * move everything nearer the bottom of the screen.
+ * move everything nearer the bottom of the screen. The screensavers' themes
+ * leave all of it out but for a dot where the level of a half whose battery
+ * is low would be.
  *
  * The text is kept as three small masks, worked out only when something
  * changes, and mixed into the pixels on their way to the panel.

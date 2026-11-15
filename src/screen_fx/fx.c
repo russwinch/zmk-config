@@ -813,7 +813,7 @@ static void glow_spot(int cx, int cy, int radius, int peak, bool hold) {
 static void side_battery(uint8_t *fb, int x, uint8_t percent, bool connected, uint8_t edge, uint8_t full,
                          uint8_t back) {
     const int top = 16, bottom = 90;
-    const bool low = !connected || (percent > 0 && percent <= 15);
+    const bool low = !connected || (percent > 0 && percent <= FX_LOW_BATTERY);
     int fill = 0;
     if (connected && percent > 0) {
         fill = (bottom - top - 1) * (percent > 100 ? 100 : percent) / 100;
@@ -1871,7 +1871,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
             strcpy(buf, "--");
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   level == 0 ? DBG_LABEL : level <= 15 ? FX_RED : DBG_TEXT, level ? d->battery_age_s[half] : -1);
+                   level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? FX_RED : DBG_TEXT, level ? d->battery_age_s[half] : -1);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
@@ -2036,14 +2036,14 @@ static const struct {
 } effects[] = {
     {"WARP", warp_start, warp_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
      .saver = FX_TR_HYPERSPACE},
     {"TERMINAL", term_start, term_frame,
      {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
       .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
     {"CODE", code_start, code_frame,
      {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL},
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL, .dots = true},
      .saver = FX_TR_MELT},
     {"THERMAL", thermal_start, thermal_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
@@ -2054,7 +2054,7 @@ static const struct {
       .drop = TRACK_DROP}},
     {"LIFE", life_start, life_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
      .saver = FX_TR_INFECT},
     {"HOP", hop_start, hop_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
