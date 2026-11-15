@@ -31,7 +31,7 @@ the Windows layer read ⌘ as Win.
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
 to sleep the Mac, longer for the shut-down prompt. On a dongle it also starts
-the [screensaver](#animated-screens) straight away. The battery key blinks each
+the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
 the Bluetooth connection state when it changes. Both flashes last 500ms
 (set for every board in `config/default.conf`).
@@ -209,8 +209,8 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 | 5 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 
 Three more animations are screensavers, not screens to choose. After 15
-minutes without a key (or an encoder turn), or as soon as the Config layer's
-power key is pressed, one of them, picked at random,
+minutes without a key (or an encoder turn), or when the Config layer's
+power key is let go, one of them, picked at random,
 takes over from whichever screen is showing, coming in over 18 seconds by
 distorting the picture that was there:
 
@@ -227,7 +227,8 @@ to glitch lightly after 2 seconds and harder and harder until, in the last
 second, the screen you had cuts back in through it block by block (the
 status screen simply returns). An animation that comes back starts afresh:
 Hop's stars are counted from none again. The wait is
-`CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver); after an
+`CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver, the power key's
+included); after an
 hour the panel still goes off, and a key then brings the screen straight
 back.
 

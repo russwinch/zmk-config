@@ -1178,10 +1178,11 @@ static int screen_fx_listener(const zmk_event_t *eh) {
                       k_uptime_get_32());
         }
         /* the computer's power key (the Config layer's) puts it to sleep, so
-         * the screensaver comes on with it instead of 15 minutes later. This
-         * comes after the key's own position event, which set the wait off. */
-        if (code->state && code->usage_page == HID_USAGE_CONSUMER && code->keycode == HID_USAGE_CONSUMER_POWER &&
-            zmk_display_is_initialized()) {
+         * the screensaver comes on with it instead of 15 minutes later: when
+         * the key is let go, as a Mac wants it held for a second. Not if the
+         * screensaver is turned off (SAVER_MINUTES 0). */
+        if (SAVER_AFTER_MS > 0 && !code->state && code->usage_page == HID_USAGE_CONSUMER &&
+            code->keycode == HID_USAGE_CONSUMER_POWER && zmk_display_is_initialized()) {
             k_work_reschedule_for_queue(zmk_display_work_q(), &saver_work, K_NO_WAIT);
         }
         /* only kept while an animation shows, and only until its next frame */

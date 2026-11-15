@@ -114,7 +114,8 @@ config DONGLE_SCREEN_FX_SAVER_MINUTES
     help
       One of the screensaver animations (Warp, Code, Life), picked at
       random, takes over from whichever screen is showing, and the
-      first key starts that screen on its way back. It only shows while
+      first key starts that screen on its way back. Letting go of the
+      computer's power key (C_PWR) starts it at once. It only shows while
       the panel is on: keep this under ZMK_IDLE_TIMEOUT.
 
 endif
