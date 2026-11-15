@@ -1614,9 +1614,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  * that are worth watching move. Top to bottom:
  *
  *   three blocks: the left half, the computer and the right half. Each has
- *   its battery level (the computer: the output in use, green when it is
- *   listening), its signal as bars and in dBm, and that signal over the last
- *   SIGNAL_W seconds;
+ *   its battery and level (the computer: the Bluetooth profiles as the
+ *   Debug screen draws them), its signal as bars and in dBm, and that
+ *   signal over the last SIGNAL_W seconds;
  *
  *   the board, colours as `board` has them;
  *
@@ -1626,8 +1626,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  *   stays at the highest each bar got to for a moment, then falls after it.
  *
  * Over USB the middle block has no radio link to show: it says what the USB
- * port is doing, and where the signal history would be, the five Bluetooth
- * profiles as the Debug screen draws them.
+ * port is doing, and where the signal history would be, the key reports
+ * sent down it in each of those seconds (SIGNAL_H of them fill it, or the
+ * most in one second if that is more).
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
@@ -1647,12 +1648,19 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 #define METER_MARK_FALL 0.6f
 
 static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
+static uint8_t keys_sent[SIGNAL_W];          /* key reports to the computer in each second, 255 at most */
+static uint32_t keys_sent_before;            /* the count when the last second ended */
+static bool keys_counting;
+static uint32_t keys_seconds;                /* how many have gone into the histories */
 static float meter_level[METER_COLS], meter_mark[METER_COLS], meter_held[METER_COLS];
 static float keys_time, keys_second;         /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
     memset(keys_signal, 0, sizeof(keys_signal));
+    memset(keys_sent, 0, sizeof(keys_sent));
+    keys_counting = false;
+    keys_seconds = 0;
     memset(meter_level, 0, sizeof(meter_level));
     memset(meter_mark, 0, sizeof(meter_mark));
     memset(meter_held, 0, sizeof(meter_held));
@@ -1676,44 +1684,54 @@ static void history_add(uint8_t *values, int count, uint8_t value) {
     values[count - 1] = value;
 }
 
+static int keys_block_x(int place) {
+    return place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
+}
+
 static uint8_t signal_color(const struct fx_link *link) {
     return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED;
 }
 
-/* One of the three blocks: `place` 0 on the left, 1 in the middle, 2 on the
- * right (the mirror image of the left). `name` only at the sides. */
-static void keys_link(uint8_t *fb, int place, const char *name, const char *level, uint8_t level_color,
-                      const struct fx_link *link, bool missed) {
+/* A battery, 10 by 6 with its cap on the right: as full as `level` percent,
+ * an empty outline when that isn't known (0). */
+static void battery_icon(uint8_t *fb, int x, int y, int level, uint8_t color) {
+    line(fb, x, y, x + 8, y, color);
+    line(fb, x, y + 5, x + 8, y + 5, color);
+    line(fb, x, y, x, y + 5, color);
+    line(fb, x + 8, y, x + 8, y + 5, color);
+    line(fb, x + 9, y + 2, x + 9, y + 3, color);
+    const int full = level <= 0 ? 0 : level >= 100 ? 5 : 1 + level * 4 / 100;
+    for (int i = 0; i < full; i++) {
+        line(fb, x + 2 + i, y + 2, x + 2 + i, y + 3, color);
+    }
+}
+
+/* One of the three blocks' signal: the bars, the dBm and the history.
+ * `place` 0 on the left, 1 in the middle, 2 on the right (the mirror image
+ * of the left). */
+static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
     char dbm[8] = "";
     uint8_t dbm_color = DBG_LABEL;
     if (!link->up) {
         strcpy(dbm, "--");
-        dbm_color = missed ? FX_RED : DBG_LABEL;
+        dbm_color = FX_RED;
     } else if (link->rssi_known) {
         snprintf(dbm, sizeof(dbm), "%d", link->rssi);
         dbm_color = signal_color(link);
     }
-    const int level_wide = 5 * (int)strlen(level), dbm_wide = 5 * (int)strlen(dbm);
-    const uint8_t name_color = link->up ? DBG_BRIGHT : FX_RED;
-    /* the first line is in from the sides: the panel's corners are round */
     if (place == 0) {
-        put(fb, 11, 6, name, name_color);
-        put(fb, 19, 6, level, level_color);
         signal_bars(fb, 6, 15, link);
         put(fb, 16, 15, dbm, dbm_color);
     } else if (place == 2) {
-        put(fb, FX_W - 16, 6, name, name_color);
-        put_right(fb, FX_W - 19, 6, level, level_color);
         signal_bars(fb, FX_W - 13, 15, link);
         put_right(fb, FX_W - 16, 15, dbm, dbm_color);
     } else {
-        put(fb, (FX_W - level_wide + 1) / 2, 6, level, level_color);
-        const int wide = 7 + 3 + dbm_wide, left = (FX_W - wide) / 2;
+        const int wide = 7 + 3 + 5 * (int)strlen(dbm), left = (FX_W - wide) / 2;
         signal_bars(fb, left, 15, link);
         put(fb, left + 10, 15, dbm, dbm_color);
     }
-    const int x = place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
-    spark(fb, x, 24, keys_signal[place], SIGNAL_W, SIGNAL_H, link->up && link->rssi_known ? signal_color(link) : DBG_LABEL);
+    spark(fb, keys_block_x(place), 24, keys_signal[place], SIGNAL_W, SIGNAL_H,
+          link->up && link->rssi_known ? signal_color(link) : DBG_LABEL);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -1739,35 +1757,62 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
+        const uint32_t sent = keys_counting ? d->sent - keys_sent_before : 0;
+        history_add(keys_sent, SIGNAL_W, (uint8_t)(sent > 255 ? 255 : sent));
+        keys_sent_before = d->sent;
+        keys_counting = true;
+        keys_seconds++;
     }
     const bool flash_off = (int)(keys_time / 15) & 1; /* half a second on, half off */
 
-    /* the halves and, between them, the computer */
+    /* the halves: a battery and its level, the first line in from the sides
+     * because the panel's corners are round */
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
-        uint8_t color = DBG_LABEL;
+        const uint8_t color = level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? FX_RED : DBG_TEXT;
         if (level == 0) {
             strcpy(buf, "--");
-        } else if (level <= FX_FLAT_BATTERY && flash_off) {
-            buf[0] = '\0';
         } else {
             snprintf(buf, sizeof(buf), "%u%%", level);
-            color = level <= FX_LOW_BATTERY ? FX_RED : DBG_TEXT;
         }
-        keys_link(fb, half * 2, half ? "R" : "L", buf, color, links[half * 2], true);
+        if (level == 0 || level > FX_FLAT_BATTERY || !flash_off) {
+            battery_icon(fb, half ? FX_W - 20 : 10, 6, level, color);
+            if (half) {
+                put_right(fb, FX_W - 23, 6, buf, color);
+            } else {
+                put(fb, 23, 6, buf, color);
+            }
+        }
+        keys_link(fb, half * 2, links[half * 2]);
     }
-    const bool usb = in->status && in->status->usb;
-    if (usb) {
-        /* no radio in it: the port, and the Bluetooth profiles kept in reserve */
+    /* the computer */
+    if (in->status && in->status->usb) {
+        /* no radio in it: what the port is doing, and what is going down it */
         const bool ready = in->status->host_connected;
         put(fb, (FX_W - 15 + 1) / 2, 6, "USB", ready ? DBG_GOOD : FX_RED);
         const char *state = d->usb_asleep ? "ASLEEP" : d->usb == 2 ? "READY" : d->usb == 1 ? "POWER" : "--";
         put(fb, (FX_W - 5 * (int)strlen(state) + 1) / 2, 15, state,
             d->usb_asleep ? DBG_WARN : d->usb == 2 ? DBG_TEXT : DBG_LABEL);
-        profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 26);
+        int full = SIGNAL_H;
+        for (int i = 0; i < SIGNAL_W; i++) {
+            full = keys_sent[i] > full ? keys_sent[i] : full;
+        }
+        uint8_t high[SIGNAL_W];
+        for (int i = 0; i < SIGNAL_W; i++) {
+            high[i] = (uint8_t)((keys_sent[i] * SIGNAL_H + full - 1) / full);
+        }
+        const int x = keys_block_x(1);
+        spark(fb, x, 24, high, SIGNAL_W, SIGNAL_H, ready ? DBG_GOOD : DBG_LABEL);
+        /* a mark every ten seconds, so that it is seen to move when nothing is sent */
+        for (int i = 0; i < SIGNAL_W; i++) {
+            if ((keys_seconds + (uint32_t)i) % 10 == 0) {
+                plot(fb, x + i, 24 + SIGNAL_H, DBG_TEXT);
+            }
+        }
     } else {
-        snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-        keys_link(fb, 1, "", buf, in->status && in->status->host_connected ? DBG_GOOD : FX_RED, &d->host, true);
+        /* the Bluetooth profiles as the Debug screen draws them, and the link */
+        profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 6);
+        keys_link(fb, 1, &d->host);
     }
     rule(fb, 35);
 

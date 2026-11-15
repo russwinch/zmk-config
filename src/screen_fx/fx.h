@@ -107,6 +107,7 @@ struct fx_debug {
     uint64_t held_layer;  /* and those holding a layer on */
     const char *keyboard; /* its name, or NULL */
     uint32_t presses;     /* key presses since power-up */
+    uint32_t sent;        /* key reports to the computer since power-up */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
