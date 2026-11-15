@@ -51,7 +51,7 @@ struct fx_theme {
     uint16_t halo;   /* around all of it: dark for light text, light for dark */
     uint8_t font;    /* FX_FONT_FIELD, or FX_FONT_PIXEL where the picture has letters of its own */
     uint8_t drop;    /* panel rows to move it all down by (and two thirds of that in from the sides) */
-    bool dots;       /* no battery levels: only a dot, in `low`, in the place of one that is low */
+    bool dots;       /* no levels and no output: only a dot, in `low`, in the place of a battery that is low */
 };
 
 #define FX_FONT_FIELD 0 /* the Prospector module's Field screen fonts */

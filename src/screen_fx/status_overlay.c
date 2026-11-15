@@ -264,8 +264,8 @@ bool overlay_render(const struct fx_status *status) {
     /* The output, as the Field screen has it: nothing over USB; on Bluetooth
      * the waves and the profile number, laid out as in its 68 x 34 box (the
      * symbol in the middle of a 30 wide space 8 in, the number 5 from the
-     * right), with that box in the bottom middle. */
-    if (status->usb) {
+     * right), with that box in the bottom middle. Not on a screensaver. */
+    if (status->usb || dots) {
         return false;
     }
     const bool solid = status->host_connected;

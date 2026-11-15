@@ -261,9 +261,8 @@ light with a dark edge. The theme also says which letters the numbers are in
 and how low they sit: Terminal, Code, Thermal and Tracker have them in the
 animations' own small pixel letters, a size down from the Field font; on
 Tracker it sits under the line across the bottom; and Thermal and Tracker
-add a gauge for each battery up the sides. The screensavers leave the levels
-out: a half at 10% or under gets a red dot in its corner instead, and
-otherwise only the output shows. The screen to start on
+add a gauge for each battery up the sides. The screensavers show none of
+this: only a red dot in the corner of a half at 10% or under. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 
