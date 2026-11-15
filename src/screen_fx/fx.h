@@ -111,6 +111,7 @@ struct fx_input {
     uint16_t wpm;              /* words per minute, as ZMK counts them */
     uint8_t n_keys;            /* keys pressed since the last frame */
     uint8_t keys[FX_MAX_KEYS]; /* their key positions */
+    uint64_t held;             /* a bit for each key position held down now */
     uint8_t n_chars;           /* characters typed since the last frame */
     char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
     const struct fx_status *status; /* for an animation that shows some of it itself */

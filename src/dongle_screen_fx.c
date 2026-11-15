@@ -683,6 +683,9 @@ static void frame_cb(struct k_work *work) {
         memcpy(in.chars, chars, n_chars);
         n_chars = 0;
     }
+    K_SPINLOCK(&debug_lock) {
+        in.held = debug.held;
+    }
 
     /* energy: follows words per minute (quick up, slow down), and each key
      * nudges it straight away, since ZMK only updates the WPM once a second */

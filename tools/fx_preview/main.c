@@ -6,7 +6,8 @@
  *
  * The typing is made up: idle, then speeding up to a fast burst, then idle
  * again, with a key press at the matching rate, each typing the next
- * character of `typed`.
+ * character of `typed`. One key (the left hand's home row) is held down
+ * from the start for seven seconds.
  *
  * So is the status: the left half full and the right one nearly flat, on
  * Bluetooth profile 1 with the computer connected, then (from 55% of the way
@@ -183,6 +184,7 @@ int main(int argc, char **argv) {
             energy = 1;
         }
         in.energy = energy;
+        in.held = f >= fps * 0.3f && f < fps * 7.3f ? 1ull << 11 : 0;
         in.wpm = (uint16_t)wpm;
 
         const int now = at < 0.55f ? 0 : at < 0.85f ? 1 : 2;

@@ -744,12 +744,18 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
  * flickers and cools quickly, and above it the smoke, a faint warm plume
  * that drifts and widens on its way up.
  *
+ * A key held down keeps getting hotter, and after THERMAL_HOLD_S catches by
+ * itself, at any speed, and burns until it is let go.
+ *
  * The canvas holds two pictures: the board's heat at half size (it is smooth
  * anyway, and spreads further for the same work), and the flames and smoke
  * at full size over the rows the board takes up.
  */
 
 #define THERMAL_FIRE_WPM 50
+#define THERMAL_HOLD_S 5
+#define THERMAL_KEYS 64  /* key positions that can be told to be held */
+#define HOLD_TICKS (THERMAL_HOLD_S * 30) /* thermal_held counts 30ths of a second */
 #define HEAT_W (FX_W / 2)
 #define HEAT_H (FX_H / 2)
 #define HEAT_CELLS (HEAT_W * HEAT_H)
@@ -766,6 +772,7 @@ static int thermal_tx, thermal_ty, thermal_frames, thermal_smoke, thermal_next;
 static struct {
     uint8_t x, y, life; /* life: frames left to burn */
 } burners[BURNERS];
+static uint16_t thermal_held[THERMAL_KEYS]; /* how long each key has been down */
 
 static void thermal_start(uint16_t *palette) {
     static const struct stop stops[] = {{0, 0, 0, 35},      {45, 0, 25, 150},   {95, 0, 160, 130}, {140, 150, 225, 0},
@@ -777,6 +784,7 @@ static void thermal_start(uint16_t *palette) {
     thermal_lock = 0;
     thermal_frames = thermal_smoke = 0;
     memset(burners, 0, sizeof(burners));
+    memset(thermal_held, 0, sizeof(thermal_held));
 }
 
 /* Warm a picture `w` by `h` around (cx, cy): `peak` in the middle, nothing at
@@ -825,10 +833,31 @@ static void side_battery(uint8_t *fb, int x, uint8_t percent, bool connected, ui
 /* One step left or right, or (half the time) neither, from two random bits. */
 static inline int sidestep(uint32_t bits) { return (bits & 3) == 0 ? -1 : (bits & 3) == 3 ? 1 : 0; }
 
+/* Where a key is: the board fills the screen above the status text, the
+ * halves apart, between the gauges. */
+static void thermal_place(int key, int *x, int *y) {
+    const int col = key_col((uint8_t)key);
+    *x = 16 + col * 11 + (col >= 5 ? 9 : 0);
+    *y = 14 + key_row((uint8_t)key) * 21;
+}
+
+/* A flame's foot, at a key: a flickering spot, bigger with `life`. */
+static void thermal_flame(uint8_t *gas, int x, int y, int life) {
+    const uint32_t r = rnd();
+    int peak = 130 + life * 7 - (int)((r >> 4) & 63);
+    peak = peak > 251 ? 251 : peak;
+    if (peak > 0) {
+        glow_spot_in(gas, FX_W, GAS_H, x + sidestep(r) * 2, y - 2 + sidestep(r >> 2), life > 18 ? 5 : life > 6 ? 4 : 3,
+                     peak, true);
+    }
+}
+
 /* The flames and the smoke. Everything rises: a pixel takes the heat of two
  * a row or three below it, a step to either side, less what it lost on the
  * way: a lot while it is flame, little once it is smoke. */
 static void thermal_burn(uint8_t *gas) {
+    int x, y;
+
     /* what was at the bottom has gone up */
     memset(gas + (GAS_H - 1) * FX_W, 0, FX_W);
 
@@ -867,12 +896,14 @@ static void thermal_burn(uint8_t *gas) {
             continue;
         }
         burners[i].life--;
-        const uint32_t r = rnd();
-        int peak = 130 + life * 7 - (int)((r >> 4) & 63);
-        peak = peak > 251 ? 251 : peak;
-        if (peak > 0) {
-            glow_spot_in(gas, FX_W, GAS_H, burners[i].x + sidestep(r) * 2, burners[i].y + sidestep(r >> 2),
-                         life > 18 ? 5 : life > 6 ? 4 : 3, peak, true);
+        thermal_flame(gas, burners[i].x, burners[i].y, life);
+    }
+    /* and the ones held down long enough: small at first, full in a second */
+    for (int key = 0; key < THERMAL_KEYS && key < key_count; key++) {
+        if (thermal_held[key] >= HOLD_TICKS) {
+            const int life = 8 + (thermal_held[key] - HOLD_TICKS);
+            thermal_place(key, &x, &y);
+            thermal_flame(gas, x, y, life > 30 ? 30 : life);
         }
     }
 }
@@ -890,12 +921,8 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
     thermal_blaze += (fire - thermal_blaze) * clampf(0.06f * in->step, 0.0f, 1.0f);
     const bool alight = thermal_blaze > 0.05f;
 
-    /* the board fills the screen above the status text, the halves apart,
-     * between the gauges */
     for (int k = 0; k < in->n_keys; k++) {
-        int col = key_col(in->keys[k]), row = key_row(in->keys[k]);
-        thermal_tx = 16 + col * 11 + (col >= 5 ? 9 : 0);
-        thermal_ty = 14 + row * 21;
+        thermal_place(in->keys[k], &thermal_tx, &thermal_ty);
         /* up to red hot, and a little more each time: a key hit over and
          * over glows wider, but doesn't swamp the board */
         glow_spot_in(heat, HEAT_W, HEAT_H, thermal_tx / 2, thermal_ty / 2, 5, 205, true);
@@ -903,11 +930,28 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         if (alight) {
             thermal_next = (thermal_next + 1) % BURNERS;
             burners[thermal_next].x = (uint8_t)thermal_tx;
-            burners[thermal_next].y = (uint8_t)(thermal_ty - 2);
+            burners[thermal_next].y = (uint8_t)thermal_ty;
             burners[thermal_next].life = (uint8_t)(14 + thermal_blaze * 22);
         }
         thermal_lock = 1;
     }
+    /* a key held down: hotter and wider the longer it is, red hot by the
+     * time it catches */
+    bool held_alight = false;
+    for (int key = 0; key < THERMAL_KEYS && key < key_count; key++) {
+        if (!(in->held >> key & 1)) {
+            thermal_held[key] = 0;
+            continue;
+        }
+        const int ticks = thermal_held[key] + (int)(in->step + 0.5f);
+        thermal_held[key] = (uint16_t)(ticks > 60000 ? 60000 : ticks);
+        const int warmth = ticks < HOLD_TICKS ? ticks * 100 / HOLD_TICKS : 100; /* percent */
+        int x, y;
+        thermal_place(key, &x, &y);
+        glow_spot_in(heat, HEAT_W, HEAT_H, x / 2, y / 2, 4 + warmth / 34, 110 + warmth, true);
+        held_alight = held_alight || ticks >= HOLD_TICKS;
+    }
+
     /* the wanderers, warmer the faster you type */
     int warm = 60 + (int)(in->energy * 70);
     glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.013f) * 24),
@@ -934,7 +978,7 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    if (alight) {
+    if (alight || held_alight) {
         thermal_smoke = GAS_LINGER;
     }
     if (thermal_smoke > 0) {

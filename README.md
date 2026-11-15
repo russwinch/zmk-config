@@ -202,7 +202,7 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
 | 1 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
-| 2 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above |
+| 2 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down gets hotter, and after 5 seconds catches at any speed and burns until it is let go |
 | 3 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
 | 4 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
 | 5 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
