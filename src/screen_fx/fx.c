@@ -1618,43 +1618,44 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  *   listening), its signal as bars and in dBm, and that signal over the last
  *   SIGNAL_W seconds;
  *
- *   under each, its traffic over the same seconds: the key events a second
- *   that came from that half, and in the middle the key reports a second
- *   that went to the computer. The three share a height: TRAFFIC_FULL a
- *   second, or the busiest second in them if that is more. A mark on the
- *   line every ten seconds shows them moving when nothing is typed;
+ *   the board, colours as `board` has them;
  *
- *   the board, colours as `board` has them.
+ *   a level meter under each column of the board, as on a hi-fi: a key
+ *   pressed in the column sends its bar up (and its neighbours' a little),
+ *   more keys send it higher, and it falls back in about a second. A mark
+ *   stays at the highest each bar got to for a moment, then falls after it.
  *
  * Over USB the middle block has no radio link to show: it says what the USB
  * port is doing, and where the signal history would be, the five Bluetooth
- * profiles as the Debug screen draws them. Its traffic is what goes down
- * the cable.
+ * profiles as the Debug screen draws them.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
 #define SIGNAL_W 40
 #define SIGNAL_H 9
-#define TRAFFIC_H 20
-#define TRAFFIC_FOOT 58
-#define TRAFFIC_FULL 8 /* events a second that fill the charts, unless it has been busier */
-#define KEYS_BOARD_TOP 65
+#define KEYS_BOARD_TOP 39
 #define KEYS_BOARD_H 52
+#define METER_COLS 16
+#define METER_STEPS 6     /* lights in a bar */
+#define METER_STEP_H 2    /* each this high, a row apart */
+#define METER_FOOT 114
+#define METER_KEY 0.55f   /* what a key adds to its column's bar, of a full one */
+#define METER_SPILL 0.2f  /* and to the bars beside it */
+#define METER_FALL 1.0f   /* full bars a second */
+#define METER_HOLD 0.6f   /* seconds the mark stays up */
+#define METER_MARK_FALL 0.6f
 
 static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
-static uint8_t keys_traffic[3][SIGNAL_W];    /* events in each second, the same way, 255 at most */
-static uint32_t keys_counted[3];             /* the counts when the last second ended */
-static bool keys_counting;
-static uint32_t keys_seconds;                /* how many have gone into them */
+static float meter_level[METER_COLS], meter_mark[METER_COLS], meter_held[METER_COLS];
 static float keys_time, keys_second;         /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
     memset(keys_signal, 0, sizeof(keys_signal));
-    memset(keys_traffic, 0, sizeof(keys_traffic));
-    keys_counting = false;
-    keys_seconds = 0;
+    memset(meter_level, 0, sizeof(meter_level));
+    memset(meter_mark, 0, sizeof(meter_mark));
+    memset(meter_held, 0, sizeof(meter_held));
     keys_time = keys_second = 0;
 }
 
@@ -1677,10 +1678,6 @@ static void history_add(uint8_t *values, int count, uint8_t value) {
 
 static uint8_t signal_color(const struct fx_link *link) {
     return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED;
-}
-
-static int keys_block_x(int place) {
-    return place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
 }
 
 /* One of the three blocks: `place` 0 on the left, 1 in the middle, 2 on the
@@ -1715,23 +1712,8 @@ static void keys_link(uint8_t *fb, int place, const char *name, const char *leve
         signal_bars(fb, left, 15, link);
         put(fb, left + 10, 15, dbm, dbm_color);
     }
-    const int x = keys_block_x(place);
+    const int x = place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
     spark(fb, x, 24, keys_signal[place], SIGNAL_W, SIGNAL_H, link->up && link->rssi_known ? signal_color(link) : DBG_LABEL);
-}
-
-/* A block's traffic: a column a second, `full` events filling it. */
-static void keys_traffic_chart(uint8_t *fb, int place, int full) {
-    const int left = keys_block_x(place);
-    for (int i = 0; i < SIGNAL_W; i++) {
-        /* which second this column is, so the marks move along with it */
-        const uint32_t second = keys_seconds + (uint32_t)i;
-        plot(fb, left + i, TRAFFIC_FOOT, second % 10 == 0 ? DBG_TEXT : DBG_DIM);
-        const int high = (keys_traffic[place][i] * TRAFFIC_H + full - 1) / full;
-        for (int up = 1; up <= high; up++) {
-            /* brighter the higher up, and the top of each column brightest */
-            plot(fb, left + i, TRAFFIC_FOOT - up, up == high ? DBG_BRIGHT : DBG_HEAT + 3 + up * 12 / TRAFFIC_H);
-        }
-    }
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -1757,14 +1739,6 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
-        const uint32_t counts[3] = {d->half_events[0], d->sent, d->half_events[1]};
-        for (int i = 0; i < 3; i++) {
-            const uint32_t more = keys_counting ? counts[i] - keys_counted[i] : 0;
-            history_add(keys_traffic[i], SIGNAL_W, (uint8_t)(more > 255 ? 255 : more));
-            keys_counted[i] = counts[i];
-        }
-        keys_counting = true;
-        keys_seconds++;
     }
     const bool flash_off = (int)(keys_time / 15) & 1; /* half a second on, half off */
 
@@ -1795,16 +1769,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
         keys_link(fb, 1, "", buf, in->status && in->status->host_connected ? DBG_GOOD : FX_RED, &d->host, true);
     }
-    int full = TRAFFIC_FULL;
-    for (int place = 0; place < 3; place++) {
-        for (int i = 0; i < SIGNAL_W; i++) {
-            full = keys_traffic[place][i] > full ? keys_traffic[place][i] : full;
-        }
-    }
-    for (int place = 0; place < 3; place++) {
-        keys_traffic_chart(fb, place, full);
-    }
-    rule(fb, 61);
+    rule(fb, 35);
 
     /* the board: as big as fits across, and no taller than its space */
     int rows = 1;
@@ -1817,8 +1782,46 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     if (rows * (high + gap) - gap > KEYS_BOARD_H) {
         high = (KEYS_BOARD_H + gap) / rows - gap;
     }
-    board(fb, in, (FX_W - (board_cols * pitch - gap + split)) / 2,
-          KEYS_BOARD_TOP + (KEYS_BOARD_H - (rows * (high + gap) - gap)) / 2, pitch, high, gap, split);
+    const int left = (FX_W - (board_cols * pitch - gap + split)) / 2;
+    board(fb, in, left, KEYS_BOARD_TOP + (KEYS_BOARD_H - (rows * (high + gap) - gap)) / 2, pitch, high, gap, split);
+
+    /* the meters: up with the keys of this frame, then down with the time */
+    const int cols = board_cols < METER_COLS ? board_cols : METER_COLS;
+    const float seconds = in->step / 30;
+    for (int k = 0; k < in->n_keys; k++) {
+        const int col = in->keys[k] < key_count ? board_col(in->keys[k]) : -1;
+        for (int near = col - 1; col >= 0 && near <= col + 1; near++) {
+            if (near >= 0 && near < cols) {
+                meter_level[near] = clampf(meter_level[near] + (near == col ? METER_KEY : METER_SPILL), 0, 1);
+            }
+        }
+    }
+    for (int col = 0; col < cols; col++) {
+        if (meter_level[col] >= meter_mark[col]) {
+            meter_mark[col] = meter_level[col];
+            meter_held[col] = METER_HOLD;
+        } else if (meter_held[col] > 0) {
+            meter_held[col] -= seconds;
+        } else {
+            meter_mark[col] = clampf(meter_mark[col] - METER_MARK_FALL * seconds, 0, 1);
+        }
+        const int lit = (int)(meter_level[col] * METER_STEPS + 0.5f), mark = (int)(meter_mark[col] * METER_STEPS + 0.5f);
+        const int x = left + col * pitch + (col >= board_cols / 2 ? split : 0);
+        for (int step = 0; step < METER_STEPS; step++) {
+            /* the top light red and the one under it amber, as a hi-fi's are */
+            const uint8_t color = step < lit ? (step == METER_STEPS - 1   ? FX_RED
+                                                : step == METER_STEPS - 2 ? DBG_WARN
+                                                                          : DBG_HEAT + 6 + step * 3)
+                                  : step == mark - 1 ? DBG_BRIGHT
+                                  : step == 0        ? DBG_DIM
+                                                     : DBG_BG;
+            const int y = METER_FOOT - step * (METER_STEP_H + 1);
+            for (int row = 0; row < METER_STEP_H && color != DBG_BG; row++) {
+                line(fb, x, y - row, x + pitch - gap - 1, y - row, color);
+            }
+        }
+        meter_level[col] = clampf(meter_level[col] - METER_FALL * seconds, 0, 1);
+    }
 }
 
 /* --- the list --------------------------------------------------------------- */
