@@ -211,6 +211,22 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 | 8 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
 | 9 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 
+After 15 minutes without a key (or an encoder turn) a screensaver takes
+over from whichever screen is showing: Warp or Life, picked at random, never
+the one already there. It comes in over 18 seconds by distorting the picture
+that was showing: into Warp the picture is torn open at the vanishing point
+and streaks past as the stars reach light speed; into Life its bright parts
+come alive in spreading patches and the cells eat it. (Over the status
+screen there is no picture to distort, so it comes in over black.) The first
+key starts the way back, which then runs its 9 seconds whether or not you
+keep typing: the screensaver reacts to the typing, starts to glitch lightly
+after 2 seconds and harder and harder until, in the last second, the screen
+you had cuts back in through it block by block (the status screen simply
+returns). An animation that comes back starts afresh: Hop's stars are
+counted from none again. The wait is `CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES`
+(0 for no screensaver); after an hour the panel still goes off, and a key
+then brings the screen straight back.
+
 Keys draws the keyboard the dongle is built for, from its matrix transform.
 A key counts as holding a modifier or a layer if its binding is `&kp` with a
 modifier, `&mo`, or a hold-tap over one of those (home row mods, `&lt`), and
@@ -291,7 +307,12 @@ The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 `tools/fx_preview.py` can run it on a computer and save each animation as a
 GIF in `fx_preview_out/` (needs gcc, git and Pillow): the quick way to try a
 change or a new animation. The status text is drawn as on the dongle; its
-fonts are fetched from the Prospector module the first time. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
+fonts are fetched from the Prospector module the first time.
+`tools/fx_preview.py --saver hop` saves each screensaver coming over that
+animation and going again. Only one animation can run at a time (they share
+their memory), so the other picture in a transition is a still: the last
+frame sent, which the dongle keeps anyway, and its palette. A transition
+changes every pixel, so it runs at the whole-frame rate or under. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an
 empty screen and writes the frames straight to the panel, a quarter of the
 pixels doubled up. The dongle has no RAM to spare for the pictures, so they
 are kept in one of LVGL's drawing buffers, idle while its screen is parked.

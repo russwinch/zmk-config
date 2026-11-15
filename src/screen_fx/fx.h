@@ -154,3 +154,59 @@ void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);
  * batteries and output are drawn over it afterwards, at the panel's own
  * size: src/screen_fx/status_overlay.c. */
 void fx_draw_banner(uint8_t *fb, const char *banner);
+
+/* --- the screensaver (the dongle starts it when no key has been pressed for
+ * a while) ---------------------------------------------------------------- */
+
+/*
+ * Some animations can be the screensaver: each has its own way in, which
+ * distorts the picture that was showing into it. The way out is the same
+ * for all: from the first key the screensaver's own picture glitches, more
+ * and more (FX_TR_GLITCH), and at the end the screen that was showing
+ * before cuts back in through it, block by block (FX_TR_CUT).
+ *
+ * Only one animation runs at a time. The other picture is a still: the last
+ * frame of the animation that stopped (`old`, palette indexes) and the
+ * palette it had. A way in may write to that still.
+ */
+#define FX_SAVER_IN_MS 18000         /* the way in */
+#define FX_SAVER_OUT_MS 8000         /* from the first key: the screensaver, breaking up... */
+#define FX_SAVER_GLITCH_FROM_MS 2000 /* ...from here on */
+#define FX_SAVER_CUT_MS 1000         /* then the screen coming back */
+
+enum {
+    FX_TR_NONE,
+    FX_TR_HYPERSPACE, /* into Warp: torn open at the vanishing point, streaking past */
+    FX_TR_INFECT,     /* into Life: the picture's bright parts come alive and eat it */
+    FX_TR_GLITCH,     /* `old_palette` is the screen to go back to; `old` isn't used */
+    FX_TR_CUT,        /* `old` is the screensaver's last frame */
+};
+
+struct fx_transition {
+    uint8_t kind;
+    float t;        /* 0..1 through it */
+    uint32_t frame; /* counts up, one a frame */
+    const uint8_t *fb;           /* the running animation's frame */
+    uint8_t *old;                /* the still */
+    const uint16_t *palette;     /* the running animation's: RGB565, as fx_start gives it */
+    const uint16_t *old_palette; /* the still's */
+};
+
+/* The animations that can be the screensaver, and the way into each. */
+int fx_saver_count(void);
+int fx_saver(int n);
+int fx_saver_way_in(int fx);
+
+/* Call when one starts, after the fx_start of the animation it goes to. */
+void fx_transition_begin(int kind);
+
+/* How hard the animation should run meanwhile (fx_input's energy), or a
+ * negative number to leave that to the typing. */
+float fx_transition_energy(int kind, float t);
+
+/* Each frame, before fx_frame: what a way in does to the animation itself. */
+void fx_transition_step(const struct fx_transition *tr);
+
+/* Each frame, after fx_frame: row `y` of the picture to show, FX_W pixels
+ * of RGB565. */
+void fx_transition_row(const struct fx_transition *tr, int y, uint16_t *out);

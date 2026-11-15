@@ -106,6 +106,16 @@ config DONGLE_SCREEN_FX_WPM_REFERENCE
     default 60
     range 10 300
 
+config DONGLE_SCREEN_FX_SAVER_MINUTES
+    int "Minutes without a key before the screensaver comes on (0 = never)"
+    default 15
+    range 0 1440
+    help
+      One of the animations that can be a screensaver (Warp, Life), picked
+      at random, takes over from whichever screen is showing, and the
+      first key starts that screen on its way back. It only shows while
+      the panel is on: keep this under ZMK_IDLE_TIMEOUT.
+
 endif
 
 config BEHAVIOR_SCREEN_NEXT

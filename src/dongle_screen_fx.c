@@ -28,6 +28,10 @@
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below).
  *
+ * When no key has been pressed for a while (DONGLE_SCREEN_FX_SAVER_MINUTES)
+ * one of the animations that can be takes over as a screensaver, and any
+ * key brings the chosen screen back: see "the screensaver" below.
+ *
  * Settings: Kconfig at the repo root.
  */
 
@@ -93,12 +97,17 @@ static uint8_t *shown; /* what the panel has now */
 static uint16_t *band;
 
 static uint16_t palette[256]; /* RGB565 in the panel's byte order */
+/* the same as fx.c gave it, and the one of the picture a transition has as
+ * its still: see "the screensaver" */
+static uint16_t native_palette[256], old_palette[256];
 
 /* --- what the rest of the keyboard tells us (any thread) -------------------- */
 
 static atomic_t wanted_screen; /* 0 = the module's, 1.. = animation */
 static atomic_t chosen;        /* a key has picked the screen since power-up */
 static atomic_t paused;        /* keyboard idle: the panel is off */
+static atomic_t last_key_at;   /* uptime, ms */
+static atomic_t saver_drop;    /* the panel went off with the screensaver showing */
 static atomic_t wpm;
 static atomic_t halves_connected; /* bit per half */
 
@@ -172,8 +181,36 @@ static bool is_debug;        /* the Debug screen is the one showing */
 static struct fx_debug debug_shown;
 static uint32_t frames_since, fps_at;
 
+/*
+ * The screensaver. `wanted_screen` stays the screen that was chosen;
+ * `screen` is the screensaver's animation while this isn't SAVER_OFF.
+ *
+ *   SAVER_IN   its way in (fx_saver_way_in), over the still of what was showing
+ *   SAVER_ON   just the animation
+ *   SAVER_OUT  a key was pressed: it reacts to the typing, and glitches
+ *   SAVER_CUT  the wanted screen is running again and cuts in over the
+ *              screensaver's still
+ *
+ * Only one animation can run (they share their memory), so the other
+ * picture in a transition is always a still: the last frame sent, which
+ * `shown` holds anyway, with the palette it had (old_palette). While a
+ * transition shows, every frame is sent whole and `shown` is left alone.
+ * The animation that comes back starts afresh.
+ *
+ * Over the module's own screen there is no still to be had: the way in is
+ * over black, and the way out ends with that screen simply coming back.
+ */
+enum { SAVER_OFF, SAVER_IN, SAVER_ON, SAVER_OUT, SAVER_CUT };
+static int saver;
+static bool saver_over_module; /* SAVER_IN: no still, it started from the module's screen */
+static uint32_t saver_began_at; /* keys after this end it */
+static uint32_t stage_at;       /* when this stage began */
+static uint32_t stage_frames;
+
 static void frame_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
+static void saver_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(saver_work, saver_cb);
 
 static void read_status(void) {
     for (int half = 0; half < 2; half++) {
@@ -382,6 +419,83 @@ static void show_frame(void) {
     redraw_all = pulse_due = false;
 }
 
+/* The transition a screensaver stage shows the frame through, if it does. */
+static bool stage_transition(uint32_t now, struct fx_transition *tr) {
+    const uint32_t into = now - stage_at;
+    uint32_t length;
+
+    switch (saver) {
+    case SAVER_IN:
+        tr->kind = fx_saver_way_in(screen - 1);
+        length = FX_SAVER_IN_MS;
+        break;
+    case SAVER_OUT:
+        if (into < FX_SAVER_GLITCH_FROM_MS) {
+            return false; /* nothing yet: the ordinary way is quicker */
+        }
+        tr->kind = FX_TR_GLITCH;
+        length = FX_SAVER_OUT_MS;
+        break;
+    case SAVER_CUT:
+        tr->kind = FX_TR_CUT;
+        length = FX_SAVER_CUT_MS;
+        break;
+    default:
+        return false;
+    }
+    tr->t = MIN((float)into / length, 1.0f);
+    tr->frame = stage_frames;
+    tr->fb = frame;
+    tr->old = shown;
+    tr->palette = native_palette;
+    tr->old_palette = old_palette;
+    return true;
+}
+
+/* Send the whole frame to the panel as a transition has it. */
+static void show_transition(const struct fx_transition *tr) {
+    static uint16_t line[FX_W];
+
+    for (int top = 0; top < FX_H; top += BAND_ROWS) {
+        const bool text =
+            overlay && !is_debug && top <= overlay_frame_row1() && top + BAND_ROWS > overlay_frame_row0();
+        uint16_t *out = band;
+        for (int y = top; y < top + BAND_ROWS; y++) {
+            fx_transition_row(tr, y, line);
+            for (int x = 0; x < FX_W; x++) {
+                out[x * 2] = out[x * 2 + 1] = sys_cpu_to_be16(line[x]);
+            }
+            memcpy(out + PANEL_W, out, PANEL_W * sizeof(*band));
+            if (text) {
+                overlay_blend_row(out, 0, y * 2, PANEL_W);
+                overlay_blend_row(out + PANEL_W, 0, y * 2 + 1, PANEL_W);
+            }
+            out += PANEL_W * 2;
+        }
+
+        const struct display_buffer_descriptor desc = {
+            .buf_size = BAND_PIXELS * sizeof(*band),
+            .width = PANEL_W,
+            .height = BAND_ROWS * 2,
+            .pitch = PANEL_W,
+        };
+        display_write(panel, 0, top * 2, &desc, band);
+    }
+    pulse_due = false;
+    redraw_all = true; /* for the first frame after it */
+}
+
+/* Send the frame: through the transition, if one is showing. */
+static void present(uint32_t now) {
+    struct fx_transition tr;
+    if (stage_transition(now, &tr)) {
+        show_transition(&tr);
+    } else {
+        show_frame();
+    }
+    stage_frames++;
+}
+
 static void schedule_frame(uint32_t delay_ms) {
     k_work_reschedule_for_queue(zmk_display_work_q(), &frame_work, K_MSEC(delay_ms));
 }
@@ -426,7 +540,16 @@ static const uint16_t key_places[] = DT_PROP(KEY_TRANSFORM, map);
 #endif
 
 static void begin_animation(void) {
-    uint16_t native[256];
+    if (saver == SAVER_IN) {
+        /* the still it comes in over: what was showing, or black */
+        if (saver_over_module) {
+            memset(shown, 0, PIXELS);
+            memset(old_palette, 0, sizeof(old_palette));
+        } else {
+            memcpy(old_palette, native_palette, sizeof(old_palette));
+        }
+    }
+    uint16_t *const native = native_palette;
 #ifdef KEY_TRANSFORM
     fx_set_keys(key_places, ARRAY_SIZE(key_places));
 #endif
@@ -445,11 +568,87 @@ static void begin_animation(void) {
     last_frame_at = fps_at = k_uptime_get_32();
     frames_since = 0;
     status_at = status_never = last_frame_at - STATUS_MS;
-    banner_until = last_frame_at + BANNER_MS;
+    banner_until = last_frame_at + (saver == SAVER_OFF ? BANNER_MS : 0);
+    if (saver == SAVER_IN) {
+        energy = 0;
+    }
+    if (saver != SAVER_OFF) {
+        stage_at = last_frame_at;
+        stage_frames = 0;
+        fx_transition_begin(saver == SAVER_IN ? fx_saver_way_in(screen - 1) : FX_TR_CUT);
+    }
 }
 
 static void apply_cb(struct k_work *work);
 static K_WORK_DEFINE(apply_work, apply_cb);
+
+static void request_apply(void);
+
+/* The screensaver is over. A Screen key may have moved on meanwhile. */
+static void saver_done(void) {
+    saver = SAVER_OFF;
+    redraw_all = true;
+    if (atomic_get(&wanted_screen) != screen) {
+        request_apply();
+    }
+}
+
+/* The wanted screen comes back: an animation cuts in over the still in
+ * `shown` (whose palette is in old_palette); the module's screen just does. */
+static void saver_cut(void) {
+    screen = atomic_get(&wanted_screen);
+    if (screen == 0) {
+        saver = SAVER_OFF;
+        lv_screen_load(module_screen);
+        lv_obj_invalidate(module_screen);
+        return;
+    }
+    saver = SAVER_CUT;
+    start_pending = true;
+    schedule_frame(0);
+}
+
+/* Move the screensaver on a stage when it is time. True if this frame
+ * isn't to be drawn: another screen is being started. */
+static bool saver_step(uint32_t now) {
+    const uint32_t into = now - stage_at;
+    const bool key = (int32_t)((uint32_t)atomic_get(&last_key_at) - saver_began_at) > 0;
+
+    switch (saver) {
+    case SAVER_IN:
+        if (key) {
+            /* what is left of the screen's own picture is the still */
+            saver_cut();
+            return true;
+        }
+        if (into >= FX_SAVER_IN_MS) {
+            saver = SAVER_ON;
+        }
+        break;
+    case SAVER_ON:
+        if (key) {
+            saver = SAVER_OUT;
+            stage_at = now;
+            stage_frames = 0;
+            fx_transition_begin(FX_TR_GLITCH);
+        }
+        break;
+    case SAVER_OUT:
+        if (into >= FX_SAVER_OUT_MS) {
+            memcpy(shown, frame, PIXELS);
+            memcpy(old_palette, native_palette, sizeof(old_palette));
+            saver_cut();
+            return true;
+        }
+        break;
+    case SAVER_CUT:
+        if (into >= FX_SAVER_CUT_MS) {
+            saver_done();
+        }
+        break;
+    }
+    return false;
+}
 
 static void frame_cb(struct k_work *work) {
     if (screen == 0 || atomic_get(&paused)) {
@@ -459,6 +658,7 @@ static void frame_cb(struct k_work *work) {
     if (start_pending) {
         if (!borrow_memory()) {
             /* back to the module's screen */
+            saver = SAVER_OFF;
             atomic_set(&wanted_screen, 0);
             k_work_submit_to_queue(zmk_display_work_q(), &apply_work);
             return;
@@ -468,6 +668,9 @@ static void frame_cb(struct k_work *work) {
     }
 
     const uint32_t now = k_uptime_get_32();
+    if (saver != SAVER_OFF && saver_step(now)) {
+        return;
+    }
     struct fx_input in = {.step = CLAMP(now - last_frame_at, 10, 200) / 33.3f};
     last_frame_at = now;
 
@@ -486,6 +689,14 @@ static void frame_cb(struct k_work *work) {
     const float rate = (target > energy ? 0.12f : 0.03f) * in.step;
     energy += (target - energy) * MIN(rate, 1.0f) + in.n_keys * 0.03f;
     energy = CLAMP(energy, 0.0f, 1.0f);
+    struct fx_transition tr;
+    const bool in_transition = stage_transition(now, &tr);
+    if (in_transition) {
+        /* a way in may drive the animation itself, and feed it */
+        const float driven = fx_transition_energy(tr.kind, tr.t);
+        energy = driven >= 0 ? driven : energy;
+        fx_transition_step(&tr);
+    }
     in.energy = energy;
 
     if (now - status_at >= STATUS_MS) {
@@ -512,7 +723,7 @@ static void frame_cb(struct k_work *work) {
         in.debug = &debug_shown;
         in.status = &status;
         fx_frame(screen - 1, frame, &in);
-        show_frame();
+        present(now);
         frames_since++;
         frame_ms = (uint8_t)MIN(k_uptime_get_32() - now, 255);
         /* text doesn't need the animations' frame rate */
@@ -535,7 +746,7 @@ static void frame_cb(struct k_work *work) {
     }
     fx_frame(screen - 1, frame, &in);
     fx_draw_banner(frame, !shows_keys && (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
-    show_frame();
+    present(now);
 
     /* always leave the queue a moment for LVGL's own tick and the backlight */
     const uint32_t took = k_uptime_get_32() - now;
@@ -549,8 +760,36 @@ static void start_animation(uint32_t delay_ms) {
 }
 
 /* Switch to the wanted screen, or pick up again after the keyboard was idle. */
+/* Park LVGL on an empty screen: nothing on it ever needs redrawing. */
+static bool leave_module_screen(void) {
+    struct display_capabilities caps;
+    display_get_capabilities(panel, &caps);
+    if (caps.x_resolution != PANEL_W || caps.y_resolution != PANEL_H) {
+        LOG_ERR("screen fx: expected a %dx%d panel, not %dx%d", PANEL_W, PANEL_H, caps.x_resolution,
+                caps.y_resolution);
+        return false;
+    }
+    module_screen = lv_screen_active();
+    if (empty_screen == NULL) {
+        empty_screen = lv_obj_create(NULL);
+        lv_obj_set_style_bg_color(empty_screen, lv_color_black(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(empty_screen, LV_OPA_COVER, LV_PART_MAIN);
+    }
+    lv_screen_load(empty_screen);
+    return true;
+}
+
 static void apply_cb(struct k_work *work) {
     const int want = atomic_get(&wanted_screen);
+
+    const bool dropped = atomic_set(&saver_drop, 0);
+    if (saver != SAVER_OFF) {
+        if (!dropped) {
+            return; /* its way out ends on the wanted screen */
+        }
+        /* the panel has been off since: no show, straight to the screen */
+        saver = SAVER_OFF;
+    }
 
     if (want == screen) {
         if (screen != 0 && !atomic_get(&paused)) {
@@ -564,22 +803,10 @@ static void apply_cb(struct k_work *work) {
 
     uint32_t delay_ms = 0;
     if (screen == 0) {
-        struct display_capabilities caps;
-        display_get_capabilities(panel, &caps);
-        if (caps.x_resolution != PANEL_W || caps.y_resolution != PANEL_H) {
-            LOG_ERR("screen fx: expected a %dx%d panel, not %dx%d", PANEL_W, PANEL_H,
-                    caps.x_resolution, caps.y_resolution);
+        if (!leave_module_screen()) {
             atomic_set(&wanted_screen, 0);
             return;
         }
-        /* park LVGL on an empty screen: nothing on it ever needs redrawing */
-        module_screen = lv_screen_active();
-        if (empty_screen == NULL) {
-            empty_screen = lv_obj_create(NULL);
-            lv_obj_set_style_bg_color(empty_screen, lv_color_black(), LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(empty_screen, LV_OPA_COVER, LV_PART_MAIN);
-        }
-        lv_screen_load(empty_screen);
         delay_ms = TAKEOVER_MS;
     }
 
@@ -597,6 +824,59 @@ static void request_apply(void) {
     if (zmk_display_is_initialized()) {
         k_work_submit_to_queue(zmk_display_work_q(), &apply_work);
     }
+}
+
+/* --- the screensaver: starting it ---------------------------------------------- */
+
+#define SAVER_AFTER_MS (CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES * 60 * 1000)
+
+/* Any key puts it off (and, through last_key_at, ends it). Any thread. */
+static void saver_key(void) {
+    atomic_set(&last_key_at, (atomic_val_t)k_uptime_get_32());
+    if (SAVER_AFTER_MS > 0 && zmk_display_is_initialized()) {
+        k_work_reschedule_for_queue(zmk_display_work_q(), &saver_work, K_MSEC(SAVER_AFTER_MS));
+    }
+}
+
+/* No key for long enough: one of the animations that can be takes over,
+ * picked at random from those that aren't the screen showing. */
+static void saver_cb(struct k_work *work) {
+    if (saver != SAVER_OFF || atomic_get(&paused)) {
+        return; /* the next key sets the wait off again */
+    }
+    if (screen != atomic_get(&wanted_screen) || start_pending) {
+        /* a screen is still on its way up */
+        k_work_reschedule_for_queue(zmk_display_work_q(), &saver_work, K_SECONDS(2));
+        return;
+    }
+
+    /* chance: when the last key happened to be pressed, well stirred */
+    uint32_t dice = ((uint32_t)atomic_get(&last_key_at) ^ k_cycle_get_32()) * 2654435761u;
+    int choices = 0, choice = -1;
+    for (int n = 0; n < fx_saver_count(); n++) {
+        const int fx = fx_saver(n);
+        /* each one so far is as likely as the next */
+        dice = dice * 1103515245u + 12345u;
+        if (fx + 1 != screen && (dice >> 16) % ++choices == 0) {
+            choice = fx;
+        }
+    }
+    if (choice < 0) {
+        return;
+    }
+
+    uint32_t delay_ms = 0;
+    saver_over_module = screen == 0;
+    if (saver_over_module) {
+        if (!leave_module_screen()) {
+            return;
+        }
+        delay_ms = TAKEOVER_MS;
+    }
+    saver = SAVER_IN;
+    saver_began_at = k_uptime_get_32();
+    screen = choice + 1;
+    start_animation(delay_ms);
 }
 
 /* --- the chosen screen, kept over a restart ----------------------------------- */
@@ -865,6 +1145,7 @@ static int screen_fx_listener(const zmk_event_t *eh) {
     if (pos != NULL) {
         debug_position(pos);
         if (pos->state) {
+            saver_key();
             K_SPINLOCK(&keys_lock) {
                 if (n_keys < FX_MAX_KEYS) {
                     keys[n_keys++] = (uint8_t)pos->position;
@@ -924,6 +1205,7 @@ static int screen_fx_listener(const zmk_event_t *eh) {
 
     const struct zmk_sensor_event *sensor = as_zmk_sensor_event(eh);
     if (sensor != NULL) {
+        saver_key(); /* an encoder counts */
         K_SPINLOCK(&debug_lock) {
             log_event((struct fx_event){.kind = 'E', .source = 2, .a = sensor->sensor_index,
                                         .b = (uint16_t)(int16_t)sensor->channel_data[0].value.val1},
@@ -936,6 +1218,9 @@ static int screen_fx_listener(const zmk_event_t *eh) {
     if (activity != NULL) {
         /* the panel is switched off while idle (src/dongle_idle_backlight.c) */
         const bool idle = activity->state != ZMK_ACTIVITY_ACTIVE;
+        if (idle) {
+            atomic_set(&saver_drop, 1);
+        }
         if (atomic_set(&paused, idle) && !idle) {
             request_apply();
         }
@@ -962,6 +1247,7 @@ static void start_cb(struct k_work *work) {
         k_work_schedule(&start_work, K_MSEC(500));
         return;
     }
+    saver_key(); /* the wait for the screensaver starts here */
     if (atomic_get(&chosen)) {
         return; /* a key got there first */
     }

@@ -11,15 +11,105 @@
  * So is the status: the left half full and the right one nearly flat, on
  * Bluetooth profile 1 with the computer connected, then (from 55% of the way
  * through) not connected, then (from 85%) over USB.
+ *
+ *   main saver <animation showing> <screensaver animation> <frames per second>
+ *
+ * The screensaver coming over an animation and going again, as the dongle
+ * does it (fx.h): 2 seconds of the animation, the way in, 4 seconds of the
+ * screensaver, then a key and typing for the whole of the way out, and 3
+ * seconds of the animation back. Without the status text.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "fx.h"
 #include "status_overlay.h"
 
+static uint8_t saver_fb[FX_W * FX_H], saver_canvas[FX_W * FX_H], saver_old[FX_W * FX_H];
+static uint16_t saver_palette[256], saver_old_palette[256];
+static float saver_fps;
+static unsigned saver_seed = 7;
+static bool saver_unseen;
+
+/* One frame of `fx`, with a key every `key_every` frames (0: none), shown
+ * plain or (kind != FX_TR_NONE) through a transition at `t`. */
+static void saver_frame(int fx, float energy, int key_every, int f, int kind, float t) {
+    struct fx_status status = {.battery = {100, 60}, .half_connected = {true, true}, .host_connected = true};
+    struct fx_input in = {.step = 30.0f / saver_fps, .energy = energy, .status = &status};
+    struct fx_transition tr = {.kind = (uint8_t)kind, .t = t, .frame = (uint32_t)f, .fb = saver_fb, .old = saver_old,
+                               .palette = saver_palette, .old_palette = saver_old_palette};
+    static uint16_t row[FX_W];
+    static uint8_t out[FX_W * 2 * 3];
+
+    if (key_every && f % key_every == 0) {
+        saver_seed = saver_seed * 1103515245 + 12345;
+        in.keys[in.n_keys++] = (saver_seed >> 16) % 34;
+    }
+    const float wanted = fx_transition_energy(kind, t);
+    if (wanted >= 0) {
+        in.energy = wanted;
+    }
+    fx_transition_step(&tr);
+    fx_frame(fx, saver_fb, &in);
+    for (int y = 0; y < FX_H && !saver_unseen; y++) {
+        fx_transition_row(&tr, y, row);
+        for (int x = 0; x < FX_W * 2; x++) {
+            out[x * 3] = (row[x / 2] >> 8) & 0xf8;
+            out[x * 3 + 1] = (row[x / 2] >> 3) & 0xfc;
+            out[x * 3 + 2] = (row[x / 2] << 3) & 0xf8;
+        }
+        fwrite(out, 1, sizeof(out), stdout);
+        fwrite(out, 1, sizeof(out), stdout);
+    }
+}
+
+static int saver_main(int base, int saver, float fps) {
+    const int in_frames = (int)(FX_SAVER_IN_MS * fps / 1000), out_frames = (int)(FX_SAVER_OUT_MS * fps / 1000),
+              cut_frames = (int)(FX_SAVER_CUT_MS * fps / 1000);
+    saver_fps = fps;
+    fx_set_canvas(saver_canvas);
+    fx_start(base, saver_palette);
+    for (int f = 0; f < 6 * fps; f++) { /* 4 seconds of it unseen, typing, so there is a picture */
+        saver_unseen = f < 4 * fps;
+        saver_frame(base, saver_unseen ? 0.5f : 0.1f, saver_unseen ? 3 : 0, f, FX_TR_NONE, 0);
+    }
+
+    memcpy(saver_old, saver_fb, sizeof(saver_old));
+    memcpy(saver_old_palette, saver_palette, sizeof(saver_old_palette));
+    fx_start(saver, saver_palette);
+    fx_transition_begin(fx_saver_way_in(saver));
+    float energy = 0;
+    for (int f = 0; f < in_frames; f++) {
+        energy = fx_transition_energy(fx_saver_way_in(saver), (float)f / (in_frames - 1));
+        saver_frame(saver, 0, 0, f, fx_saver_way_in(saver), (float)f / (in_frames - 1));
+    }
+    energy = energy < 0 ? 0 : energy;
+    for (int f = 0; f < 4 * fps; f++) {
+        energy *= 0.94f;
+        saver_frame(saver, energy, 0, f, FX_TR_NONE, 0);
+    }
+
+    fx_transition_begin(FX_TR_GLITCH);
+    for (int f = 0; f < out_frames; f++) { /* a key, and typing */
+        energy += (1 - energy) * 0.1f;
+        saver_frame(saver, energy, 2, f, FX_TR_GLITCH, (float)f / (out_frames - 1));
+    }
+    memcpy(saver_old, saver_fb, sizeof(saver_old));
+    memcpy(saver_old_palette, saver_palette, sizeof(saver_old_palette));
+    fx_start(base, saver_palette);
+    fx_transition_begin(FX_TR_CUT);
+    for (int f = 0; f < cut_frames + 3 * fps; f++) {
+        saver_frame(base, energy, 2, f, f < cut_frames ? FX_TR_CUT : FX_TR_NONE, (float)f / (cut_frames - 1));
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc > 3 && strcmp(argv[1], "saver") == 0) {
+        return saver_main(atoi(argv[2]), atoi(argv[3]), argc > 4 ? atof(argv[4]) : 15);
+    }
     int fx = argc > 1 ? atoi(argv[1]) : 0;
     int frames = argc > 2 ? atoi(argv[2]) : 150;
     float fps = argc > 3 ? atof(argv[3]) : 15;

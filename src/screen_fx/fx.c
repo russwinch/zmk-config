@@ -1880,10 +1880,12 @@ static const struct {
     struct fx_theme theme; /* the status text over it: see fx.h */
     bool debug;            /* see fx_is_debug */
     bool keys;             /* see fx_shows_keys */
+    uint8_t saver;         /* can be the screensaver: the way into it (FX_TR_*) */
 } effects[] = {
     {"WARP", warp_start, warp_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0},
+     .saver = FX_TR_HYPERSPACE},
     /* in the black bar under the flames (FIRE_BAR) */
     {"FIRE", fire_start, fire_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(255, 170, 40),
@@ -1903,7 +1905,8 @@ static const struct {
       .drop = TRACK_DROP}},
     {"LIFE", life_start, life_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0}},
+      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0},
+     .saver = FX_TR_INFECT},
     {"HOP", hop_start, hop_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
       .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}},
@@ -1949,5 +1952,251 @@ void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
 void fx_draw_banner(uint8_t *fb, const char *banner) {
     if (banner) {
         text(fb, 10, 9, banner, FX_WHITE);
+    }
+}
+
+/* --- the screensaver's transitions: see fx.h ---------------------------------- */
+
+int fx_saver_count(void) {
+    int count = 0;
+    for (int fx = 0; fx < FX_COUNT; fx++) {
+        count += effects[fx].saver != FX_TR_NONE;
+    }
+    return count;
+}
+
+int fx_saver(int n) {
+    for (int fx = 0; fx < FX_COUNT; fx++) {
+        if (effects[fx].saver != FX_TR_NONE && n-- == 0) {
+            return fx;
+        }
+    }
+    return -1;
+}
+
+int fx_saver_way_in(int fx) { return fx >= 0 && fx < FX_COUNT ? effects[fx].saver : FX_TR_NONE; }
+
+/* How bright an RGB565 colour is, 0..255. */
+static int brightness(uint16_t c) {
+    return (((c >> 8) & 0xf8) * 2 + ((c >> 3) & 0xfc) * 5 + ((c << 3) & 0xf8)) / 8;
+}
+
+/* A colour dimmed to k/256 of itself. */
+static uint16_t dimmed(uint16_t c, int k) {
+    k = k < 0 ? 0 : k > 256 ? 256 : k;
+    return (uint16_t)((((c >> 11) & 31) * k >> 8) << 11 | (((c >> 5) & 63) * k >> 8) << 5 | ((c & 31) * k >> 8));
+}
+
+/* The same number every time for the same (x, y): what makes a block or a
+ * row glitch together. */
+static uint32_t hash(int x, int y) {
+    uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+/* 0..1 */
+static float hashf(int x, int y) { return (hash(x, y) & 0xffff) / 65536.0f; }
+
+/* Smooth noise, 0..1: hashf at the whole numbers, eased between them. */
+static float smooth_noise(float x, float y) {
+    int xi = (int)x, yi = (int)y;
+    float fx = x - xi, fy = y - yi;
+    fx = fx * fx * (3 - 2 * fx);
+    fy = fy * fy * (3 - 2 * fy);
+    float a = hashf(xi, yi), b = hashf(xi + 1, yi), c = hashf(xi, yi + 1), d = hashf(xi + 1, yi + 1);
+    return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}
+
+static inline uint8_t pixel_at(const uint8_t *picture, int x, int y) {
+    x = x < 0 ? 0 : x >= FX_W ? FX_W - 1 : x;
+    y = y < 0 ? 0 : y >= FX_H ? FX_H - 1 : y;
+    return picture[y * FX_W + x];
+}
+
+/* Red from one colour, green from another, blue from a third: a picture
+ * whose colours have come apart. */
+static inline uint16_t split_colors(uint16_t r, uint16_t g, uint16_t b) {
+    return (uint16_t)((r & 0xf800) | (g & 0x07e0) | (b & 0x001f));
+}
+
+static float infect_was; /* `t` at the last step */
+
+void fx_transition_begin(int kind) {
+    (void)kind;
+    infect_was = -1;
+}
+
+float fx_transition_energy(int kind, float t) {
+    /* hyperspace takes the stars up to light speed itself; Life just needs
+     * to breed at a fair rate */
+    return kind == FX_TR_HYPERSPACE ? t * t : kind == FX_TR_INFECT ? 0.3f : -1;
+}
+
+/*
+ * Into Life. Each cell has a moment, which sweeps across the picture in
+ * fronts (cells that came alone would die at once). When it comes, the cell
+ * is born if the picture is bright there, and that bit of the picture goes;
+ * so does any bit a living cell is on.
+ */
+static void infect_step(const struct fx_transition *tr) {
+    for (int y = 0; y < LIFE_H; y++) {
+        for (int x = 0; x < LIFE_W; x++) {
+            const int cell = y * LIFE_W + x;
+            uint8_t *old = &tr->old[y * 2 * FX_W + x * 2];
+            const float at = 0.06f + 0.8f * smooth_noise(x / 11.0f, y / 11.0f) + 0.05f * hashf(x, y);
+            bool eaten = canvas[cell] != 0;
+            if (infect_was < at && at <= tr->t) {
+                if (brightness(tr->old_palette[old[0]]) > 45 && (hash(x + 71, y + 13) & 1)) {
+                    canvas[cell] = 251;
+                }
+                eaten = true;
+            }
+            if (eaten) {
+                old[0] = old[1] = old[FX_W] = old[FX_W + 1] = FX_BLACK;
+            }
+        }
+    }
+    infect_was = tr->t;
+}
+
+void fx_transition_step(const struct fx_transition *tr) {
+    if (tr->kind == FX_TR_INFECT) {
+        infect_step(tr);
+    }
+}
+
+static void infect_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const uint8_t *fb = &tr->fb[y * FX_W], *old = &tr->old[y * FX_W];
+    for (int x = 0; x < FX_W; x++) {
+        out[x] = fb[x] ? tr->palette[fb[x]] : tr->old_palette[old[x]];
+    }
+}
+
+/* Which of 140 directions (dx, dy) points in, near enough: arctan by a
+ * polynomial, as this is asked for every pixel. */
+static int direction(float dx, float dy) {
+    const float ax = fabsf(dx), ay = fabsf(dy);
+    const float a = ax > ay ? ay / (ax + 0.001f) : ax / (ay + 0.001f);
+    float angle = a * (0.7854f + 0.273f * (1 - a));
+    angle = ay > ax ? 1.5708f - angle : angle;
+    angle = dx < 0 ? 3.14159f - angle : angle;
+    angle = dy < 0 ? -angle : angle;
+    return (int)((angle + 3.1416f) * (140 / TWO_PI));
+}
+
+/*
+ * Into Warp. The picture is blown up from the vanishing point, each
+ * direction at its own rate, so that it streaks; a hole opens in the middle
+ * of it and grows until nothing is left; and it dims. The stars are over it
+ * from the start.
+ */
+static void hyperspace_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const float t = tr->t, zoom = 8.5f * t * t * sqrtf(t), hole = 60 * t * t * t;
+    const int dim = (int)(256 * (1 - 0.5f * t));
+    const uint8_t *fb = &tr->fb[y * FX_W];
+    for (int x = 0; x < FX_W; x++) {
+        if (fb[x]) {
+            out[x] = tr->palette[fb[x]];
+            continue;
+        }
+        const float dx = x - warp_cx, dy = y - warp_cy;
+        const float s = 1 + zoom * (0.25f + 1.75f * hashf(direction(dx, dy), 5));
+        const int sx = (int)(warp_cx + dx / s), sy = (int)(warp_cy + dy / s);
+        if (sqrtf(dx * dx + dy * dy) < hole * s || (unsigned)sx >= FX_W || (unsigned)sy >= FX_H) {
+            out[x] = 0;
+        } else {
+            out[x] = dimmed(tr->old_palette[tr->old[sy * FX_W + sx]], dim);
+        }
+    }
+}
+
+/*
+ * The way out, first part: the running picture breaks up. Lightly at first
+ * and in bursts, then harder and nearly all the time: rows torn sideways,
+ * the colours apart, every other row dimmed, blocks in the colours of the
+ * screen that is coming back, and near the end the picture rolling.
+ */
+static void glitch_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const float secs = tr->t * (FX_SAVER_OUT_MS / 1000.0f), from = FX_SAVER_GLITCH_FROM_MS / 1000.0f;
+    const uint8_t *fb = tr->fb;
+    if (secs <= from) {
+        for (int x = 0; x < FX_W; x++) {
+            out[x] = tr->palette[fb[y * FX_W + x]];
+        }
+        return;
+    }
+    const float ramp = (secs - from) / (FX_SAVER_OUT_MS / 1000.0f - from), g = 0.1f + 0.9f * ramp * sqrtf(ramp);
+    const int frame = (int)tr->frame;
+    const bool burst = hashf(frame / 2, 77) < 0.22f + 0.78f * g;
+    const float gb = burst ? g : g * 0.25f;
+    const int split = (int)((burst ? 1.5f : 0) + 8 * gb * hashf(frame, 3));
+    const bool rolls = g > 0.75f && hashf(frame / 3, 9) < (g - 0.75f) * 2;
+    const int yy = rolls ? (y + (int)(hashf(frame / 3, 10) * FX_H)) % FX_H : y;
+    const int band = y / 6;
+    const int shift =
+        hashf(band, frame / 2) < 0.7f * gb ? (int)((hashf(band, frame / 2 + 50) - 0.5f) * (24 + 96 * g)) : 0;
+    for (int x = 0; x < FX_W; x++) {
+        const int bx = (x + shift + 200) / 14, by = y / 10;
+        if (hashf(bx + by * 31, frame / 3) < 0.4f * gb * g) {
+            out[x] = tr->old_palette[pixel_at(fb, x + shift, yy)] | (uint16_t)(hash(bx, by) & 0x1863);
+            continue;
+        }
+        out[x] = split_colors(tr->palette[pixel_at(fb, x + shift + split, yy)], tr->palette[pixel_at(fb, x + shift, yy)],
+                              tr->palette[pixel_at(fb, x + shift - split, yy)]);
+        if (burst && (y & 1)) {
+            out[x] = dimmed(out[x], 256 - (int)(120 * g));
+        }
+    }
+}
+
+/* The way out, last part: flat out, the screensaver's still giving way
+ * block by block to the screen that is back, and settling at the end. */
+static void cut_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const float t = tr->t, g = t < 0.7f ? 1 : (1 - t) / 0.3f;
+    const int frame = (int)tr->frame + 1000;
+    const int split = (int)(8 * g * hashf(frame, 3));
+    const int band = y / 6;
+    const int shift = hashf(band, frame) < 0.7f * g ? (int)((hashf(band, frame + 50) - 0.5f) * 120 * g) : 0;
+    for (int x = 0; x < FX_W; x++) {
+        const int bx = (x + shift + 200) / 14, by = y / 10;
+        const float at = 0.05f + 0.75f * hashf(bx + 300, by);
+        bool back = t > at;
+        if (fabsf(t - at) < 0.1f) {
+            back = hash(bx + by * 40, frame) & 1; /* flickers as it goes over */
+        }
+        if (back) {
+            out[x] = tr->palette[pixel_at(tr->fb, x + shift / 2, y)];
+        } else if (hashf(bx + by * 31, frame) < 0.4f * g) {
+            out[x] = tr->palette[pixel_at(tr->old, x + shift, y)];
+        } else {
+            out[x] = split_colors(tr->old_palette[pixel_at(tr->old, x + shift + split, y)],
+                                  tr->old_palette[pixel_at(tr->old, x + shift, y)],
+                                  tr->old_palette[pixel_at(tr->old, x + shift - split, y)]);
+            if (y & 1) {
+                out[x] = dimmed(out[x], 256 - (int)(120 * g));
+            }
+        }
+    }
+}
+
+void fx_transition_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    switch (tr->kind) {
+    case FX_TR_HYPERSPACE:
+        hyperspace_row(tr, y, out);
+        break;
+    case FX_TR_INFECT:
+        infect_row(tr, y, out);
+        break;
+    case FX_TR_GLITCH:
+        glitch_row(tr, y, out);
+        break;
+    case FX_TR_CUT:
+        cut_row(tr, y, out);
+        break;
+    default:
+        for (int x = 0; x < FX_W; x++) {
+            out[x] = tr->palette[tr->fb[y * FX_W + x]];
+        }
     }
 }

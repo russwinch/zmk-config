@@ -7,6 +7,7 @@ draw, without flashing anything:
 
     tools/fx_preview.py              # every animation -> fx_preview_out/*.gif
     tools/fx_preview.py --fps 30     # what a faster screen link would give
+    tools/fx_preview.py --saver hop  # the screensaver coming over Hop, and going
 
 The battery levels and the output are drawn over them as on the dongle
 (src/screen_fx/status_overlay.c), in fonts from the Prospector module. Those
@@ -68,9 +69,21 @@ def names() -> list[str]:
     return re.findall(r'\{"(\w+)"', table)
 
 
-def render(exe: Path, index: int, frames: int, fps: float) -> list[Image.Image]:
-    raw = subprocess.run([str(exe), str(index), str(frames), str(fps)], check=True,
-                         capture_output=True).stdout
+def savers() -> list[str]:
+    # the ones the table gives a way in to (.saver = ...)
+    text = (FX_DIR / "fx.c").read_text()
+    table = text[text.index("} effects[] = {"):text.index("#define FX_COUNT")]
+    entries = re.findall(r'\{"(\w+)"(.*?)(?=\n    \{"|\n\};)', table, re.S)
+    return [name for name, entry in entries if ".saver" in entry]
+
+
+def save(images: list[Image.Image], path: Path, fps: float) -> None:
+    images[0].save(path, save_all=True, append_images=images[1:], duration=round(1000 / fps), loop=0)
+    print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
+
+
+def render(exe: Path, *arguments: object) -> list[Image.Image]:
+    raw = subprocess.run([str(exe), *map(str, arguments)], check=True, capture_output=True).stdout
     size = WIDTH * HEIGHT * 3
     return [Image.frombytes("RGB", (WIDTH, HEIGHT), raw[i:i + size]) for i in range(0, len(raw), size)]
 
@@ -80,6 +93,8 @@ def main() -> None:
     parser.add_argument("--fps", type=float, default=15, help="frames per second (default 15)")
     parser.add_argument("--seconds", type=float, default=12, help="length of each clip")
     parser.add_argument("--out", type=Path, default=REPO / "fx_preview_out")
+    parser.add_argument("--saver", metavar="ANIMATION",
+                        help="instead: each screensaver coming over this animation and going again")
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
     args = parser.parse_args()
@@ -88,14 +103,18 @@ def main() -> None:
     module = args.prospector or prospector(REPO / "fx_preview_out")
     with tempfile.TemporaryDirectory() as tmp:
         exe = build(Path(tmp), module)
+        if args.saver:
+            showing = [name.lower() for name in names()].index(args.saver.lower())
+            for saver in savers():
+                if saver.lower() != args.saver.lower():
+                    images = render(exe, "saver", showing, names().index(saver), args.fps)
+                    save(images, args.out / f"saver_{args.saver.lower()}_{saver.lower()}.gif", args.fps)
+            return
         frames = int(args.seconds * args.fps)
         sheet = []
         for index, name in enumerate(names()):
             images = render(exe, index, frames, args.fps)
-            path = args.out / f"{index + 1}_{name.lower()}.gif"
-            images[0].save(path, save_all=True, append_images=images[1:],
-                           duration=round(1000 / args.fps), loop=0)
-            print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
+            save(images, args.out / f"{index + 1}_{name.lower()}.gif", args.fps)
             # idle, speeding up, flat out and not connected, idle on USB
             sheet.append([images[int(frames * at)] for at in (0.1, 0.4, 0.7, 0.95)])
 
