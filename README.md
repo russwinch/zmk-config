@@ -30,7 +30,8 @@ the Windows layer read ⌘ as Win.
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
-to sleep the Mac, longer for the shut-down prompt. The battery key blinks each
+to sleep the Mac, longer for the shut-down prompt. On a dongle it also starts
+the [screensaver](#animated-screens) straight away. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
 the Bluetooth connection state when it changes. Both flashes last 500ms
 (set for every board in `config/default.conf`).
@@ -208,7 +209,8 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 | 5 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 
 Three more animations are screensavers, not screens to choose. After 15
-minutes without a key (or an encoder turn) one of them, picked at random,
+minutes without a key (or an encoder turn), or as soon as the Config layer's
+power key is pressed, one of them, picked at random,
 takes over from whichever screen is showing, coming in over 18 seconds by
 distorting the picture that was there:
 

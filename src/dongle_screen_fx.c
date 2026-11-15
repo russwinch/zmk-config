@@ -60,6 +60,8 @@
 #include <zmk/events/sensor_event.h>
 #include <zmk/endpoints.h>
 #include <zmk/hid.h>
+#include <dt-bindings/zmk/hid_usage.h>
+#include <dt-bindings/zmk/hid_usage_pages.h>
 #include <dt-bindings/zmk/modifiers.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
@@ -843,8 +845,8 @@ static void saver_key(void) {
     }
 }
 
-/* No key for long enough: one of the screensavers takes over, picked at
- * random. */
+/* No key for long enough, or the power key: one of the screensavers takes
+ * over, picked at random. */
 static void saver_cb(struct k_work *work) {
     if (saver != SAVER_OFF || atomic_get(&paused)) {
         return; /* the next key sets the wait off again */
@@ -1174,6 +1176,13 @@ static int screen_fx_listener(const zmk_event_t *eh) {
                                         .b = (uint16_t)code->keycode,
                                         .mods = code->implicit_modifiers | code->explicit_modifiers},
                       k_uptime_get_32());
+        }
+        /* the computer's power key (the Config layer's) puts it to sleep, so
+         * the screensaver comes on with it instead of 15 minutes later. This
+         * comes after the key's own position event, which set the wait off. */
+        if (code->state && code->usage_page == HID_USAGE_CONSUMER && code->keycode == HID_USAGE_CONSUMER_POWER &&
+            zmk_display_is_initialized()) {
+            k_work_reschedule_for_queue(zmk_display_work_q(), &saver_work, K_NO_WAIT);
         }
         /* only kept while an animation shows, and only until its next frame */
         const char c = code->state && atomic_get(&wanted_screen) != 0 ? typed_char(code) : 0;
