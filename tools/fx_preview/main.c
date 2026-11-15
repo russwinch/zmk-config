@@ -250,7 +250,6 @@ int main(int argc, char **argv) {
         }
         in.debug = &debug;
         fx_frame(fx, fb, &in);
-        fx_draw_banner(fb, f < fps * 2 && !plain ? fx_name(fx) : NULL);
 
         for (int y = 0; y < FX_H * 2; y++) {
             /* as the dongle does: the panel's byte order, then the text */

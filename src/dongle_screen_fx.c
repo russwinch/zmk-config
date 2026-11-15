@@ -93,7 +93,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define FRAME_MS 33
 #define DEBUG_FRAME_MS 100
 #define STATUS_MS 500
-#define BANNER_MS 2000
 /* after leaving the module's screen: time for LVGL to finish with the panel */
 #define TAKEOVER_MS 300
 
@@ -184,7 +183,7 @@ static lv_obj_t *empty_screen;
 static bool start_pending; /* the animation has still to be set up */
 static bool redraw_all;
 static float energy;
-static uint32_t last_frame_at, status_at, banner_until;
+static uint32_t last_frame_at, status_at;
 static struct fx_status status;
 static bool overlay;    /* there was room for the status text */
 /* the frame columns in which that text has changed since it was last sent (none: text_x1 < text_x0) */
@@ -612,7 +611,6 @@ static void begin_animation(void) {
     last_frame_at = fps_at = k_uptime_get_32();
     frames_since = 0;
     status_at = last_frame_at - STATUS_MS;
-    banner_until = last_frame_at + (saver == SAVER_OFF ? BANNER_MS : 0);
     if (saver == SAVER_IN) {
         energy = 0;
     }
@@ -790,7 +788,6 @@ static void frame_cb(struct k_work *work) {
     }
 
     fx_frame(screen - 1, frame, &in);
-    fx_draw_banner(frame, !plain && (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
     present(now);
     frames_since++;
     const uint32_t took = k_uptime_get_32() - now;

@@ -144,7 +144,7 @@ const struct fx_theme *fx_theme(int fx);
 const uint8_t *fx_glyph_rows(char c);
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
- * picture with its own text, and takes no status text or banner over it. */
+ * picture with its own text, and takes no status text over it. */
 bool fx_is_debug(int fx);
 
 /* The Keys screen: the same goes for it, but it is drawn as often as an
@@ -160,11 +160,6 @@ void fx_start(int fx, uint16_t *palette);
 
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);
-
-/* The animation's name over the frame, top left, in the small letters. The
- * batteries and output are drawn over it afterwards, at the panel's own
- * size: src/screen_fx/status_overlay.c. */
-void fx_draw_banner(uint8_t *fb, const char *banner);
 
 /* --- the screensaver (the dongle starts it when no key has been pressed for
  * a while) ---------------------------------------------------------------- */

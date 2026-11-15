@@ -4,7 +4,7 @@
  * Each animation is a start function (palette, state) and a frame function.
  * `canvas` is one spare picture they share for whatever has to survive from
  * frame to frame (heat, fading trails); the frame handed in is redrawn
- * completely every time, because the banner is written over it. The
+ * completely every time. The
  * caller owns the canvas's memory (fx_set_canvas): the dongle has none to
  * spare for it.
  */
@@ -256,25 +256,6 @@ static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
             }
         }
     }
-}
-
-/* Text with a black edge, so it reads over anything. Returns the next x. */
-static int text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
-    for (int pass = 0; pass < 2; pass++) {
-        int cx = x;
-        for (const char *p = s; *p; p++, cx += 5) {
-            if (pass == 0) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        glyph(fb, cx + dx, y + dy, *p, FX_BLACK);
-                    }
-                }
-            } else {
-                glyph(fb, cx, y, *p, color);
-            }
-        }
-    }
-    return x + 5 * (int)strlen(s);
 }
 
 /* --- warp: a starfield you fly through, steered by where you type ---------- */
@@ -1908,14 +1889,6 @@ void fx_start(int fx, uint16_t *palette) {
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
     if (fx >= 0 && fx < FX_COUNT) {
         effects[fx].frame(fb, in);
-    }
-}
-
-/* --- the name ---------------------------------------------------------------- */
-
-void fx_draw_banner(uint8_t *fb, const char *banner) {
-    if (banner) {
-        text(fb, 10, 9, banner, FX_WHITE);
     }
 }
 
