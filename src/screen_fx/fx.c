@@ -1544,7 +1544,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
             strcpy(buf, "--");
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? FX_RED : DBG_TEXT, level ? d->battery_age_s[half] : -1);
+                   level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? FX_RED : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT,
+                   level ? d->battery_age_s[half] : -1);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
@@ -1667,14 +1668,20 @@ static void keys_start(uint16_t *palette) {
     keys_time = keys_second = 0;
 }
 
-/* A row of values as columns `high` at most, on a line: the top of each in
- * `color`. */
+/* A row of values as columns `high` at most (15 or under), on a line: the
+ * top of each in `color`, or in amber or red if the value has SPARK_WARN or
+ * SPARK_RED added. */
+#define SPARK_HIGH 0x0f
+#define SPARK_WARN 0x10
+#define SPARK_RED 0x20
+
 static void spark(uint8_t *fb, int x, int y, const uint8_t *values, int count, int high, uint8_t color) {
     for (int i = 0; i < count; i++) {
-        const int v = values[i] > high ? high : values[i];
+        const int v = (values[i] & SPARK_HIGH) > high ? high : values[i] & SPARK_HIGH;
+        const uint8_t top = values[i] & SPARK_RED ? FX_RED : values[i] & SPARK_WARN ? DBG_WARN : color;
         plot(fb, x + i, y + high - 1, DBG_DIM);
         for (int up = 0; up < v; up++) {
-            plot(fb, x + i, y + high - 1 - up, up == v - 1 ? color : DBG_DIM);
+            plot(fb, x + i, y + high - 1 - up, up == v - 1 ? top : DBG_DIM);
         }
     }
 }
@@ -1685,7 +1692,7 @@ static void history_add(uint8_t *values, int count, uint8_t value) {
 }
 
 static int keys_block_x(int place) {
-    return place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
+    return (FX_W - SIGNAL_W) / 2 + (place - 1) * (SIGNAL_W + 2);
 }
 
 static uint8_t signal_color(const struct fx_link *link) {
@@ -1707,8 +1714,7 @@ static void battery_icon(uint8_t *fb, int x, int y, int level, uint8_t color) {
 }
 
 /* One of the three blocks' signal: the bars, the dBm and the history.
- * `place` 0 on the left, 1 in the middle, 2 on the right (the mirror image
- * of the left). */
+ * `place` 0 on the left, 1 in the middle, 2 on the right. */
 static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
     char dbm[8] = "";
     uint8_t dbm_color = DBG_LABEL;
@@ -1719,19 +1725,10 @@ static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
         snprintf(dbm, sizeof(dbm), "%d", link->rssi);
         dbm_color = signal_color(link);
     }
-    if (place == 0) {
-        signal_bars(fb, 6, 15, link);
-        put(fb, 16, 15, dbm, dbm_color);
-    } else if (place == 2) {
-        signal_bars(fb, FX_W - 13, 15, link);
-        put_right(fb, FX_W - 16, 15, dbm, dbm_color);
-    } else {
-        const int wide = 7 + 3 + 5 * (int)strlen(dbm), left = (FX_W - wide) / 2;
-        signal_bars(fb, left, 15, link);
-        put(fb, left + 10, 15, dbm, dbm_color);
-    }
-    spark(fb, keys_block_x(place), 24, keys_signal[place], SIGNAL_W, SIGNAL_H,
-          link->up && link->rssi_known ? signal_color(link) : DBG_LABEL);
+    const int wide = 7 + 3 + 5 * (int)strlen(dbm), left = keys_block_x(place) + (SIGNAL_W - wide) / 2;
+    signal_bars(fb, left, 15, link);
+    put(fb, left + 10, 15, dbm, dbm_color);
+    spark(fb, keys_block_x(place), 24, keys_signal[place], SIGNAL_W, SIGNAL_H, DBG_TEXT);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -1755,6 +1752,10 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
                 high = 1 + (links[i]->rssi + 95) * (SIGNAL_H - 1) / 55;
                 high = high < 1 ? 1 : high > SIGNAL_H ? SIGNAL_H : high;
             }
+            /* a second of weak signal keeps its colour in the history */
+            if (high > 0 && signal_color(links[i]) != DBG_GOOD) {
+                high |= signal_color(links[i]) == FX_RED ? SPARK_RED : SPARK_WARN;
+            }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
         const uint32_t sent = keys_counting ? d->sent - keys_sent_before : 0;
@@ -1763,25 +1764,24 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         keys_counting = true;
         keys_seconds++;
     }
-    const bool flash_off = (int)(keys_time / 15) & 1; /* half a second on, half off */
 
-    /* the halves: a battery and its level, the first line in from the sides
-     * because the panel's corners are round */
+    /* the halves: a battery and its level, in the middle of the block as
+     * everything in the three is */
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
-        const uint8_t color = level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? FX_RED : DBG_TEXT;
+        const uint8_t color = level == 0                 ? DBG_LABEL
+                              : level <= FX_LOW_BATTERY  ? FX_RED
+                              : level <= FX_WARN_BATTERY ? DBG_WARN
+                                                         : DBG_TEXT;
         if (level == 0) {
             strcpy(buf, "--");
         } else {
             snprintf(buf, sizeof(buf), "%u%%", level);
         }
-        if (level == 0 || level > FX_FLAT_BATTERY || !flash_off) {
-            battery_icon(fb, half ? FX_W - 20 : 10, 6, level, color);
-            if (half) {
-                put_right(fb, FX_W - 23, 6, buf, color);
-            } else {
-                put(fb, 23, 6, buf, color);
-            }
+        if (!fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
+            const int wide = 10 + 3 + 5 * (int)strlen(buf), left = keys_block_x(half * 2) + (SIGNAL_W - wide) / 2;
+            battery_icon(fb, left, 6, level, color);
+            put(fb, left + 13, 6, buf, color);
         }
         keys_link(fb, half * 2, links[half * 2]);
     }
@@ -1802,7 +1802,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             high[i] = (uint8_t)((keys_sent[i] * SIGNAL_H + full - 1) / full);
         }
         const int x = keys_block_x(1);
-        spark(fb, x, 24, high, SIGNAL_W, SIGNAL_H, ready ? DBG_GOOD : DBG_LABEL);
+        spark(fb, x, 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
         /* a mark every ten seconds, so that it is seen to move when nothing is sent */
         for (int i = 0; i < SIGNAL_W; i++) {
             if ((keys_seconds + (uint32_t)i) % 10 == 0) {

@@ -25,10 +25,20 @@
 #define FX_GREY 254
 #define FX_WHITE 255
 
-/* A battery at this percent or under is low: shown in red. At FX_FLAT_BATTERY
- * or under it flashes too. */
+/* A battery at FX_WARN_BATTERY percent or under is shown in amber. At
+ * FX_LOW_BATTERY or under it is red and flashes slowly, a second on and a
+ * second off; at FX_FLAT_BATTERY or under, fast: 2.5 times a second. */
+#define FX_WARN_BATTERY 15
 #define FX_LOW_BATTERY 10
 #define FX_FLAT_BATTERY 5
+
+/* Whether a battery at `percent` (0: not known) is in the off half of its
+ * flash at `ms`. */
+static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
+    return percent == 0 || percent > FX_LOW_BATTERY ? false
+           : percent > FX_FLAT_BATTERY               ? ms % 2000 >= 1000
+                                                     : ms % 400 >= 200;
+}
 
 #define FX_MAX_KEYS 8
 #define FX_MAX_CHARS 8
@@ -54,7 +64,7 @@ struct fx_theme {
     uint16_t halo;   /* around all of it: dark for light text, light for dark */
     uint8_t font;    /* FX_FONT_FIELD, or FX_FONT_PIXEL where the picture has letters of its own */
     uint8_t drop;    /* panel rows to move it all down by (and two thirds of that in from the sides) */
-    bool dots;       /* no levels and no output: only a dot, in `low`, in the place of a battery that is low */
+    bool dots;       /* no levels and no output: only a battery, in the place of the level of one that is low */
 };
 
 #define FX_FONT_FIELD 0 /* the Prospector module's Field screen fonts */

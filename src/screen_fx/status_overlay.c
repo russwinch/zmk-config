@@ -41,7 +41,8 @@ LV_FONT_DECLARE(Symbols_Bold_26);
 #define SHOWN_MS 2000  /* how long what fades stays first */
 #define FADE_MS 600
 #define LINE_BOTTOM 220
-#define DOT_RADIUS 6
+#define BATTERY_W 24 /* with its cap */
+#define BATTERY_H 13
 #define PIXEL_SCALE 3 /* FX_FONT_PIXEL: panel pixels to a dot (the animations' own text has 2) */
 
 enum {
@@ -50,6 +51,7 @@ enum {
     DIM,      /* the profile number when the computer isn't connected */
     ACCENT,   /* the symbol, connected */
     LOW,      /* a battery at FX_LOW_BATTERY or under */
+    WARN,     /* a battery at FX_WARN_BATTERY or under */
     SEARCH,   /* the symbol, not connected */
     COLORS,
 };
@@ -79,6 +81,7 @@ void overlay_set_theme(const struct fx_theme *theme) {
     colors[DIM] = theme->dim;
     colors[ACCENT] = theme->accent;
     colors[LOW] = theme->low;
+    colors[WARN] = 0xFDE5; /* amber: 255, 190, 40 */
     colors[SEARCH] = theme->search;
     stale = true;
 }
@@ -225,19 +228,19 @@ static void add_shadow(const struct area *area) {
     }
 }
 
-/* A round dot, its middle at (cx, cy): the edge is smoothed by counting how
- * much of each pixel is inside, on a 4 x 4 grid. */
-static void draw_dot(const struct area *area, int cx, int cy, uint8_t color) {
-    const int reach = (2 * DOT_RADIUS + 1) * 4; /* half a pixel past the radius, in eighths of a pixel */
-    for (int dy = -DOT_RADIUS; dy <= DOT_RADIUS; dy++) {
-        for (int dx = -DOT_RADIUS; dx <= DOT_RADIUS; dx++) {
-            int inside = 0;
-            for (int sub = 0; sub < 16; sub++) {
-                /* the sample's place from the dot's middle, in eighths too */
-                const int px = 8 * dx + 2 * (sub % 4) - 3, py = 8 * dy + 2 * (sub / 4) - 3;
-                inside += px * px + py * py <= reach * reach;
+/* A battery BATTERY_W by BATTERY_H, its top left at (x, y) and its cap on
+ * the right, as full as `percent`. */
+static void draw_battery(const struct area *area, int x, int y, uint8_t percent, uint8_t color) {
+    const int body = BATTERY_W - 3, room = body - 8;
+    const int full = 2 + (percent > 100 ? 100 : percent) * (room - 2) / 100;
+    for (int dy = 0; dy < BATTERY_H; dy++) {
+        for (int dx = 0; dx < BATTERY_W; dx++) {
+            const bool edge = dx < body && (dx < 2 || dx >= body - 2 || dy < 2 || dy >= BATTERY_H - 2);
+            const bool cap = dx >= body && dy >= 4 && dy < BATTERY_H - 4;
+            const bool inside = dx >= 4 && dx < 4 + full && dy >= 4 && dy < BATTERY_H - 4;
+            if (edge || cap || inside) {
+                put(area, x + dx, y + dy, color, 15);
             }
-            put(area, cx + dx, cy + dy, color, (uint8_t)(inside * 15 / 16));
         }
     }
 }
@@ -257,7 +260,7 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected) {
     }
     *p++ = '0' + percent % 10;
     *p = '\0';
-    return percent <= FX_LOW_BATTERY ? LOW : INK;
+    return percent <= FX_LOW_BATTERY ? LOW : percent <= FX_WARN_BATTERY ? WARN : INK;
 }
 
 /* Work the masks out. */
@@ -277,9 +280,9 @@ static void render(const struct fx_status *status) {
         const uint8_t color = level_text(level, status->battery[half], status->half_connected[half]);
         if (dots) {
             /* where the level's outer digit would be, at half its height */
-            if (color == LOW) {
-                const int out = SIDE + inset + DOT_RADIUS;
-                draw_dot(area, half ? PANEL_W - 1 - out : out, foot - (pixel_font ? 9 : 12), LOW);
+            if (color != INK) {
+                const int x = half ? PANEL_W - SIDE - inset - BATTERY_W : SIDE + inset;
+                draw_battery(area, x, foot - (pixel_font ? 9 : 12) - BATTERY_H / 2, status->battery[half], color);
                 add_shadow(area);
             }
             continue;
@@ -356,10 +359,9 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
     }
     uint8_t now[OVERLAY_AREAS];
     for (int half = 0; half < 2; half++) {
-        /* a flat battery flashes: half a second on, half off */
-        const bool flat = drawn.half_connected[half] && drawn.battery[half] > 0 &&
-                          drawn.battery[half] <= FX_FLAT_BATTERY;
-        now[half ? OVERLAY_RIGHT : OVERLAY_LEFT] = flat && ms % 1000 >= 500 ? 0 : FULL;
+        /* a low battery flashes, a flat one fast */
+        const bool off = drawn.half_connected[half] && fx_battery_flash_off(drawn.battery[half], ms);
+        now[half ? OVERLAY_RIGHT : OVERLAY_LEFT] = off ? 0 : FULL;
     }
     if (drawn.usb) {
         /* typing over USB: nothing to see but a change of profile */

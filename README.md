@@ -240,7 +240,7 @@ when it is plugged in.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | the left and the right half: a battery and its percent (red at 10% or under, flashing at 5% or under; an empty battery and `--` when not known), signal strength as bars and in dBm (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds |
+| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds: a second of amber or red signal stays that colour in it |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening; what the port is doing (`READY` to type, `ASLEEP` when the computer has suspended it, `POWER` when it is only being powered); and where the signal history would be, the key reports (a key going down or up) sent to the computer in each of the last 40 seconds, with a mark every ten. The dongle can't measure the port's voltage or current |
 | the keys | every key position of the keyboard the dongle is built for |
@@ -270,7 +270,7 @@ Every animation shows the batteries and the output along the bottom, in the
 fonts of the module's Field screen, the levels a size up from its own
 (`src/screen_fx/status_overlay.c`): the left half's level in the bottom left
 corner, the right half's in the bottom right (`-` for a half that isn't
-connected, red at 10% or under, flashing at 5% or under), and in the middle
+connected; [amber, red and flashing](#battery-warnings) as it runs down), and in the middle
 the wireless symbol, with the Bluetooth profile number (counted from 0)
 to its right when there is something to say:
 
@@ -287,10 +287,21 @@ and how low they sit: Terminal, Code, Thermal and Tracker have them in the
 animations' own small pixel letters, a size down from the Field font; on
 Tracker it sits under the line across the bottom; and Tracker
 adds a gauge for each battery up the sides. The screensavers show none of
-this: only a red dot in the corner of a half at 10% or under, which flashes
-at 5% or under. The screen to start on
+this: only a small battery in the corner of a half at 15% or under, with the
+same colours and flashing. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
+
+#### Battery warnings
+
+Wherever the dongle shows a half's battery (the Keys and Debug screens, the
+levels over the animations, the screensavers' corner batteries):
+
+| Level | Shown |
+| --- | --- |
+| 15% or under | amber |
+| 10% or under | red, flashing slowly: a second on, a second off (not on Debug, which doesn't flash) |
+| 5% or under | red, flashing fast: 2.5 times a second |
 
 #### Debug screen
 
