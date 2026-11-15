@@ -1626,16 +1626,16 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  *   more keys send it higher, and it falls back in about a second. A mark
  *   stays at the highest each bar got to for a moment, then falls after it.
  *
- * Over USB the middle block has no radio link to show: it says what the USB
- * port is doing, and where the signal history would be, the key reports
- * sent down it in each of those seconds (SIGNAL_H of them fill it, or the
- * most in one second if that is more).
+ * Over USB the middle block has no radio link to show: it has the typing
+ * speed where the signal would be, and that speed over the same seconds
+ * (SPEED_FULL words a minute fill it, or the fastest in it if that is more).
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
 #define SIGNAL_W 40
 #define SIGNAL_H 9
+#define SPEED_FULL 60 /* words a minute */
 #define KEYS_BOARD_TOP 39
 #define KEYS_BOARD_H 52
 #define METER_COLS 16
@@ -1649,19 +1649,14 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 #define METER_MARK_FALL 0.6f
 
 static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
-static uint8_t keys_sent[SIGNAL_W];          /* key reports to the computer in each second, 255 at most */
-static uint32_t keys_sent_before;            /* the count when the last second ended */
-static bool keys_counting;
-static uint32_t keys_seconds;                /* how many have gone into the histories */
+static uint8_t keys_speed[SIGNAL_W];         /* words a minute, the same way, 255 at most */
 static float meter_level[METER_COLS], meter_mark[METER_COLS], meter_held[METER_COLS];
 static float keys_time, keys_second;         /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
     memset(keys_signal, 0, sizeof(keys_signal));
-    memset(keys_sent, 0, sizeof(keys_sent));
-    keys_counting = false;
-    keys_seconds = 0;
+    memset(keys_speed, 0, sizeof(keys_speed));
     memset(meter_level, 0, sizeof(meter_level));
     memset(meter_mark, 0, sizeof(meter_mark));
     memset(meter_held, 0, sizeof(meter_held));
@@ -1758,11 +1753,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
-        const uint32_t sent = keys_counting ? d->sent - keys_sent_before : 0;
-        history_add(keys_sent, SIGNAL_W, (uint8_t)(sent > 255 ? 255 : sent));
-        keys_sent_before = d->sent;
-        keys_counting = true;
-        keys_seconds++;
+        history_add(keys_speed, SIGNAL_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
     }
 
     /* the halves: a battery and its level, in the middle of the block as
@@ -1787,28 +1778,23 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     }
     /* the computer */
     if (in->status && in->status->usb) {
-        /* no radio in it: what the port is doing, and what is going down it */
-        const bool ready = in->status->host_connected;
-        put(fb, (FX_W - 15 + 1) / 2, 6, "USB", ready ? DBG_GOOD : FX_RED);
-        const char *state = d->usb_asleep ? "ASLEEP" : d->usb == 2 ? "READY" : d->usb == 1 ? "POWER" : "--";
-        put(fb, (FX_W - 5 * (int)strlen(state) + 1) / 2, 15, state,
-            d->usb_asleep ? DBG_WARN : d->usb == 2 ? DBG_TEXT : DBG_LABEL);
-        int full = SIGNAL_H;
+        /* no radio in it: the port (green when the computer is listening,
+         * amber when it has put the port to sleep), and the typing speed
+         * where the halves have their signal */
+        put(fb, (FX_W - 15 + 1) / 2, 6, "USB",
+            d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : FX_RED);
+        snprintf(buf, sizeof(buf), "%u", d->wpm);
+        const int left = (FX_W - (5 * (int)strlen(buf) + 1 + 15)) / 2;
+        put(fb, put(fb, left, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT) + 1, 15, "WPM", DBG_LABEL);
+        int full = SPEED_FULL;
         for (int i = 0; i < SIGNAL_W; i++) {
-            full = keys_sent[i] > full ? keys_sent[i] : full;
+            full = keys_speed[i] > full ? keys_speed[i] : full;
         }
         uint8_t high[SIGNAL_W];
         for (int i = 0; i < SIGNAL_W; i++) {
-            high[i] = (uint8_t)((keys_sent[i] * SIGNAL_H + full - 1) / full);
+            high[i] = (uint8_t)((keys_speed[i] * SIGNAL_H + full - 1) / full);
         }
-        const int x = keys_block_x(1);
-        spark(fb, x, 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
-        /* a mark every ten seconds, so that it is seen to move when nothing is sent */
-        for (int i = 0; i < SIGNAL_W; i++) {
-            if ((keys_seconds + (uint32_t)i) % 10 == 0) {
-                plot(fb, x + i, 24 + SIGNAL_H, DBG_TEXT);
-            }
-        }
+        spark(fb, keys_block_x(1), 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
     } else {
         /* the Bluetooth profiles as the Debug screen draws them, and the link */
         profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 6);

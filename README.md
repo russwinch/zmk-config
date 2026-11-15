@@ -242,7 +242,7 @@ when it is plugged in.
 | --- | --- |
 | top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds: a second of amber or red signal stays that colour in it |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
-| top middle, over USB | `USB`, green when the computer is listening; what the port is doing (`READY` to type, `ASLEEP` when the computer has suspended it, `POWER` when it is only being powered); and where the signal history would be, the key reports (a key going down or up) sent to the computer in each of the last 40 seconds, with a mark every ten. The dongle can't measure the port's voltage or current |
+| top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for |
 | under the keys | a level meter for each column of keys, as on a hi-fi: a key pressed in the column sends its bar up (and its neighbours' a little), more keys send it higher, to amber and red at the top, and it falls back in about a second. A white mark stays at the highest each bar reached for a moment, then falls after it |
 
@@ -301,7 +301,7 @@ levels over the animations, the screensavers' corner batteries):
 | --- | --- |
 | 15% or under | amber |
 | 10% or under | red, flashing slowly: a second on, a second off (not on Debug, which doesn't flash) |
-| 5% or under | red, flashing fast: 2.5 times a second |
+| 5% or under | red, flashing fast: twice a second |
 
 #### Debug screen
 

@@ -27,7 +27,7 @@
 
 /* A battery at FX_WARN_BATTERY percent or under is shown in amber. At
  * FX_LOW_BATTERY or under it is red and flashes slowly, a second on and a
- * second off; at FX_FLAT_BATTERY or under, fast: 2.5 times a second. */
+ * second off; at FX_FLAT_BATTERY or under, fast: twice a second. */
 #define FX_WARN_BATTERY 15
 #define FX_LOW_BATTERY 10
 #define FX_FLAT_BATTERY 5
@@ -37,7 +37,7 @@
 static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
     return percent == 0 || percent > FX_LOW_BATTERY ? false
            : percent > FX_FLAT_BATTERY               ? ms % 2000 >= 1000
-                                                     : ms % 400 >= 200;
+                                                     : ms % 500 >= 250;
 }
 
 #define FX_MAX_KEYS 8
@@ -117,7 +117,6 @@ struct fx_debug {
     uint64_t held_layer;  /* and those holding a layer on */
     const char *keyboard; /* its name, or NULL */
     uint32_t presses;     /* key presses since power-up */
-    uint32_t sent;        /* key reports to the computer since power-up */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */

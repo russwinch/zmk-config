@@ -1253,7 +1253,6 @@ static int screen_fx_listener(const zmk_event_t *eh) {
     const struct zmk_keycode_state_changed *code = as_zmk_keycode_state_changed(eh);
     if (code != NULL) {
         K_SPINLOCK(&debug_lock) {
-            debug.sent++;
             log_event((struct fx_event){.kind = 'K', .down = code->state, .a = code->usage_page,
                                         .b = (uint16_t)code->keycode,
                                         .mods = code->implicit_modifiers | code->explicit_modifiers},
