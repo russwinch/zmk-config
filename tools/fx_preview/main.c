@@ -202,6 +202,9 @@ int main(int argc, char **argv) {
             debug.log[2] = events[1];
             debug.n_log = 3;
             debug.presses++;
+            /* down and up */
+            debug.half_events[events[0].source] += 2;
+            debug.sent += 2;
             /* with a thumb key holding a layer and a home row key a modifier, now and then */
             debug.held_layer = debug.presses % 5 < 3 ? 1ull << 31 : 0;
             debug.held_mod = debug.presses % 7 < 2 ? 1ull << 16 : 0;

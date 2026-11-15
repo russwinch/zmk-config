@@ -203,7 +203,7 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Keys | the three links, a picture of the keys and the typing speed: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 1 | Keys | the three links, their traffic and a picture of the keys: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 | 2 | Debug | a page of readings: [see below](#debug-screen) | |
 | 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
@@ -243,8 +243,8 @@ when it is plugged in.
 | top left, top right | the left and the right half: battery percent (red at 10% or under, flashing at 5% or under, `--` when not known), signal strength as bars and in dBm (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds |
 | top middle, on Bluetooth | the computer: the profile in use (`BT0`...`BT4`), green when the computer is connected and red when it isn't; the signal of the link to it, the same way |
 | top middle, over USB | `USB`, green when the computer is listening; what the port is doing (`READY` to type, `ASLEEP` when the computer has suspended it, `POWER` when it is only being powered); and the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the selected one underlined). USB has no signal to measure |
+| under each of the three | its traffic over the same 40 seconds, a column a second with a mark on the line every ten: the key events (a press or a release) that came from that half, and in the middle the key reports sent to the computer, over Bluetooth or down the USB cable. The three share a height: 8 a second, or the busiest second showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for |
-| under the keys | the typing speed: the figure on the left, the fastest of the last two minutes on the right (`^90`), and a chart of those two minutes that moves along a place a second, a mark on its line every ten seconds. The chart's height is 60 wpm, or that fastest if it is more |
 
 The battery levels and the output aren't drawn along the bottom of this
 screen as they are over the animations: they are in the blocks at the top.

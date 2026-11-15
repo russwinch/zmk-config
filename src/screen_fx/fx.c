@@ -1637,37 +1637,42 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  *   listening), its signal as bars and in dBm, and that signal over the last
  *   SIGNAL_W seconds;
  *
- *   the board, colours as `board` has them;
+ *   under each, its traffic over the same seconds: the key events a second
+ *   that came from that half, and in the middle the key reports a second
+ *   that went to the computer. The three share a height: TRAFFIC_FULL a
+ *   second, or the busiest second in them if that is more. A mark on the
+ *   line every ten seconds shows them moving when nothing is typed;
  *
- *   the typing speed: the figure, the fastest of the last SPEED_W seconds,
- *   and a chart of those seconds that moves along one place a second, with
- *   a mark on its line every ten so that it is seen to move when idle. Its
- *   height is set by that fastest, or SPEED_FULL if nothing was faster.
+ *   the board, colours as `board` has them.
  *
  * Over USB the middle block has no radio link to show: it says what the USB
  * port is doing, and where the signal history would be, the five Bluetooth
- * profiles as the Debug screen draws them.
+ * profiles as the Debug screen draws them. Its traffic is what goes down
+ * the cable.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
 #define SIGNAL_W 40
 #define SIGNAL_H 9
-#define SPEED_W 116
-#define SPEED_H 12
-#define SPEED_FULL 60 /* words a minute that fill the chart, unless it has been faster */
-#define KEYS_BOARD_TOP 39
+#define TRAFFIC_H 20
+#define TRAFFIC_FOOT 58
+#define TRAFFIC_FULL 8 /* events a second that fill the charts, unless it has been busier */
+#define KEYS_BOARD_TOP 65
 #define KEYS_BOARD_H 52
 
 static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
-static uint8_t keys_speed[SPEED_W];          /* words a minute, the newest last, 255 at most */
-static uint32_t keys_seconds;                /* how many have gone into it */
+static uint8_t keys_traffic[3][SIGNAL_W];    /* events in each second, the same way, 255 at most */
+static uint32_t keys_counted[3];             /* the counts when the last second ended */
+static bool keys_counting;
+static uint32_t keys_seconds;                /* how many have gone into them */
 static float keys_time, keys_second;         /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
     memset(keys_signal, 0, sizeof(keys_signal));
-    memset(keys_speed, 0, sizeof(keys_speed));
+    memset(keys_traffic, 0, sizeof(keys_traffic));
+    keys_counting = false;
     keys_seconds = 0;
     keys_time = keys_second = 0;
 }
@@ -1691,6 +1696,10 @@ static void history_add(uint8_t *values, int count, uint8_t value) {
 
 static uint8_t signal_color(const struct fx_link *link) {
     return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED;
+}
+
+static int keys_block_x(int place) {
+    return place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
 }
 
 /* One of the three blocks: `place` 0 on the left, 1 in the middle, 2 on the
@@ -1725,8 +1734,23 @@ static void keys_link(uint8_t *fb, int place, const char *name, const char *leve
         signal_bars(fb, left, 15, link);
         put(fb, left + 10, 15, dbm, dbm_color);
     }
-    const int x = place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
+    const int x = keys_block_x(place);
     spark(fb, x, 24, keys_signal[place], SIGNAL_W, SIGNAL_H, link->up && link->rssi_known ? signal_color(link) : DBG_LABEL);
+}
+
+/* A block's traffic: a column a second, `full` events filling it. */
+static void keys_traffic_chart(uint8_t *fb, int place, int full) {
+    const int left = keys_block_x(place);
+    for (int i = 0; i < SIGNAL_W; i++) {
+        /* which second this column is, so the marks move along with it */
+        const uint32_t second = keys_seconds + (uint32_t)i;
+        plot(fb, left + i, TRAFFIC_FOOT, second % 10 == 0 ? DBG_TEXT : DBG_DIM);
+        const int high = (keys_traffic[place][i] * TRAFFIC_H + full - 1) / full;
+        for (int up = 1; up <= high; up++) {
+            /* brighter the higher up, and the top of each column brightest */
+            plot(fb, left + i, TRAFFIC_FOOT - up, up == high ? DBG_BRIGHT : DBG_HEAT + 3 + up * 12 / TRAFFIC_H);
+        }
+    }
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -1752,7 +1776,13 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
-        history_add(keys_speed, SPEED_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
+        const uint32_t counts[3] = {d->half_events[0], d->sent, d->half_events[1]};
+        for (int i = 0; i < 3; i++) {
+            const uint32_t more = keys_counting ? counts[i] - keys_counted[i] : 0;
+            history_add(keys_traffic[i], SIGNAL_W, (uint8_t)(more > 255 ? 255 : more));
+            keys_counted[i] = counts[i];
+        }
+        keys_counting = true;
         keys_seconds++;
     }
     const bool flash_off = (int)(keys_time / 15) & 1; /* half a second on, half off */
@@ -1784,7 +1814,16 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
         keys_link(fb, 1, "", buf, in->status && in->status->host_connected ? DBG_GOOD : FX_RED, &d->host, true);
     }
-    rule(fb, 35);
+    int full = TRAFFIC_FULL;
+    for (int place = 0; place < 3; place++) {
+        for (int i = 0; i < SIGNAL_W; i++) {
+            full = keys_traffic[place][i] > full ? keys_traffic[place][i] : full;
+        }
+    }
+    for (int place = 0; place < 3; place++) {
+        keys_traffic_chart(fb, place, full);
+    }
+    rule(fb, 61);
 
     /* the board: as big as fits across, and no taller than its space */
     int rows = 1;
@@ -1799,33 +1838,6 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     }
     board(fb, in, (FX_W - (board_cols * pitch - gap + split)) / 2,
           KEYS_BOARD_TOP + (KEYS_BOARD_H - (rows * (high + gap) - gap)) / 2, pitch, high, gap, split);
-    rule(fb, 92);
-
-    /* the typing speed: now, the fastest in the chart, and the chart */
-    int fastest = 0;
-    for (int i = 0; i < SPEED_W; i++) {
-        fastest = keys_speed[i] > fastest ? keys_speed[i] : fastest;
-    }
-    snprintf(buf, sizeof(buf), "%u", d->wpm);
-    int x = put(fb, 12, 95, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
-    put(fb, x + 1, 95, "WPM", DBG_LABEL);
-    snprintf(buf, sizeof(buf), "^%d", fastest);
-    put_right(fb, FX_W - 12, 95, buf, DBG_LABEL);
-
-    const int full = fastest > SPEED_FULL ? fastest : SPEED_FULL, left = (FX_W - SPEED_W) / 2, foot = 104 + SPEED_H;
-    for (int i = 0; i < SPEED_W; i++) {
-        /* which second this column is, so the marks move along with it */
-        const uint32_t second = keys_seconds + (uint32_t)i;
-        plot(fb, left + i, foot, second % 10 == 0 ? DBG_TEXT : DBG_DIM);
-        if (second % 10 == 0) {
-            plot(fb, left + i, foot + 1, DBG_LABEL);
-        }
-        const int high = (keys_speed[i] * SPEED_H + full - 1) / full;
-        for (int up = 1; up <= high; up++) {
-            /* brighter the higher up, and the top of each column brightest */
-            plot(fb, left + i, foot - up, up == high ? DBG_BRIGHT : DBG_HEAT + 3 + up * 12 / SPEED_H);
-        }
-    }
 }
 
 /* --- the list --------------------------------------------------------------- */

@@ -1178,6 +1178,9 @@ static void debug_position(const struct zmk_position_state_changed *pos) {
         if (pos->state) {
             debug.presses++;
         }
+        if (pos->source < 2) {
+            debug.half_events[pos->source]++;
+        }
         if (key < BOUNCE_KEYS) {
             if (!pos->state) {
                 released_at[key] = now | 1;
@@ -1256,6 +1259,7 @@ static int screen_fx_listener(const zmk_event_t *eh) {
     const struct zmk_keycode_state_changed *code = as_zmk_keycode_state_changed(eh);
     if (code != NULL) {
         K_SPINLOCK(&debug_lock) {
+            debug.sent++;
             log_event((struct fx_event){.kind = 'K', .down = code->state, .a = code->usage_page,
                                         .b = (uint16_t)code->keycode,
                                         .mods = code->implicit_modifiers | code->explicit_modifiers},
