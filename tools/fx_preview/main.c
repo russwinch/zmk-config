@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
     static uint8_t out[FX_W * 2 * 3], masks[OVERLAY_BYTES];
     static uint16_t row[FX_W * 2];
     uint16_t palette[256];
-    struct fx_status status = {.battery = {100, 12}, .half_connected = {true, true}, .profile = 1};
+    struct fx_status status = {.battery = {100, 8}, .half_connected = {true, true}, .profile = 1};
     int stage = -1;
     /* made-up readings for the Debug screen */
     static struct fx_debug debug = {
