@@ -25,8 +25,10 @@
 #define FX_GREY 254
 #define FX_WHITE 255
 
-/* A battery at this percent or under is low: shown in red. */
+/* A battery at this percent or under is low: shown in red. At FX_FLAT_BATTERY
+ * or under it flashes too. */
 #define FX_LOW_BATTERY 10
+#define FX_FLAT_BATTERY 5
 
 #define FX_MAX_KEYS 8
 #define FX_MAX_CHARS 8
@@ -37,6 +39,7 @@ struct fx_status {
     bool host_connected;    /* the computer */
     bool usb;               /* typing over USB, not Bluetooth */
     bool host_open;         /* Bluetooth: nothing paired on this profile */
+    bool profile_connected; /* the Bluetooth profile's computer is connected, whichever output is in use */
     uint8_t profile;        /* Bluetooth: profile number, from 0 */
 };
 
@@ -119,8 +122,7 @@ struct fx_input {
     uint8_t n_chars;           /* characters typed since the last frame */
     char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
     const struct fx_status *status; /* for an animation that shows some of it itself */
-    const struct fx_debug *debug;   /* for the Debug screen (fx_is_debug): all of it;
-                                     * for the Keys screen (fx_shows_keys): what fx.c says */
+    const struct fx_debug *debug;   /* for the Debug and Keys screens (fx_is_debug, fx_shows_keys) */
 };
 
 /* Where the board's key positions are: for each, its row << 8 | column, as
@@ -142,8 +144,8 @@ const uint8_t *fx_glyph_rows(char c);
  * picture with its own text, and takes no status text or banner over it. */
 bool fx_is_debug(int fx);
 
-/* The Keys screen: wants fx_input's debug filled in as far as the keys, the
- * layer and the keyboard's name go, and no banner over it. */
+/* The Keys screen: the same goes for it, but it is drawn as often as an
+ * animation is. */
 bool fx_shows_keys(int fx);
 
 /* FX_W * FX_H bytes for the animations to keep between frames. Call before
@@ -187,7 +189,14 @@ enum {
     FX_TR_MELT,       /* into Code: it runs down the screen like wax, and only then is anything written */
     FX_TR_GLITCH,     /* `old_palette` is the screen to go back to; `old` isn't used */
     FX_TR_CUT,        /* `old` is the screensaver's last frame */
+    FX_TR_CRT_OFF,    /* the panel going off: the picture closes to a line, then a dot, like an old television */
+    FX_TR_STATIC,     /* the panel coming on: white noise that the picture comes through */
 };
+
+/* How long those two take. The backlight goes down after the first, and
+ * comes up during the second (src/dongle_idle_backlight.c). */
+#define FX_POWER_OFF_MS 650
+#define FX_POWER_ON_MS 1200
 
 struct fx_transition {
     uint8_t kind;

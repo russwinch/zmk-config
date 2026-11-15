@@ -5,17 +5,29 @@
  * the linker keeps the ones used here), at the panel's full 280x240 rather
  * than the animation's doubled pixels.
  *
- * Left battery bottom left, right battery bottom right, and between them
- * the wireless symbol with the Bluetooth profile number (nothing over USB).
- * The symbol takes the animation's colour when the computer is connected
- * and pulses grey when it isn't. Colours come from the animation's theme
- * (fx_theme), so the text can be dark where the picture is bright. The theme
- * can also have the numbers in the animations' own 5x7 letters, smaller, and
- * move everything nearer the bottom of the screen. The screensavers' themes
- * leave all of it out but for a dot where the level of a half whose battery
- * is low would be.
+ * Left battery bottom left, right battery bottom right. A level is red at
+ * FX_LOW_BATTERY or under, and flashes at FX_FLAT_BATTERY or under.
  *
- * The text is kept as three small masks, worked out only when something
+ * In the bottom middle, the wireless symbol, with the Bluetooth profile
+ * number to its right:
+ *
+ *   on Bluetooth, connected      the symbol in the animation's colour. The
+ *                                number shows for two seconds after the
+ *                                profile is changed or the computer
+ *                                connects, then fades away
+ *   on Bluetooth, not connected  the symbol pulsing grey, and the number
+ *   over USB                     nothing, but for two seconds after the
+ *                                profile is changed: then both, and both
+ *                                fade
+ *
+ * Colours come from the animation's theme (fx_theme), so the text can be
+ * dark where the picture is bright. The theme can also have the numbers in
+ * the animations' own 5x7 letters, smaller, and move everything nearer the
+ * bottom of the screen. The screensavers' themes leave all of it out but
+ * for a dot where the level of a half whose battery is low would be, which
+ * flashes as the level would.
+ *
+ * The text is kept as four small masks, worked out only when something
  * changes, and mixed into the pixels on their way to the panel.
  */
 
@@ -28,37 +40,36 @@
 
 #define OVERLAY_ROWS 35
 #define OVERLAY_BATTERY_W 75 /* "100" */
-#define OVERLAY_OUTPUT_W 72
-#define OVERLAY_BYTES ((2 * OVERLAY_BATTERY_W + OVERLAY_OUTPUT_W) * OVERLAY_ROWS)
+#define OVERLAY_SYMBOL_W 40
+#define OVERLAY_NUMBER_W 26
+#define OVERLAY_BYTES ((2 * OVERLAY_BATTERY_W + OVERLAY_SYMBOL_W + OVERLAY_NUMBER_W) * OVERLAY_ROWS)
 
-/* On the panel: the first row the masks cover, before the theme's drop, and
- * the output's columns. */
+/* The masks. */
+enum { OVERLAY_LEFT, OVERLAY_RIGHT, OVERLAY_SYMBOL, OVERLAY_NUMBER, OVERLAY_AREAS };
+
+/* On the panel: the first row the masks cover, before the theme's drop. */
 #define OVERLAY_TOP 185
-#define OVERLAY_OUTPUT_X ((FX_W * 2 - OVERLAY_OUTPUT_W) / 2)
 
 /* First and last frame row (FX_H of them) the masks touch, with the theme
  * that is set. */
 int overlay_frame_row0(void);
 int overlay_frame_row1(void);
 
-/* How solid the pulsing symbol is at its strongest. */
-#define OVERLAY_PULSE_MAX 16
+/* The panel columns a mask covers, with the theme that is set. */
+void overlay_area_span(int area, int *x, int *width);
 
-/* OVERLAY_BYTES for the masks. Call before overlay_render. */
+/* OVERLAY_BYTES for the masks. Call before overlay_update. */
 void overlay_set_memory(uint8_t *memory);
 
-/* The colours to mix the masks in with, which take effect on the next blend,
- * and the letters and place, which need an overlay_render. */
+/* The colours, letters and place: all take effect at the next
+ * overlay_update. */
 void overlay_set_theme(const struct fx_theme *theme);
 
-/* Work the masks out again. Returns whether the symbol is one that pulses
- * (Bluetooth, and the computer isn't connected). */
-bool overlay_render(const struct fx_status *status);
-
-/* How solid the pulsing symbol is for a time in milliseconds: it breathes
- * once a second. 0..OVERLAY_PULSE_MAX, for overlay_set_pulse. */
-int overlay_pulse_at(uint32_t ms);
-void overlay_set_pulse(int level);
+/* Bring the text up to date with `status` at a time in milliseconds: every
+ * frame, since what pulses, flashes and fades goes by the time. Returns a
+ * bit for each mask (1 << OVERLAY_LEFT...) that looks different from the
+ * last call, for the caller to send those parts of the picture again. */
+unsigned overlay_update(const struct fx_status *status, uint32_t ms);
 
 /* Mix the masks into `count` panel pixels starting at (x, y). The pixels are
  * RGB565 with the bytes swapped, as the panel takes them. */

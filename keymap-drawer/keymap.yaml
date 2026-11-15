@@ -69,7 +69,7 @@ layers:
     - {t: ▽, type: trans}
     - {type: held}
   Config:
-  - ['', '', '', '', '', Screen -, Screen +, '', '', '']
+  - ['', '', '', '', '', Screen prev, Screen next, '', '', '']
   - ['', '', '', '', '', '', '', '', '', '']
   - [Power, Mac, Windows, '', Battery, BT prev, BT next, '', '', BT clear]
   - - {type: held}

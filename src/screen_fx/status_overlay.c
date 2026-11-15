@@ -8,6 +8,10 @@
  * (low four: the fonts have 16 levels). Colour 0 is the halo around the text
  * that keeps it readable over the picture: the theme's halo colour, black
  * for light text and something light for dark text.
+ *
+ * Each of the four masks (OVERLAY_LEFT...) is mixed in at its own level,
+ * halo and all: that is how the symbol pulses, a flat battery flashes and
+ * the profile number fades away.
  */
 
 #include "status_overlay.h"
@@ -26,10 +30,16 @@ LV_FONT_DECLARE(Symbols_Bold_26);
 #define PANEL_W (FX_W * 2)
 #define LEFT_X 6
 #define RIGHT_X (PANEL_W - LEFT_X - OVERLAY_BATTERY_W)
+/* the symbol in the middle of the panel, the number beside it */
+#define SYMBOL_X ((PANEL_W - OVERLAY_SYMBOL_W) / 2)
+#define NUMBER_X (SYMBOL_X + OVERLAY_SYMBOL_W - 2)
 
 /* The Field screen's: text bottom at 20 above the screen's, 9 from its side. */
 #define SIDE 9
-#define OUTPUT_BOX ((PANEL_W - 68) / 2) /* the Field output box, 68 x 34 */
+#define FULL 16        /* a mask's level when it is all there */
+#define PULSE_LOW 5    /* the least of the searching symbol */
+#define SHOWN_MS 2000  /* how long what fades stays first */
+#define FADE_MS 600
 #define LINE_BOTTOM 220
 #define DOT_RADIUS 6
 #define PIXEL_SCALE 3 /* FX_FONT_PIXEL: panel pixels to a dot (the animations' own text has 2) */
@@ -40,13 +50,17 @@ enum {
     DIM,      /* the profile number when the computer isn't connected */
     ACCENT,   /* the symbol, connected */
     LOW,      /* a battery at FX_LOW_BATTERY or under */
-    SEARCH,   /* the symbol, not connected: pulses */
+    SEARCH,   /* the symbol, not connected */
     COLORS,
 };
 
 /* RGB565 */
 static uint16_t colors[COLORS];
-static int pulse = OVERLAY_PULSE_MAX;
+static uint8_t levels[OVERLAY_AREAS]; /* 0..FULL */
+static struct fx_status drawn;        /* what the masks show */
+static bool have_drawn, stale;        /* stale: the theme has changed since */
+static bool revealed;                 /* the output is being shown for a change to it... */
+static uint32_t revealed_at;          /* ...since then */
 static bool pixel_font, dots;
 static int drop, inset; /* panel rows down, and columns in from the sides */
 
@@ -66,28 +80,48 @@ void overlay_set_theme(const struct fx_theme *theme) {
     colors[ACCENT] = theme->accent;
     colors[LOW] = theme->low;
     colors[SEARCH] = theme->search;
+    stale = true;
 }
 
-int overlay_pulse_at(uint32_t ms) {
-    /* down to about a third and back, eased at both ends */
+/* The searching symbol breathes once a second: down to about a third and
+ * back, eased at both ends. */
+static int pulse_at(uint32_t ms) {
     const int t = (int)(ms % 1000), up = t < 500 ? t : 1000 - t; /* 0..500 */
     const int eased = up * up * (1500 - 2 * up) / 250000;         /* 0..500, smoothstep */
-    return 5 + eased * (OVERLAY_PULSE_MAX - 5) / 500;
+    return PULSE_LOW + eased * (FULL - PULSE_LOW) / 500;
 }
 
-void overlay_set_pulse(int level) { pulse = level; }
-
-static uint8_t *left_mask, *right_mask, *output_mask;
+static uint8_t *masks;
 
 void overlay_set_memory(uint8_t *memory) {
-    left_mask = memory;
-    right_mask = left_mask + OVERLAY_BATTERY_W * OVERLAY_ROWS;
-    output_mask = right_mask + OVERLAY_BATTERY_W * OVERLAY_ROWS;
+    masks = memory;
+    stale = true;
 }
+
 struct area {
     uint8_t *mask;
     int x, width; /* on the panel */
 };
+
+static struct area area_of(int which) {
+    switch (which) {
+    case OVERLAY_LEFT:
+        return (struct area){masks, LEFT_X + inset, OVERLAY_BATTERY_W};
+    case OVERLAY_RIGHT:
+        return (struct area){masks + OVERLAY_BATTERY_W * OVERLAY_ROWS, RIGHT_X - inset, OVERLAY_BATTERY_W};
+    case OVERLAY_SYMBOL:
+        return (struct area){masks + 2 * OVERLAY_BATTERY_W * OVERLAY_ROWS, SYMBOL_X, OVERLAY_SYMBOL_W};
+    default:
+        return (struct area){masks + (2 * OVERLAY_BATTERY_W + OVERLAY_SYMBOL_W) * OVERLAY_ROWS, NUMBER_X,
+                             OVERLAY_NUMBER_W};
+    }
+}
+
+void overlay_area_span(int which, int *x, int *width) {
+    const struct area area = area_of(which);
+    *x = area.x;
+    *width = area.width;
+}
 
 static void put(const struct area *area, int x, int y, uint8_t color, uint8_t alpha) {
     x -= area->x;
@@ -226,11 +260,11 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected) {
     return percent <= FX_LOW_BATTERY ? LOW : INK;
 }
 
-bool overlay_render(const struct fx_status *status) {
-    const struct area left = {left_mask, LEFT_X + inset, OVERLAY_BATTERY_W};
-    const struct area right = {right_mask, RIGHT_X - inset, OVERLAY_BATTERY_W};
-    const struct area output = {output_mask, OVERLAY_OUTPUT_X, OVERLAY_OUTPUT_W};
-    memset(left_mask, 0, OVERLAY_BYTES);
+/* Work the masks out. */
+static void render(const struct fx_status *status) {
+    const struct area left = area_of(OVERLAY_LEFT), right = area_of(OVERLAY_RIGHT);
+    const struct area symbol = area_of(OVERLAY_SYMBOL), number_area = area_of(OVERLAY_NUMBER);
+    memset(masks, 0, OVERLAY_BYTES);
 
     /* everything stands on the line the Field screen's smaller levels do */
     const int line_bottom = LINE_BOTTOM + drop, foot = line_bottom - 5;
@@ -261,39 +295,94 @@ bool overlay_render(const struct fx_status *status) {
         add_shadow(area);
     }
 
-    /* The output, as the Field screen has it: nothing over USB; on Bluetooth
-     * the waves and the profile number, laid out as in its 68 x 34 box (the
-     * symbol in the middle of a 30 wide space 8 in, the number 5 from the
-     * right), with that box in the bottom middle. Not on a screensaver. */
-    if (status->usb || dots) {
-        return false;
+    /* The output: the Field screen's waves in the middle of the panel, and
+     * the Bluetooth profile number to their right. Solid when that profile's
+     * computer is connected. Not on a screensaver. */
+    if (dots) {
+        return;
     }
-    const bool solid = status->host_connected;
+    const bool solid = status->usb ? status->profile_connected : status->host_connected;
     const lv_font_t *symbols = solid ? &Symbols_Bold_26 : &Symbols_Regular_28;
     /* both symbol fonts end up on the same baseline, one above the number's */
     const int symbol_top = line_bottom - 7 - (symbols->line_height - symbols->base_line);
-    const int symbol_wide = draw_glyph(&output, symbols, SYMBOL_WAVES_UP, 0, 0, 0, 0, false);
-    draw_glyph(&output, symbols, SYMBOL_WAVES_UP, 0, OUTPUT_BOX + 8 + (30 - symbol_wide) / 2, symbol_top,
+    const int symbol_wide = draw_glyph(&symbol, symbols, SYMBOL_WAVES_UP, 0, 0, 0, 0, false);
+    draw_glyph(&symbol, symbols, SYMBOL_WAVES_UP, 0, (PANEL_W - symbol_wide) / 2, symbol_top,
                solid ? ACCENT : SEARCH, true);
+    add_shadow(&symbol);
 
     const char number[2] = {(char)('0' + status->profile % 10), '\0'};
     if (pixel_font) {
-        const int number_wide = draw_pixel_text(&output, number, 0, 0, PIXEL_SCALE, 0, false);
-        draw_pixel_text(&output, number, OUTPUT_BOX + 68 - 5 - number_wide, pixel_top, PIXEL_SCALE,
-                        solid ? INK : DIM, true);
+        draw_pixel_text(&number_area, number, NUMBER_X + 4, pixel_top, PIXEL_SCALE, solid ? INK : DIM, true);
     } else {
         const int number_top = line_bottom - 6 - (FG_Medium_26.line_height - FG_Medium_26.base_line);
-        const int number_wide = draw_text(&output, &FG_Medium_26, number, 0, 0, 0, 0, false);
-        draw_text(&output, &FG_Medium_26, number, OUTPUT_BOX + 68 - 5 - number_wide, number_top, 0,
-                  solid ? INK : DIM, true);
+        draw_text(&number_area, &FG_Medium_26, number, NUMBER_X + 4, number_top, 0, solid ? INK : DIM, true);
     }
-    add_shadow(&output);
-    return !solid;
+    add_shadow(&number_area);
+}
+
+unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
+    unsigned changed = 0;
+
+    /* a change to the output is shown, whatever was hidden */
+    if (have_drawn && (status->profile != drawn.profile || status->usb != drawn.usb ||
+                       status->host_connected != drawn.host_connected)) {
+        revealed = true;
+        revealed_at = ms;
+    }
+    if (!have_drawn || stale || memcmp(status, &drawn, sizeof(drawn)) != 0) {
+        render(status);
+        /* by value, field by field: the padding is then the same every time */
+        memset(&drawn, 0, sizeof(drawn));
+        drawn.battery[0] = status->battery[0];
+        drawn.battery[1] = status->battery[1];
+        drawn.half_connected[0] = status->half_connected[0];
+        drawn.half_connected[1] = status->half_connected[1];
+        drawn.host_connected = status->host_connected;
+        drawn.usb = status->usb;
+        drawn.host_open = status->host_open;
+        drawn.profile_connected = status->profile_connected;
+        drawn.profile = status->profile;
+        have_drawn = true;
+        stale = false;
+        changed = (1u << OVERLAY_AREAS) - 1;
+    }
+
+    /* what fades: all there for SHOWN_MS after the change, then going */
+    int fading = 0;
+    if (revealed) {
+        const uint32_t since = ms - revealed_at;
+        fading = since < SHOWN_MS ? FULL : since < SHOWN_MS + FADE_MS ? FULL - (int)((since - SHOWN_MS) * FULL / FADE_MS) : 0;
+        revealed = fading > 0;
+    }
+    uint8_t now[OVERLAY_AREAS];
+    for (int half = 0; half < 2; half++) {
+        /* a flat battery flashes: half a second on, half off */
+        const bool flat = drawn.half_connected[half] && drawn.battery[half] > 0 &&
+                          drawn.battery[half] <= FX_FLAT_BATTERY;
+        now[half ? OVERLAY_RIGHT : OVERLAY_LEFT] = flat && ms % 1000 >= 500 ? 0 : FULL;
+    }
+    if (drawn.usb) {
+        /* typing over USB: nothing to see but a change of profile */
+        now[OVERLAY_SYMBOL] = now[OVERLAY_NUMBER] = (uint8_t)fading;
+    } else if (drawn.host_connected) {
+        now[OVERLAY_SYMBOL] = FULL;
+        now[OVERLAY_NUMBER] = (uint8_t)fading;
+    } else {
+        now[OVERLAY_SYMBOL] = (uint8_t)pulse_at(ms);
+        now[OVERLAY_NUMBER] = FULL;
+    }
+    for (int area = 0; area < OVERLAY_AREAS; area++) {
+        if (now[area] != levels[area]) {
+            levels[area] = now[area];
+            changed |= 1u << area;
+        }
+    }
+    return changed;
 }
 
 static inline uint16_t swap16(uint16_t v) { return (uint16_t)(v >> 8 | v << 8); }
 
-static void blend(uint16_t *pixels, const uint8_t *mask, int count) {
+static void blend(uint16_t *pixels, const uint8_t *mask, int count, int level) {
     const uint16_t halo = colors[HALO];
     const int hr = halo >> 11, hg = (halo >> 5) & 0x3f, hb = halo & 0x1f;
     for (int i = 0; i < count; i++) {
@@ -307,15 +396,13 @@ static void blend(uint16_t *pixels, const uint8_t *mask, int count) {
         int r = under >> 11, g = (under >> 5) & 0x3f, b = under & 0x1f;
         /* the halo takes the picture four fifths of the way to its colour
          * at most, and all the way there under the text itself */
-        const int keep = color ? 3 : 16 - alpha * 13 / 15;
+        const int keep = 16 - (color ? 13 : alpha * 13 / 15) * level / FULL;
         r = (r * keep + hr * (16 - keep)) / 16;
         g = (g * keep + hg * (16 - keep)) / 16;
         b = (b * keep + hb * (16 - keep)) / 16;
         if (color) {
             const uint16_t c = colors[color];
-            if (color == SEARCH) {
-                alpha = alpha * pulse / OVERLAY_PULSE_MAX;
-            }
+            alpha = alpha * level / FULL;
             r += ((c >> 11) - r) * alpha / 15;
             g += (((c >> 5) & 0x3f) - g) * alpha / 15;
             b += ((c & 0x1f) - b) * alpha / 15;
@@ -329,17 +416,13 @@ void overlay_blend_row(uint16_t *pixels, int x, int y, int count) {
     if ((unsigned)y >= OVERLAY_ROWS) {
         return;
     }
-    const struct area areas[] = {
-        {left_mask, LEFT_X + inset, OVERLAY_BATTERY_W},
-        {right_mask, RIGHT_X - inset, OVERLAY_BATTERY_W},
-        {output_mask, OVERLAY_OUTPUT_X, OVERLAY_OUTPUT_W},
-    };
-    for (int a = 0; a < 3; a++) {
-        const int from = x > areas[a].x ? x : areas[a].x;
-        const int end_a = areas[a].x + areas[a].width, end_p = x + count;
+    for (int a = 0; a < OVERLAY_AREAS; a++) {
+        const struct area area = area_of(a);
+        const int from = x > area.x ? x : area.x;
+        const int end_a = area.x + area.width, end_p = x + count;
         const int to = end_p < end_a ? end_p : end_a;
-        if (from < to) {
-            blend(&pixels[from - x], &areas[a].mask[y * areas[a].width + from - areas[a].x], to - from);
+        if (from < to && levels[a] > 0) {
+            blend(&pixels[from - x], &area.mask[y * area.width + from - area.x], to - from, levels[a]);
         }
     }
 }

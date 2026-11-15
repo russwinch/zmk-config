@@ -3,7 +3,8 @@
  * "screens" next to the Prospector module's own (src/screen_fx/fx.c draws
  * them; the &scr_next and &scr_prev keys step through them, see config/keymap.dtsi).
  *
- * Screen 0 is the module's status screen, untouched. For the others LVGL is
+ * Screen 0 is the module's status screen, untouched; the keys only step to
+ * it with DONGLE_SCREEN_FX_MODULE_SCREEN. For the others LVGL is
  * shown an empty screen, so it has nothing to redraw, and the frames are
  * written straight to the panel from here. Everything runs on ZMK's display
  * work queue, the same thread LVGL draws from, so the two never talk to the
@@ -32,6 +33,11 @@
  * keys skip them, and when no key has been pressed for a while
  * (DONGLE_SCREEN_FX_SAVER_MINUTES) one takes over, until a key brings the
  * chosen screen back: see "the screensaver" below.
+ *
+ * When the keyboard goes idle the panel is switched off
+ * (src/dongle_idle_backlight.c): the picture first closes to a dot like an
+ * old television's, and when the panel comes back on, and at power-up, the
+ * picture comes through white noise: see "the panel going off and on" below.
  *
  * Settings: Kconfig at the repo root.
  */
@@ -72,6 +78,7 @@
 #include <zmk/split/central.h>
 #include <zmk/usb.h>
 
+#include "dongle_backlight.h"
 #include "dongle_screen_fx.h"
 #include "screen_fx/fx.h"
 
@@ -109,6 +116,9 @@ static uint16_t native_palette[256], old_palette[256];
 static atomic_t wanted_screen; /* 0 = the module's, 1.. = animation */
 static atomic_t chosen;        /* a key has picked the screen since power-up */
 static atomic_t paused;        /* keyboard idle: the panel is off */
+static atomic_t sleep_wanted;  /* keyboard idle: the picture is to close, and then that */
+/* the next picture comes through static: the first, and the one after the panel was off */
+static atomic_t static_wanted = ATOMIC_INIT(1);
 static atomic_t last_key_at;   /* uptime, ms */
 static atomic_t saver_drop;    /* the panel went off with the screensaver showing */
 static atomic_t wpm;
@@ -174,13 +184,12 @@ static bool start_pending; /* the animation has still to be set up */
 static bool redraw_all;
 static float energy;
 static uint32_t last_frame_at, status_at, banner_until;
-static uint32_t status_never; /* status_at before the first reading */
 static struct fx_status status;
 static bool overlay;    /* there was room for the status text */
-static bool pulsing;    /* its wireless symbol is one that pulses */
-static bool pulse_due;  /* and has changed since it was last sent */
-static int pulse_level;
+/* the frame columns in which that text has changed since it was last sent (none: text_x1 < text_x0) */
+static int text_x0 = FX_W, text_x1 = -1;
 static bool is_debug;        /* the Debug screen is the one showing */
+static bool plain;           /* that or the Keys screen: the readings, and no status text over them */
 static struct fx_debug debug_shown;
 static uint32_t frames_since, fps_at;
 
@@ -210,6 +219,27 @@ static uint32_t saver_began_at; /* keys after this end it */
 static uint32_t stage_at;       /* when this stage began */
 static uint32_t stage_frames;
 
+/*
+ * The panel going off and on. The keyboard going idle switches the panel
+ * off (src/dongle_idle_backlight.c, which waits FX_POWER_OFF_MS before it
+ * does). In that time the picture closes to a line and a dot
+ * (FX_TR_CRT_OFF), ending black: so black is what the panel still holds
+ * when it is switched on again, and not the last picture. The next picture,
+ * like the first after power-up, comes through static (FX_TR_STATIC) while
+ * the backlight comes up. These go over whatever the screensaver is doing.
+ */
+enum { POWER_STEADY, POWER_GOING_OFF, POWER_COMING_ON };
+static int power;
+static uint32_t power_at;
+static bool lit; /* the backlight has been asked up for the first picture */
+
+/* Only if idle means off: a dimmed panel keeps its picture. */
+#if defined(CONFIG_WATERFOWL_DONGLE_IDLE_BACKLIGHT) && CONFIG_WATERFOWL_DONGLE_IDLE_BRIGHTNESS == 0
+#define CLOSES_WHEN_IDLE 1
+#else
+#define CLOSES_WHEN_IDLE 0
+#endif
+
 static void frame_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
 static void saver_cb(struct k_work *work);
@@ -228,14 +258,8 @@ static void read_status(void) {
     status.usb = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
     status.profile = CLAMP(zmk_ble_active_profile_index(), 0, 8);
     status.host_open = zmk_ble_active_profile_is_open();
-    status.host_connected = status.usb ? zmk_usb_is_hid_ready() : zmk_ble_active_profile_is_connected();
-}
-
-static bool same_status(const struct fx_status *a, const struct fx_status *b) {
-    return a->battery[0] == b->battery[0] && a->battery[1] == b->battery[1] &&
-           a->half_connected[0] == b->half_connected[0] && a->half_connected[1] == b->half_connected[1] &&
-           a->host_connected == b->host_connected && a->usb == b->usb && a->host_open == b->host_open &&
-           a->profile == b->profile;
+    status.profile_connected = zmk_ble_active_profile_is_connected();
+    status.host_connected = status.usb ? zmk_usb_is_hid_ready() : status.profile_connected;
 }
 
 /* --- the Debug screen's readings ---------------------------------------------- */
@@ -363,8 +387,7 @@ static void read_debug(uint32_t now) {
 static void show_frame(void) {
     for (int top = 0; top < FX_H; top += BAND_ROWS) {
         int x0 = 0, x1 = FX_W - 1;
-        const bool text =
-            overlay && !is_debug && top <= overlay_frame_row1() && top + BAND_ROWS > overlay_frame_row0();
+        const bool text = overlay && !plain && top <= overlay_frame_row1() && top + BAND_ROWS > overlay_frame_row0();
 
         if (!redraw_all) {
             /* the columns this band differs in */
@@ -385,10 +408,10 @@ static void show_frame(void) {
                     }
                 }
             }
-            /* the pulsing symbol changes with the picture under it still */
-            if (text && pulse_due) {
-                x0 = MIN(x0, OVERLAY_OUTPUT_X / 2);
-                x1 = MAX(x1, (OVERLAY_OUTPUT_X + OVERLAY_OUTPUT_W - 1) / 2);
+            /* text that pulses, flashes or fades changes with the picture under it still */
+            if (text) {
+                x0 = MIN(x0, text_x0);
+                x1 = MAX(x1, text_x1);
             }
             if (x1 < x0) {
                 continue;
@@ -419,14 +442,28 @@ static void show_frame(void) {
         display_write(panel, x0 * 2, top * 2, &desc, band);
     }
     memcpy(shown, frame, PIXELS);
-    redraw_all = pulse_due = false;
+    redraw_all = false;
+    text_x0 = FX_W;
+    text_x1 = -1;
 }
 
-/* The transition a screensaver stage shows the frame through, if it does. */
+/* The transition the frame is shown through, if it is: the panel going off
+ * or coming on, or else a screensaver stage's. */
 static bool stage_transition(uint32_t now, struct fx_transition *tr) {
-    const uint32_t into = now - stage_at;
+    uint32_t into = now - stage_at;
     uint32_t length;
 
+    if (power != POWER_STEADY) {
+        tr->kind = power == POWER_GOING_OFF ? FX_TR_CRT_OFF : FX_TR_STATIC;
+        length = power == POWER_GOING_OFF ? FX_POWER_OFF_MS : FX_POWER_ON_MS;
+        tr->t = MIN((float)(now - power_at) / length, 1.0f);
+        tr->frame = stage_frames;
+        tr->fb = frame;
+        tr->old = shown;
+        tr->palette = native_palette;
+        tr->old_palette = old_palette;
+        return true;
+    }
     switch (saver) {
     case SAVER_IN:
         tr->kind = fx_saver_way_in(screen - 1);
@@ -460,8 +497,9 @@ static void show_transition(const struct fx_transition *tr) {
     static uint16_t line[FX_W];
 
     for (int top = 0; top < FX_H; top += BAND_ROWS) {
-        const bool text =
-            overlay && !is_debug && top <= overlay_frame_row1() && top + BAND_ROWS > overlay_frame_row0();
+        /* the text stays where it is, so not over a picture that is closing */
+        const bool text = overlay && !plain && tr->kind != FX_TR_CRT_OFF && top <= overlay_frame_row1() &&
+                          top + BAND_ROWS > overlay_frame_row0();
         uint16_t *out = band;
         for (int y = top; y < top + BAND_ROWS; y++) {
             fx_transition_row(tr, y, line);
@@ -484,7 +522,8 @@ static void show_transition(const struct fx_transition *tr) {
         };
         display_write(panel, 0, top * 2, &desc, band);
     }
-    pulse_due = false;
+    text_x0 = FX_W;
+    text_x1 = -1;
     redraw_all = true; /* for the first frame after it */
 }
 
@@ -558,8 +597,8 @@ static void begin_animation(void) {
 #endif
     fx_start(screen - 1, native);
     overlay_set_theme(fx_theme(screen - 1));
-    pulsing = false;
     is_debug = fx_is_debug(screen - 1);
+    plain = is_debug || fx_shows_keys(screen - 1);
     for (int i = 0; i < 256; i++) {
         palette[i] = sys_cpu_to_be16(native[i]);
     }
@@ -570,7 +609,7 @@ static void begin_animation(void) {
     redraw_all = true;
     last_frame_at = fps_at = k_uptime_get_32();
     frames_since = 0;
-    status_at = status_never = last_frame_at - STATUS_MS;
+    status_at = last_frame_at - STATUS_MS;
     banner_until = last_frame_at + (saver == SAVER_OFF ? BANNER_MS : 0);
     if (saver == SAVER_IN) {
         energy = 0;
@@ -674,6 +713,16 @@ static void frame_cb(struct k_work *work) {
     if (saver != SAVER_OFF && saver_step(now)) {
         return;
     }
+    if (atomic_set(&static_wanted, 0)) {
+        power = POWER_COMING_ON;
+        power_at = now;
+        fx_transition_begin(FX_TR_STATIC);
+        if (!lit) {
+            /* the first picture: the backlight has waited for it */
+            lit = true;
+            dongle_backlight_on();
+        }
+    }
     struct fx_input in = {.step = CLAMP(now - last_frame_at, 10, 200) / 33.3f};
     last_frame_at = now;
 
@@ -707,56 +756,61 @@ static void frame_cb(struct k_work *work) {
     in.wpm = (uint16_t)atomic_get(&wpm);
 
     if (now - status_at >= STATUS_MS) {
-        const struct fx_status was = status;
-        const bool first = status_at == status_never;
         status_at = now;
         read_status();
-        /* the text is only worked out again when it changes */
-        if (overlay && !is_debug && (first || !same_status(&was, &status))) {
-            pulsing = overlay_render(&status);
-            redraw_all = true;
-        }
     }
-    if (is_debug) {
-        static uint8_t fps, frame_ms;
+    in.status = &status;
+    if (plain) {
+        /* the Debug and Keys screens: the readings, and nothing over them */
+        static uint8_t fps;
         if (now - fps_at >= 1000) {
             fps = (uint8_t)MIN(frames_since * 1000 / (now - fps_at), 99);
             fps_at = now;
             frames_since = 0;
         }
+        const uint8_t frame_ms = debug_shown.frame_ms;
         read_debug(now);
         debug_shown.fps = fps;
         debug_shown.frame_ms = frame_ms;
         in.debug = &debug_shown;
-        in.status = &status;
-        fx_frame(screen - 1, frame, &in);
-        present(now);
-        frames_since++;
-        frame_ms = (uint8_t)MIN(k_uptime_get_32() - now, 255);
+    } else if (overlay) {
+        /* the text is only worked out again when it changes, and only the
+         * parts of it that look different are sent again */
+        const unsigned changed = overlay_update(&status, now);
+        for (int area = 0; area < OVERLAY_AREAS; area++) {
+            if (changed & BIT(area)) {
+                int x, width;
+                overlay_area_span(area, &x, &width);
+                text_x0 = MIN(text_x0, MAX(x, 0) / 2);
+                text_x1 = MAX(text_x1, MIN(x + width - 1, PANEL_W - 1) / 2);
+            }
+        }
+    }
+
+    fx_frame(screen - 1, frame, &in);
+    fx_draw_banner(frame, !plain && (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
+    present(now);
+    frames_since++;
+    const uint32_t took = k_uptime_get_32() - now;
+    debug_shown.frame_ms = (uint8_t)MIN(took, 255);
+
+    if (power == POWER_GOING_OFF && now - power_at >= FX_POWER_OFF_MS) {
+        /* that frame was black: nothing more until the panel is back on */
+        power = POWER_STEADY;
+        if (atomic_get(&sleep_wanted)) {
+            atomic_set(&paused, 1);
+            return;
+        }
+    } else if (power == POWER_COMING_ON && now - power_at >= FX_POWER_ON_MS) {
+        power = POWER_STEADY;
+    }
+
+    if (is_debug && power == POWER_STEADY) {
         /* text doesn't need the animations' frame rate */
         schedule_frame(DEBUG_FRAME_MS);
         return;
     }
-    if (pulsing) {
-        const int level = overlay_pulse_at(now);
-        if (level != pulse_level) {
-            overlay_set_pulse(pulse_level = level);
-            pulse_due = true;
-        }
-    }
-
-    in.status = &status;
-    const bool shows_keys = fx_shows_keys(screen - 1);
-    if (shows_keys) {
-        read_keys(&debug_shown);
-        in.debug = &debug_shown;
-    }
-    fx_frame(screen - 1, frame, &in);
-    fx_draw_banner(frame, !shows_keys && (int32_t)(banner_until - now) > 0 ? fx_name(screen - 1) : NULL);
-    present(now);
-
     /* always leave the queue a moment for LVGL's own tick and the backlight */
-    const uint32_t took = k_uptime_get_32() - now;
     schedule_frame(took + 5 < FRAME_MS ? FRAME_MS - took : 5);
 }
 
@@ -790,6 +844,12 @@ static void apply_cb(struct k_work *work) {
     const int want = atomic_get(&wanted_screen);
 
     const bool dropped = atomic_set(&saver_drop, 0);
+    if (dropped) {
+        /* the keyboard has been idle, so the panel off (or on its way):
+         * whatever shows next comes through static */
+        power = POWER_STEADY;
+        atomic_set(&static_wanted, 1);
+    }
     if (saver != SAVER_OFF) {
         if (!dropped) {
             return; /* its way out ends on the wanted screen */
@@ -832,6 +892,25 @@ static void request_apply(void) {
         k_work_submit_to_queue(zmk_display_work_q(), &apply_work);
     }
 }
+
+/* --- the panel going off ---------------------------------------------------------- */
+
+/* The keyboard has gone idle: close the picture, if there is one of ours. */
+static void sleep_cb(struct k_work *work) {
+    if (!atomic_get(&sleep_wanted) || atomic_get(&paused)) {
+        return;
+    }
+    if (!CLOSES_WHEN_IDLE || screen == 0 || start_pending || frame == NULL) {
+        atomic_set(&paused, 1);
+        return;
+    }
+    power = POWER_GOING_OFF;
+    power_at = k_uptime_get_32();
+    fx_transition_begin(FX_TR_CRT_OFF);
+    schedule_frame(0);
+}
+
+static K_WORK_DEFINE(sleep_work, sleep_cb);
 
 /* --- the screensaver: starting it ---------------------------------------------- */
 
@@ -939,8 +1018,11 @@ static K_WORK_DELAYABLE_DEFINE(save_work, save_cb);
 
 #endif
 
-/* A screen the keys step through: not one of the screensavers. */
-static bool can_choose(int which) { return which == 0 || fx_saver_way_in(which - 1) == FX_TR_NONE; }
+/* A screen the keys step through: not one of the screensavers, and the
+ * module's own only if asked for. */
+static bool can_choose(int which) {
+    return which == 0 ? IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_MODULE_SCREEN) : fx_saver_way_in(which - 1) == FX_TR_NONE;
+}
 
 /* The screen to start on: the saved one if it still exists, or -1. */
 static int saved_screen(void) {
@@ -1238,12 +1320,20 @@ static int screen_fx_listener(const zmk_event_t *eh) {
 
     const struct zmk_activity_state_changed *activity = as_zmk_activity_state_changed(eh);
     if (activity != NULL) {
-        /* the panel is switched off while idle (src/dongle_idle_backlight.c) */
+        /* the panel is switched off while idle (src/dongle_idle_backlight.c),
+         * once the picture has closed: sleep_cb */
         const bool idle = activity->state != ZMK_ACTIVITY_ACTIVE;
         if (idle) {
             atomic_set(&saver_drop, 1);
-        }
-        if (atomic_set(&paused, idle) && !idle) {
+            if (!atomic_set(&sleep_wanted, 1)) {
+                if (zmk_display_is_initialized()) {
+                    k_work_submit_to_queue(zmk_display_work_q(), &sleep_work);
+                } else {
+                    atomic_set(&paused, 1);
+                }
+            }
+        } else if (atomic_set(&sleep_wanted, 0)) {
+            atomic_set(&paused, 0);
             request_apply();
         }
     }
@@ -1273,10 +1363,11 @@ static void start_cb(struct k_work *work) {
     if (atomic_get(&chosen)) {
         return; /* a key got there first */
     }
-    /* DONGLE_SCREEN_FX_START counts the screens the keys step through */
-    int start = 0;
+    /* DONGLE_SCREEN_FX_START counts the screens the keys step through; the
+     * first of them if there aren't that many */
+    int start = -1;
     for (int which = 0, nth = 0; which <= fx_count(); which++) {
-        if (can_choose(which) && nth++ == CONFIG_DONGLE_SCREEN_FX_START) {
+        if (can_choose(which) && (nth++ == CONFIG_DONGLE_SCREEN_FX_START || start < 0)) {
             start = which;
         }
     }

@@ -8,6 +8,7 @@ draw, without flashing anything:
     tools/fx_preview.py              # every animation -> fx_preview_out/*.gif
     tools/fx_preview.py --fps 30     # what a faster screen link would give
     tools/fx_preview.py --saver hop  # the screensaver coming over Hop, and going
+    tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
 
 The battery levels and the output are drawn over them as on the dongle
 (src/screen_fx/status_overlay.c), in fonts from the Prospector module. Those
@@ -95,6 +96,8 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=REPO / "fx_preview_out")
     parser.add_argument("--saver", metavar="ANIMATION",
                         help="instead: each screensaver coming over this animation and going again")
+    parser.add_argument("--power", metavar="ANIMATION",
+                        help="instead: the panel going off and coming back on, with this animation showing")
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
     args = parser.parse_args()
@@ -110,12 +113,16 @@ def main() -> None:
                     images = render(exe, "saver", showing, names().index(saver), args.fps)
                     save(images, args.out / f"saver_{args.saver.lower()}_{saver.lower()}.gif", args.fps)
             return
+        if args.power:
+            showing = [name.lower() for name in names()].index(args.power.lower())
+            save(render(exe, "power", showing, args.fps), args.out / f"power_{args.power.lower()}.gif", args.fps)
+            return
         frames = int(args.seconds * args.fps)
         sheet = []
         for index, name in enumerate(names()):
             images = render(exe, index, frames, args.fps)
             save(images, args.out / f"{index + 1}_{name.lower()}.gif", args.fps)
-            # idle, speeding up, flat out and not connected, idle on USB
+            # idle, speeding up (the profile just changed), flat out and not connected, idle on USB
             sheet.append([images[int(frames * at)] for at in (0.1, 0.4, 0.7, 0.95)])
 
     contact = Image.new("RGB", (WIDTH * 4 + 12, (HEIGHT + 4) * len(sheet) - 4), "#202020")

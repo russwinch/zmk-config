@@ -9,9 +9,10 @@
  * character of `typed`. One key (the left hand's home row) is held down
  * from the start for seven seconds.
  *
- * So is the status: the left half full and the right one nearly flat, on
- * Bluetooth profile 1 with the computer connected, then (from 55% of the way
- * through) not connected, then (from 85%) over USB.
+ * So is the status: the left half full and the right one flat, on Bluetooth
+ * profile 1 with the computer connected, profile 2 from 30% of the way
+ * through, then (from 55%) not connected, then (from 80%) over USB, and
+ * there profile 3 from 88%.
  *
  *   main saver <animation showing> <screensaver animation> <frames per second>
  *
@@ -19,6 +20,12 @@
  * does it (fx.h): 2 seconds of the animation, the way in, 4 seconds of the
  * screensaver, then a key and typing for the whole of the way out, and 3
  * seconds of the animation back. Without the status text.
+ *
+ *   main power <animation number> <frames per second>
+ *
+ * The panel going off and coming back on (FX_TR_CRT_OFF, FX_TR_STATIC): 2
+ * seconds of the animation, off, half a second of nothing, on, 2 seconds
+ * more. The backlight's own fading isn't shown.
  */
 
 #include <stdio.h>
@@ -107,9 +114,38 @@ static int saver_main(int base, int saver, float fps) {
     return 0;
 }
 
+static int power_main(int fx, float fps) {
+    const int still = (int)(2 * fps), off = (int)(FX_POWER_OFF_MS * fps / 1000), dark = (int)(fps / 2),
+              on = (int)(FX_POWER_ON_MS * fps / 1000);
+    saver_fps = fps;
+    fx_set_canvas(saver_canvas);
+    fx_start(fx, saver_palette);
+    for (int f = 0; f < 4 * fps; f++) { /* unseen, typing, so there is a picture */
+        saver_unseen = true;
+        saver_frame(fx, 0.5f, 3, f, FX_TR_NONE, 0);
+    }
+    saver_unseen = false;
+    for (int f = 0; f < still; f++) {
+        saver_frame(fx, 0.3f, 4, f, FX_TR_NONE, 0);
+    }
+    for (int f = 0; f < off + dark; f++) {
+        saver_frame(fx, 0.1f, 0, f, FX_TR_CRT_OFF, f < off ? (float)f / (off - 1) : 1);
+    }
+    for (int f = 0; f < on; f++) {
+        saver_frame(fx, 0.3f, 4, f, FX_TR_STATIC, (float)f / (on - 1));
+    }
+    for (int f = 0; f < still; f++) {
+        saver_frame(fx, 0.3f, 4, f, FX_TR_NONE, 0);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc > 3 && strcmp(argv[1], "saver") == 0) {
         return saver_main(atoi(argv[2]), atoi(argv[3]), argc > 4 ? atof(argv[4]) : 15);
+    }
+    if (argc > 2 && strcmp(argv[1], "power") == 0) {
+        return power_main(atoi(argv[2]), argc > 3 ? atof(argv[3]) : 15);
     }
     int fx = argc > 1 ? atoi(argv[1]) : 0;
     int frames = argc > 2 ? atoi(argv[2]) : 150;
@@ -119,8 +155,7 @@ int main(int argc, char **argv) {
     static uint8_t out[FX_W * 2 * 3], masks[OVERLAY_BYTES];
     static uint16_t row[FX_W * 2];
     uint16_t palette[256];
-    struct fx_status status = {.battery = {100, 8}, .half_connected = {true, true}, .profile = 1};
-    int stage = -1;
+    struct fx_status status = {.battery = {100, 4}, .half_connected = {true, true}, .profile = 1};
     /* made-up readings for the Debug screen */
     static struct fx_debug debug = {
         .uptime_s = 4365, .reset_cause = 2, .fps = 15, .frame_ms = 38, .heap_known = true, .heap_used = 62,
@@ -187,24 +222,31 @@ int main(int argc, char **argv) {
         in.held = f >= fps * 0.3f && f < fps * 7.3f ? 1ull << 11 : 0;
         in.wpm = (uint16_t)wpm;
 
-        const int now = at < 0.55f ? 0 : at < 0.85f ? 1 : 2;
-        if (now != stage) {
-            stage = now;
-            status.host_connected = stage != 1;
-            status.usb = stage == 2;
-            overlay_render(&status);
+        status.host_connected = at < 0.55f || at >= 0.8f;
+        status.usb = at >= 0.8f;
+        status.profile_connected = at >= 0.8f && at < 0.88f;
+        status.profile = at < 0.3f ? 1 : at < 0.88f ? 2 : 3;
+        const bool plain = fx_is_debug(fx) || fx_shows_keys(fx);
+        if (!plain) {
+            overlay_update(&status, (uint32_t)(f * 1000 / fps));
         }
-        overlay_set_pulse(overlay_pulse_at((uint32_t)(f * 1000 / fps)));
 
         in.status = &status;
         debug.uptime_s = 4365 + (uint32_t)(f / fps);
         debug.wpm = (uint16_t)wpm;
         debug.host.up = status.host_connected && !status.usb;
         debug.usb = status.usb ? 2 : 1;
+        /* readings that wander, as the real ones do */
+        key_seed = key_seed * 1103515245 + 12345;
+        debug.frame_ms = (uint8_t)(36 + (key_seed >> 16) % 5);
+        if (f % (int)fps == 0) {
+            debug.half[0].rssi = (int8_t)(-52 + (int)((key_seed >> 8) % 7) - 3);
+            debug.half[1].rssi = (int8_t)(-71 + (int)((key_seed >> 12) % 13) - 6);
+            debug.host.rssi = (int8_t)(-48 + (int)((key_seed >> 20) % 5) - 2);
+        }
         in.debug = &debug;
         fx_frame(fx, fb, &in);
-        const bool plain = fx_is_debug(fx);
-        fx_draw_banner(fb, f < fps * 2 && !plain && !fx_shows_keys(fx) ? fx_name(fx) : NULL);
+        fx_draw_banner(fb, f < fps * 2 && !plain ? fx_name(fx) : NULL);
 
         for (int y = 0; y < FX_H * 2; y++) {
             /* as the dongle does: the panel's byte order, then the text */

@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, previous/next dongle screen (Y and U) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U) (shown as "Shit" on the screens) |
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
@@ -185,28 +185,29 @@ ZMK's existing "run a behavior on a half" message: a `hstatus` behavior in
 `config/waterfowl.keymap` that no key is bound to. The `R` battery is the
 dongle's last reading, so it can be out of date while the right half sleeps.
 
-The dongle's own screen uses the Prospector module's **Operator** layout
-(layer name, battery levels, modifiers, the output and a words-per-minute
-meter with the figure beside it). To try Classic, Radii or Field (a grid of
-lines that animate as you type), change the layout line in
-`config/prospector_adapter.conf`.
+The dongle's screen shows this repo's own screens, below. The Prospector
+module's status screen (the **Operator** layout: layer name, battery levels,
+modifiers, the output and a words-per-minute meter) is still built but not
+shown; `CONFIG_DONGLE_SCREEN_FX_MODULE_SCREEN=y` in
+`config/prospector_adapter.conf` puts it back as the first screen, and the
+layout line there picks Classic, Radii or Field instead.
 
 #### Animated screens
 
-The **Screen +** key on the Config layer (the U key) steps the dongle from
-that status screen through four full-screen animations, then the Keys
-screen and the [Debug screen](#debug-screen), and back to it;
-**Screen -** (the Y key) goes the other way. The screen you leave it on is
+The **Screen next** key on the Config layer (the U key) steps the dongle
+through four full-screen animations, then the Keys screen and the
+[Debug screen](#debug-screen), and round again; **Screen prev** (the Y key)
+goes the other way. It starts on Keys. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
 | 1 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
-| 2 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down gets hotter, and after 5 seconds catches at any speed and burns until it is let go |
+| 2 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 3 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
 | 4 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
-| 5 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 5 | Keys | the three links, a picture of the keys, and how busy it is: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Config layer's
@@ -220,19 +221,37 @@ distorting the picture that was there:
 | Code | the picture runs down the screen like wax; nothing is written until it has all gone | a program in an alien script, written slowly down the page from the top, scrolling once the page is full | written fast: two characters a key (the same key always gives the same one) |
 | Life | the picture's bright parts come alive in spreading patches, and the cells eat it | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
 
-Over the status screen there is no picture to distort, so they come in over
-black. The first key starts the way back, which then runs its 9 seconds
+The first key starts the way back, which then runs its 9 seconds
 whether or not you keep typing: the screensaver reacts to the typing, starts
 to glitch lightly after 2 seconds and harder and harder until, in the last
-second, the screen you had cuts back in through it block by block (the
-status screen simply returns). An animation that comes back starts afresh:
+second, the screen you had cuts back in through it block by block. An
+animation that comes back starts afresh:
 Hop's stars are counted from none again. The wait is
 `CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver, the power key's
-included); after an
-hour the panel still goes off, and a key then brings the screen straight
-back.
+included).
 
-Keys draws the keyboard the dongle is built for, from its matrix transform.
+After an hour without a key the panel goes off, as an old television did:
+the picture closes up and down on to a white line, the line to a dot, the
+dot dies away, and then the backlight fades out. A key brings it back with
+the backlight fading up over a second and the screen you had chosen (not the
+screensaver) coming through white noise. The dongle starts the same way
+when it is plugged in.
+
+#### Keys screen
+
+| Part | Shows |
+| --- | --- |
+| top left, top right | the left and the right half: battery percent (red at 10% or under, flashing at 5% or under, `--` when not known), signal strength as bars and in dBm (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds |
+| top middle | the computer: the output in use (`BT0`...`BT4` or `USB`), green when the computer is listening and red when it isn't; the signal of the Bluetooth link to it, the same way |
+| the keys | every key position of the keyboard the dongle is built for |
+| under the keys, left and right | each hand's key presses a second over the last 45 seconds, moving along a place a second; between them the typing speed |
+| bottom line | the last key event (`+0142 P27v R`: 142 ms after the one before, position 27 went down, from the right half), the key presses counted since the dongle started, and how long this screen takes to draw and send a frame |
+
+The battery levels and the output aren't drawn along the bottom of this
+screen as they are over the animations: they are in the blocks at the top.
+The histories start empty each time the screen is turned to.
+
+Keys draws the keyboard from its matrix transform.
 A key counts as holding a modifier or a layer if its binding is `&kp` with a
 modifier, `&mo`, or a hold-tap over one of those (home row mods, `&lt`), and
 only takes the colour while that modifier or layer is really active, so a
@@ -252,17 +271,25 @@ Every animation shows the batteries and the output along the bottom, in the
 fonts of the module's Field screen, the levels a size up from its own
 (`src/screen_fx/status_overlay.c`): the left half's level in the bottom left
 corner, the right half's in the bottom right (`-` for a half that isn't
-connected, red at 10% or under), and between them the wireless symbol with
-the Bluetooth profile number (counted from 0, as the Field screen does). The symbol
-is in the animation's colour when the computer is connected and pulses grey
-when it isn't; over USB there is no symbol at all. The text's colours are set
+connected, red at 10% or under, flashing at 5% or under), and in the middle
+the wireless symbol, with the Bluetooth profile number (counted from 0)
+to its right when there is something to say:
+
+| Output | Symbol | Profile number |
+| --- | --- | --- |
+| Bluetooth, computer connected | in the animation's colour | for 2 seconds after the profile is changed or the computer connects, then it fades away |
+| Bluetooth, not connected | pulses grey | stays |
+| USB | none, but for 2 seconds after the profile is changed (solid if that profile's computer is connected, grey if not), then it fades away | the same |
+
+The text's colours are set
 per animation (the `theme` in the list at the end of `src/screen_fx/fx.c`):
 light with a dark edge. The theme also says which letters the numbers are in
 and how low they sit: Terminal, Code, Thermal and Tracker have them in the
 animations' own small pixel letters, a size down from the Field font; on
-Tracker it sits under the line across the bottom; and Thermal and Tracker
-add a gauge for each battery up the sides. The screensavers show none of
-this: only a red dot in the corner of a half at 10% or under. The screen to start on
+Tracker it sits under the line across the bottom; and Tracker
+adds a gauge for each battery up the sides. The screensavers show none of
+this: only a red dot in the corner of a half at 10% or under, which flashes
+at 5% or under. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 
@@ -314,7 +341,8 @@ GIF in `fx_preview_out/` (needs gcc, git and Pillow): the quick way to try a
 change or a new animation. The status text is drawn as on the dongle; its
 fonts are fetched from the Prospector module the first time.
 `tools/fx_preview.py --saver hop` saves each screensaver coming over that
-animation and going again. Only one animation can run at a time (they share
+animation and going again, and `--power keys` the panel going off and
+coming back on. Only one animation can run at a time (they share
 their memory), so the other picture in a transition is a still: the last
 frame sent, which the dongle keeps anyway, and its palette. A transition
 changes every pixel, so it runs at the whole-frame rate or under. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an

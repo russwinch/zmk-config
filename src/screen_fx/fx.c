@@ -737,19 +737,21 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
  * green back into the cold blue, slowly enough for the spots of a word to
  * run together. Two warm patches wander about so there is something to see
  * when idle, the whole picture warms up with typing speed, and a sight
- * follows the last key pressed. A gauge up each side is that half's battery.
+ * follows the last key pressed.
  *
  * From THERMAL_FIRE_WPM the board catches: each key burns for a second or
  * two after it is pressed, as a heat camera shows a flame: a white core that
  * flickers and cools quickly, and above it the smoke, a faint warm plume
  * that drifts and widens on its way up.
  *
- * A key held down keeps getting hotter, and after THERMAL_HOLD_S catches by
- * itself, at any speed, and burns until it is let go.
+ * A key held down stays as hot as pressing it made it and goes on getting
+ * hotter and wider, and after THERMAL_HOLD_S catches by itself, at any
+ * speed, and burns until it is let go.
  *
  * The canvas holds two pictures: the board's heat at half size (it is smooth
  * anyway, and spreads further for the same work), and the flames and smoke
- * at full size over the rows the board takes up.
+ * at full size over the rows the board takes up (GAS_H of them, from
+ * GAS_TOP).
  */
 
 #define THERMAL_FIRE_WPM 50
@@ -760,7 +762,9 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
 #define HEAT_H (FX_H / 2)
 #define HEAT_CELLS (HEAT_W * HEAT_H)
 #define HEAT_MAX 226    /* as hot as the board shows: white is the flames' */
-#define GAS_H 90        /* rows of flame and smoke, from the top */
+#define GAS_H 90        /* rows of flame and smoke... */
+#define GAS_TOP 6       /* ...from this one down: the bottom row of keys is inside, with room over the top row */
+#define PRESS_HEAT 205  /* what a key press brings its spot up to: red hot */
 #define GAS_SMOKE 85    /* under this it is smoke, which cools slowly */
 #define GAS_LINGER 80   /* frames the smoke gets to clear once the fire is out */
 #define BURNERS 12      /* keys alight at once */
@@ -780,7 +784,7 @@ static void thermal_start(uint16_t *palette) {
     gradient(palette, stops, 7);
     thermal_time = thermal_blaze = 0;
     thermal_x = thermal_tx = FX_W / 2;
-    thermal_y = thermal_ty = FX_H / 2 - 12;
+    thermal_y = thermal_ty = FX_H / 2 - 5;
     thermal_lock = 0;
     thermal_frames = thermal_smoke = 0;
     memset(burners, 0, sizeof(burners));
@@ -833,17 +837,19 @@ static void side_battery(uint8_t *fb, int x, uint8_t percent, bool connected, ui
 /* One step left or right, or (half the time) neither, from two random bits. */
 static inline int sidestep(uint32_t bits) { return (bits & 3) == 0 ? -1 : (bits & 3) == 3 ? 1 : 0; }
 
-/* Where a key is: the board fills the screen above the status text, the
- * halves apart, between the gauges. */
+/* Where a key is: the board fills the screen, the halves apart, with the
+ * bottom row between the two battery levels. */
 static void thermal_place(int key, int *x, int *y) {
     const int col = key_col((uint8_t)key);
-    *x = 16 + col * 11 + (col >= 5 ? 9 : 0);
-    *y = 14 + key_row((uint8_t)key) * 21;
+    *x = 9 + col * 12 + (col >= 5 ? 14 : 0);
+    *y = 20 + key_row((uint8_t)key) * 23;
 }
 
-/* A flame's foot, at a key: a flickering spot, bigger with `life`. */
+/* A flame's foot, at a key (where it is on the screen): a flickering spot,
+ * bigger with `life`. */
 static void thermal_flame(uint8_t *gas, int x, int y, int life) {
     const uint32_t r = rnd();
+    y -= GAS_TOP;
     int peak = 130 + life * 7 - (int)((r >> 4) & 63);
     peak = peak > 251 ? 251 : peak;
     if (peak > 0) {
@@ -925,7 +931,7 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         thermal_place(in->keys[k], &thermal_tx, &thermal_ty);
         /* up to red hot, and a little more each time: a key hit over and
          * over glows wider, but doesn't swamp the board */
-        glow_spot_in(heat, HEAT_W, HEAT_H, thermal_tx / 2, thermal_ty / 2, 5, 205, true);
+        glow_spot_in(heat, HEAT_W, HEAT_H, thermal_tx / 2, thermal_ty / 2, 5, PRESS_HEAT, true);
         glow_spot_in(heat, HEAT_W, HEAT_H, thermal_tx / 2, thermal_ty / 2, 6, 30, false);
         if (alight) {
             thermal_next = (thermal_next + 1) % BURNERS;
@@ -935,8 +941,8 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         }
         thermal_lock = 1;
     }
-    /* a key held down: hotter and wider the longer it is, red hot by the
-     * time it catches */
+    /* a key held down: from as hot as the press left it, hotter and wider
+     * the longer it is held, never cooler */
     bool held_alight = false;
     for (int key = 0; key < THERMAL_KEYS && key < key_count; key++) {
         if (!(in->held >> key & 1)) {
@@ -948,16 +954,16 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         const int warmth = ticks < HOLD_TICKS ? ticks * 100 / HOLD_TICKS : 100; /* percent */
         int x, y;
         thermal_place(key, &x, &y);
-        glow_spot_in(heat, HEAT_W, HEAT_H, x / 2, y / 2, 4 + warmth / 34, 110 + warmth, true);
+        glow_spot_in(heat, HEAT_W, HEAT_H, x / 2, y / 2, 5 + warmth / 34, PRESS_HEAT + warmth * 2 / 5, true);
         held_alight = held_alight || ticks >= HOLD_TICKS;
     }
 
     /* the wanderers, warmer the faster you type */
     int warm = 60 + (int)(in->energy * 70);
-    glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.013f) * 24),
-                 22 + (int)(sinf(thermal_time * 0.021f + 2) * 15), 7, warm, true);
-    glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.017f + 4) * 23),
-                 25 + (int)(sinf(thermal_time * 0.011f) * 16), 6, warm, true);
+    glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.013f) * 28),
+                 27 + (int)(sinf(thermal_time * 0.021f + 2) * 17), 7, warm, true);
+    glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.017f + 4) * 27),
+                 30 + (int)(sinf(thermal_time * 0.011f) * 18), 6, warm, true);
 
     /* heat spreads to the cells around, half of it a frame, and leaks away a
      * little at a time. Worked through forwards and backwards by turns, so
@@ -977,6 +983,14 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
             row[x] = (uint8_t)v;
         }
     }
+    /* the cells round the edge aren't worked through: they take after the
+     * ones inside them, or what a key by the edge put there would stay */
+    for (int y = 1; y < HEAT_H - 1; y++) {
+        heat[y * HEAT_W] = heat[y * HEAT_W + 1];
+        heat[y * HEAT_W + HEAT_W - 1] = heat[y * HEAT_W + HEAT_W - 2];
+    }
+    memcpy(heat, heat + HEAT_W, HEAT_W);
+    memcpy(heat + (HEAT_H - 1) * HEAT_W, heat + (HEAT_H - 2) * HEAT_W, HEAT_W);
 
     if (alight || held_alight) {
         thermal_smoke = GAS_LINGER;
@@ -998,7 +1012,7 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         /* each cell is two pixels each way: the ones between are averaged */
         const uint8_t *h0 = &heat[(y >> 1) * HEAT_W];
         const uint8_t *h1 = (y & 1) && (y >> 1) + 1 < HEAT_H ? h0 + HEAT_W : h0;
-        const bool burning = thermal_smoke > 0 && y < GAS_H;
+        const bool burning = thermal_smoke > 0 && y >= GAS_TOP && y < GAS_TOP + GAS_H;
         for (int x = 0; x < FX_W; x++) {
             if ((x & 3) == 0) {
                 r = rnd();
@@ -1009,7 +1023,7 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
             if (burning) {
                 /* over the board, not added to it: only the flame's own
                  * core comes out white, however hot the key under it */
-                v += gas[y * FX_W + x] * (256 - v) >> 8;
+                v += gas[(y - GAS_TOP) * FX_W + x] * (256 - v) >> 8;
             }
             r >>= 3;
             fb[y * FX_W + x] = v > 251 ? 251 : v;
@@ -1030,12 +1044,6 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         line(fb, sx + dx * size, sy + dy * size, sx + dx * size, sy + dy * (size - arm), color);
     }
     plot(fb, sx, sy, color);
-
-    if (in->status) {
-        side_battery(fb, 5, in->status->battery[0], in->status->half_connected[0], FX_GREY, FX_WHITE, FX_BLACK);
-        side_battery(fb, FX_W - 10, in->status->battery[1], in->status->half_connected[1], FX_GREY, FX_WHITE,
-                     FX_BLACK);
-    }
 }
 
 /* --- tracker: a motion tracker; the faster you type, the closer they get --- */
@@ -1809,6 +1817,19 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     }
 }
 
+/* A raw event as text: the time since the one before, then what it was. */
+static void event_text(char *buf, size_t size, const struct fx_event *e) {
+    const char who = e->source == 0 ? 'L' : e->source == 1 ? 'R' : ' ';
+    const int n = snprintf(buf, size, "+%04u ", e->gap_ms > 9999 ? 9999 : e->gap_ms);
+    if (e->kind == 'P') {
+        snprintf(buf + n, size - n, "P%02u%c %c", e->a, e->down ? 'v' : '^', who);
+    } else if (e->kind == 'K') {
+        snprintf(buf + n, size - n, "K%X:%02X%c %02X", e->a & 0xf, e->b & 0xff, e->down ? 'v' : '^', e->mods);
+    } else {
+        snprintf(buf + n, size - n, "E%u %+d %c", e->a, (int16_t)e->b, who);
+    }
+}
+
 static const char *reset_name(uint32_t cause) {
     /* Zephyr's RESET_* bits, the likeliest fault first */
     static const struct {
@@ -1934,16 +1955,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     /* the last raw events, the newest at the bottom and brightest */
     for (int i = 0; i < d->n_log && i < FX_DEBUG_LOG; i++) {
-        const struct fx_event *e = &d->log[i];
-        const char who = e->source == 0 ? 'L' : e->source == 1 ? 'R' : ' ';
-        int n = snprintf(buf, sizeof(buf), "+%04u ", e->gap_ms > 9999 ? 9999 : e->gap_ms);
-        if (e->kind == 'P') {
-            snprintf(buf + n, sizeof(buf) - n, "P%02u%c %c", e->a, e->down ? 'v' : '^', who);
-        } else if (e->kind == 'K') {
-            snprintf(buf + n, sizeof(buf) - n, "K%X:%02X%c %02X", e->a & 0xf, e->b & 0xff, e->down ? 'v' : '^', e->mods);
-        } else {
-            snprintf(buf + n, sizeof(buf) - n, "E%u %+d %c", e->a, (int16_t)e->b, who);
-        }
+        event_text(buf, sizeof(buf), &d->log[i]);
         put(fb, 5, 88 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
     }
 
@@ -1960,29 +1972,102 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
-/* --- keys: the keyboard's name and its keys, as they are pressed ------------ */
+/* --- keys: the keyboard, the three links and how busy it all is ------------- */
 
 /*
- * The Debug screen's map of the keys with room to see it: the keyboard's
- * name across the top, the highest layer under it (violet when it isn't the
- * bottom one), and the board. Colours as `board` has them.
+ * The Debug screen's map of the keys with room to see it, and the readings
+ * that are worth watching move. Top to bottom:
+ *
+ *   three blocks: the left half, the computer and the right half. Each has
+ *   its battery level (the computer: the output in use, green when it is
+ *   listening), its signal as bars and in dBm, and that signal over the last
+ *   SIGNAL_W seconds;
+ *
+ *   the board, colours as `board` has them;
+ *
+ *   each hand's key presses a second over the last ACTIVITY_W seconds, with
+ *   the typing speed between them; then the last key event (the time since
+ *   the one before, the position, the half), the key presses counted, and
+ *   how long a frame of this screen takes.
+ *
+ * It takes the whole screen, so the status text isn't drawn over it.
  */
 
-/* Text twice the size, like Tracker's range. */
-static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
-    for (; *s; s++, x += 10) {
-        if (*s < ' ' || *s > '~') {
-            continue;
-        }
-        const uint8_t *rows = font[*s - ' '];
-        for (int row = 0; row < 14; row++) {
-            for (int col = 0; col < 10; col++) {
-                if (rows[row / 2] & (0x10 >> col / 2)) {
-                    plot(fb, x + col, y + row, color);
-                }
-            }
+#define SIGNAL_W 40
+#define SIGNAL_H 9
+#define ACTIVITY_W 45
+#define ACTIVITY_H 10
+#define KEYS_BOARD_TOP 39
+#define KEYS_BOARD_H 52
+
+static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
+static uint8_t keys_activity[2][ACTIVITY_W]; /* the same: left hand, right hand */
+static uint8_t keys_presses[2];              /* this second's, so far */
+static float keys_time, keys_second;         /* 30ths of a second */
+
+static void keys_start(uint16_t *palette) {
+    debug_start(palette);
+    memset(keys_signal, 0, sizeof(keys_signal));
+    memset(keys_activity, 0, sizeof(keys_activity));
+    memset(keys_presses, 0, sizeof(keys_presses));
+    keys_time = keys_second = 0;
+}
+
+/* A row of values as columns `high` at most, on a line: the top of each in
+ * `color`. */
+static void spark(uint8_t *fb, int x, int y, const uint8_t *values, int count, int high, uint8_t color) {
+    for (int i = 0; i < count; i++) {
+        const int v = values[i] > high ? high : values[i];
+        plot(fb, x + i, y + high - 1, DBG_DIM);
+        for (int up = 0; up < v; up++) {
+            plot(fb, x + i, y + high - 1 - up, up == v - 1 ? color : DBG_DIM);
         }
     }
+}
+
+static void history_add(uint8_t *values, int count, uint8_t value) {
+    memmove(values, values + 1, count - 1);
+    values[count - 1] = value;
+}
+
+static uint8_t signal_color(const struct fx_link *link) {
+    return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED;
+}
+
+/* One of the three blocks: `place` 0 on the left, 1 in the middle, 2 on the
+ * right (the mirror image of the left). `name` only at the sides. */
+static void keys_link(uint8_t *fb, int place, const char *name, const char *level, uint8_t level_color,
+                      const struct fx_link *link, bool missed) {
+    char dbm[8] = "";
+    uint8_t dbm_color = DBG_LABEL;
+    if (!link->up) {
+        strcpy(dbm, "--");
+        dbm_color = missed ? FX_RED : DBG_LABEL;
+    } else if (link->rssi_known) {
+        snprintf(dbm, sizeof(dbm), "%d", link->rssi);
+        dbm_color = signal_color(link);
+    }
+    const int level_wide = 5 * (int)strlen(level), dbm_wide = 5 * (int)strlen(dbm);
+    const uint8_t name_color = link->up ? DBG_BRIGHT : FX_RED;
+    /* the first line is in from the sides: the panel's corners are round */
+    if (place == 0) {
+        put(fb, 11, 6, name, name_color);
+        put(fb, 19, 6, level, level_color);
+        signal_bars(fb, 6, 15, link);
+        put(fb, 16, 15, dbm, dbm_color);
+    } else if (place == 2) {
+        put(fb, FX_W - 16, 6, name, name_color);
+        put_right(fb, FX_W - 19, 6, level, level_color);
+        signal_bars(fb, FX_W - 13, 15, link);
+        put_right(fb, FX_W - 16, 15, dbm, dbm_color);
+    } else {
+        put(fb, (FX_W - level_wide + 1) / 2, 6, level, level_color);
+        const int wide = 7 + 3 + dbm_wide, left = (FX_W - wide) / 2;
+        signal_bars(fb, left, 15, link);
+        put(fb, left + 10, 15, dbm, dbm_color);
+    }
+    const int x = place == 0 ? 5 : place == 1 ? (FX_W - SIGNAL_W) / 2 : FX_W - 5 - SIGNAL_W;
+    spark(fb, x, 24, keys_signal[place], SIGNAL_W, SIGNAL_H, link->up && link->rssi_known ? signal_color(link) : DBG_LABEL);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -1991,32 +2076,94 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         return;
     }
     const struct fx_debug *d = in->debug;
-    char buf[24];
+    const struct fx_link *links[3] = {&d->half[0], &d->host, &d->half[1]};
+    char buf[32];
 
-    snprintf(buf, sizeof(buf), "%s", d->keyboard ? d->keyboard : "KEYBOARD");
-    for (char *p = buf; *p; p++) {
-        *p = *p >= 'a' && *p <= 'z' ? *p - 32 : *p; /* the small letters only read well as capitals */
+    /* the histories move on a place a second */
+    for (int k = 0; k < in->n_keys; k++) {
+        uint8_t *presses = &keys_presses[board_col(in->keys[k]) >= board_cols / 2];
+        *presses += *presses < 255;
     }
-    const int len = (int)strlen(buf);
-    if (len * 10 <= FX_W - 8) {
-        put_big(fb, (FX_W - len * 10 + 2) / 2, 8, buf, DBG_BRIGHT);
-    } else {
-        put(fb, (FX_W - len * 5 + 1) / 2, 12, buf, DBG_BRIGHT);
+    keys_time += in->step;
+    keys_second += in->step;
+    if (keys_second >= 30) {
+        keys_second = keys_second >= 60 ? 0 : keys_second - 30;
+        for (int i = 0; i < 3; i++) {
+            /* -95 dBm and under is one row, -40 and over all of them */
+            int high = 0;
+            if (links[i]->up && links[i]->rssi_known) {
+                high = 1 + (links[i]->rssi + 95) * (SIGNAL_H - 1) / 55;
+                high = high < 1 ? 1 : high > SIGNAL_H ? SIGNAL_H : high;
+            }
+            history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
+        }
+        for (int hand = 0; hand < 2; hand++) {
+            /* 5 presses a second from one hand fills it: about 120 words a minute */
+            history_add(keys_activity[hand], ACTIVITY_W, (uint8_t)(keys_presses[hand] * 2));
+            keys_presses[hand] = 0;
+        }
     }
+    const bool flash_off = (int)(keys_time / 15) & 1; /* half a second on, half off */
 
-    if (d->layer_name && d->layer_name[0]) {
-        snprintf(buf, sizeof(buf), "%s", d->layer_name);
-    } else {
-        snprintf(buf, sizeof(buf), "LAYER %u", d->layer);
+    /* the halves and, between them, the computer */
+    for (int half = 0; half < 2; half++) {
+        const uint8_t level = in->status ? in->status->battery[half] : 0;
+        uint8_t color = DBG_LABEL;
+        if (level == 0) {
+            strcpy(buf, "--");
+        } else if (level <= FX_FLAT_BATTERY && flash_off) {
+            buf[0] = '\0';
+        } else {
+            snprintf(buf, sizeof(buf), "%u%%", level);
+            color = level <= FX_LOW_BATTERY ? FX_RED : DBG_TEXT;
+        }
+        keys_link(fb, half * 2, half ? "R" : "L", buf, color, links[half * 2], true);
     }
-    for (char *p = buf; *p; p++) {
-        *p = *p >= 'a' && *p <= 'z' ? *p - 32 : *p;
-    }
-    put(fb, (FX_W - (int)strlen(buf) * 5 + 1) / 2, 27, buf, d->layer ? DBG_LAYER : DBG_LABEL);
+    const bool usb = in->status && in->status->usb;
+    snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
+    keys_link(fb, 1, "", usb ? "USB" : buf, in->status && in->status->host_connected ? DBG_GOOD : FX_RED, &d->host,
+              !usb);
+    rule(fb, 35);
 
-    /* as big as fits across, above the status text */
-    const int split = 4, pitch = (FX_W - 6 - split) / board_cols;
-    board(fb, in, (FX_W - (board_cols * pitch - 2 + split)) / 2, 40, pitch, pitch - 2, 2, split);
+    /* the board: as big as fits across, and no taller than its space */
+    int rows = 1;
+    for (int key = 0; key < key_count; key++) {
+        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
+        rows = row > rows ? row : rows;
+    }
+    const int split = 4, gap = 2, pitch = (FX_W - 6 - split) / board_cols;
+    int high = pitch - gap;
+    if (rows * (high + gap) - gap > KEYS_BOARD_H) {
+        high = (KEYS_BOARD_H + gap) / rows - gap;
+    }
+    board(fb, in, (FX_W - (board_cols * pitch - gap + split)) / 2,
+          KEYS_BOARD_TOP + (KEYS_BOARD_H - (rows * (high + gap) - gap)) / 2, pitch, high, gap, split);
+    rule(fb, 92);
+
+    /* each hand's presses, and the typing speed */
+    spark(fb, 5, 94, keys_activity[0], ACTIVITY_W, ACTIVITY_H, DBG_TEXT);
+    spark(fb, FX_W - 5 - ACTIVITY_W, 94, keys_activity[1], ACTIVITY_W, ACTIVITY_H, DBG_TEXT);
+    snprintf(buf, sizeof(buf), "%u", d->wpm);
+    int x = (FX_W - 5 * ((int)strlen(buf) + 3) + 1) / 2;
+    x = put(fb, x, 96, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
+    put(fb, x, 96, "WPM", DBG_LABEL);
+
+    /* the last thing a key did (not the keycode it sent, which is long), the
+     * presses counted, this screen's speed */
+    const struct fx_event *last = NULL;
+    for (int i = 0; i < d->n_log && i < FX_DEBUG_LOG; i++) {
+        if (d->log[i].kind != 'K') {
+            last = &d->log[i];
+        }
+    }
+    if (last != NULL) {
+        event_text(buf, sizeof(buf), last);
+        put(fb, 12, 108, buf, DBG_TEXT);
+    }
+    snprintf(buf, sizeof(buf), "N%u", (unsigned)(d->presses % 10000));
+    put_right(fb, FX_W - 37, 108, buf, DBG_LABEL);
+    snprintf(buf, sizeof(buf), "%uMS", d->frame_ms > 99 ? 99 : d->frame_ms);
+    put_right(fb, FX_W - 12, 108, buf, DBG_TEXT);
 }
 
 /* --- the list --------------------------------------------------------------- */
@@ -2059,10 +2206,7 @@ static const struct {
     {"HOP", hop_start, hop_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(215, 232, 250), .accent = RGB565(255, 215, 40),
       .search = RGB565(215, 232, 250), .low = RGB565(255, 90, 120), .halo = RGB565(70, 35, 30)}},
-    {"KEYS", debug_start, keys_frame,
-     {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
-      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14), .font = FX_FONT_PIXEL},
-     .keys = true},
+    {"KEYS", keys_start, keys_frame, {0}, .keys = true},
     {"DEBUG", debug_start, debug_frame, {0}, .debug = true},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
@@ -2368,6 +2512,69 @@ static void cut_row(const struct fx_transition *tr, int y, uint16_t *out) {
     }
 }
 
+/* A colour k/256 of the way from `a` to `b`. */
+static uint16_t between(uint16_t a, uint16_t b, int k) {
+    const int ar = a >> 11, ag = (a >> 5) & 63, ab = a & 31;
+    return (uint16_t)((ar + (((b >> 11) - ar) * k >> 8)) << 11 | (ag + ((((b >> 5) & 63) - ag) * k >> 8)) << 5 |
+                      (ab + (((b & 31) - ab) * k >> 8)));
+}
+
+/*
+ * The panel going off, as a television with a tube did: the picture closes
+ * up and down on to a line across the middle, whitening as its light is
+ * packed in; the line closes to a dot; the dot dies away. It ends black.
+ */
+static void crt_off_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const float t = tr->t, from_mid = y - FX_H / 2 + 0.5f;
+    const int cx = FX_W / 2;
+
+    memset(out, 0, FX_W * sizeof(*out));
+    if (t < 0.45f) {
+        float k = t / 0.45f;
+        k = k * k;
+        const float half = FX_H / 2 * (1 - k) > 1 ? FX_H / 2 * (1 - k) : 1;
+        if (fabsf(from_mid) > half) {
+            return;
+        }
+        const int from = FX_H / 2 + (int)(from_mid * (FX_H / 2) / half), white = (int)(k * 256);
+        for (int x = 0; x < FX_W; x++) {
+            out[x] = between(tr->palette[pixel_at(tr->fb, x, from)], 0xffff, white);
+        }
+    } else if (t < 0.8f) {
+        const float k = (t - 0.45f) / 0.35f;
+        const int half = 2 + (int)((FX_W / 2 - 2) * (1 - k) * (1 - k));
+        /* the line, and its glow a row either side */
+        const uint16_t color = fabsf(from_mid) < 1 ? 0xffff : fabsf(from_mid) < 2 ? rgb(70, 80, 90) : 0;
+        for (int x = cx - half; color && x < cx + half; x++) {
+            out[x] = color;
+        }
+    } else if (fabsf(from_mid) < 2) {
+        const int light = (int)(255 * (1 - (t - 0.8f) / 0.2f) * (fabsf(from_mid) < 1 ? 1.0f : 0.4f));
+        out[cx - 1] = out[cx] = rgb(light, light, light);
+        out[cx - 2] = out[cx + 1] = rgb(light / 3, light / 3, light / 3);
+    }
+}
+
+/* The panel coming on: white noise, with the picture coming through it. */
+static void static_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    float k = clampf((tr->t - 0.08f) / 0.92f, 0.0f, 1.0f);
+    k = k * k * (3 - 2 * k);
+    const int through = (int)(k * 256);
+    /* the noise in rows that now and then come brighter, or torn sideways */
+    const uint32_t row = hash(y, (int)tr->frame);
+    const int gain = (row & 15) == 0 ? 256 : 150 + (int)((row >> 4) & 63);
+    const int shift = ((row >> 10) & 31) == 0 ? (int)((row >> 15) & 15) - 8 : 0;
+    uint32_t r = row | 1;
+    for (int x = 0; x < FX_W; x++) {
+        r ^= r << 13;
+        r ^= r >> 17;
+        r ^= r << 5;
+        const int grey = (int)(r & 255) * gain >> 8;
+        const int from = x + shift * (256 - through) / 256;
+        out[x] = between(rgb(grey, grey, grey), tr->palette[pixel_at(tr->fb, from, y)], through);
+    }
+}
+
 void fx_transition_row(const struct fx_transition *tr, int y, uint16_t *out) {
     switch (tr->kind) {
     case FX_TR_HYPERSPACE:
@@ -2384,6 +2591,12 @@ void fx_transition_row(const struct fx_transition *tr, int y, uint16_t *out) {
         break;
     case FX_TR_CUT:
         cut_row(tr, y, out);
+        break;
+    case FX_TR_CRT_OFF:
+        crt_off_row(tr, y, out);
+        break;
+    case FX_TR_STATIC:
+        static_row(tr, y, out);
         break;
     default:
         for (int x = 0; x < FX_W; x++) {
