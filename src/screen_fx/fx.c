@@ -611,8 +611,9 @@ static void term_frame(uint8_t *fb, const struct fx_input *in) {
 /* --- code: a program being written in an alien script ---------------------- */
 
 /*
- * Lines of made-up code, with indents, words and comments, written along the
- * bottom and pushed up and off the top. It writes slowly on its own; each
+ * Lines of made-up code, with indents, words and comments, written down the
+ * page from the top as a terminal's are; once the page is full each new
+ * line pushes the rest up and off the top. It writes slowly on its own; each
  * key adds two characters (the same key always gives the same one), so at
  * speed the page races. The letters are drawn up afresh from a few strokes
  * each time the firmware starts.
@@ -623,13 +624,13 @@ static void term_frame(uint8_t *fb, const struct fx_input *in) {
 #define CODE_PITCH 7  /* rows; characters are 5 apart */
 #define CODE_GLYPHS 64 /* 0 is the space */
 #define CODE_LEVELS 63 /* palette: 4 colours x 63 brightness levels */
-#define CODE_BOTTOM 86 /* top of the line being written */
+#define CODE_BOTTOM 86 /* top of the last line of the page */
 
 static struct {
     uint8_t glyph, hue, heat;
 } code_cell[CODE_ROWS][CODE_COLS];
 static uint32_t code_glyphs[CODE_GLYPHS]; /* 4x5 dots */
-static int code_col, code_indent, code_line_end, code_word, code_hue;
+static int code_row, code_col, code_indent, code_line_end, code_word, code_hue;
 static bool code_comment;
 static float code_pending, code_scroll;
 
@@ -661,9 +662,13 @@ static void code_make_glyphs(void) {
 }
 
 static void code_new_line(void) {
-    memmove(code_cell[0], code_cell[1], sizeof(code_cell) - sizeof(code_cell[0]));
-    memset(code_cell[CODE_ROWS - 1], 0, sizeof(code_cell[0]));
-    code_scroll = CODE_PITCH;
+    if (code_row < CODE_ROWS - 1) {
+        code_row++;
+    } else {
+        memmove(code_cell[0], code_cell[1], sizeof(code_cell) - sizeof(code_cell[0]));
+        memset(code_cell[CODE_ROWS - 1], 0, sizeof(code_cell[0]));
+        code_scroll = CODE_PITCH;
+    }
 
     uint32_t r = rnd();
     code_indent += (int)(r % 3) - 1;
@@ -696,10 +701,19 @@ static void code_write(uint8_t glyph) {
         }
     }
     code_word--;
-    code_cell[CODE_ROWS - 1][code_col].glyph = glyph;
-    code_cell[CODE_ROWS - 1][code_col].hue = (uint8_t)code_hue;
-    code_cell[CODE_ROWS - 1][code_col].heat = CODE_LEVELS - 1;
+    code_cell[code_row][code_col].glyph = glyph;
+    code_cell[code_row][code_col].hue = (uint8_t)code_hue;
+    code_cell[code_row][code_col].heat = CODE_LEVELS - 1;
     code_col++;
+}
+
+/* An empty page, about to be written on. */
+static void code_clear(void) {
+    memset(code_cell, 0, sizeof(code_cell));
+    code_indent = 0;
+    code_pending = code_scroll = 0;
+    code_row = 0; /* row 0 is off the top of the screen: the first line is row 1 */
+    code_new_line();
 }
 
 static void code_start(uint16_t *palette) {
@@ -715,11 +729,7 @@ static void code_start(uint16_t *palette) {
     if (code_glyphs[1] == 0) {
         code_make_glyphs();
     }
-    memset(code_cell, 0, sizeof(code_cell));
-    code_indent = 0;
-    code_pending = code_scroll = 0;
-    code_new_line();
-    code_scroll = 0;
+    code_clear();
 }
 
 static void code_frame(uint8_t *fb, const struct fx_input *in) {
@@ -741,7 +751,10 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
     int cool = 2 + (int)(in->step * 3);
     for (int r = 0; r < CODE_ROWS; r++) {
         int top = CODE_BOTTOM - (CODE_ROWS - 1 - r) * CODE_PITCH + (int)code_scroll;
-        int base = 20 + 26 * r / (CODE_ROWS - 1); /* dimmer on the way up */
+        if (r > code_row) {
+            break;
+        }
+        int base = 46 - 2 * (code_row - r); /* dimmer on the way up */
         for (int c = 0; c < CODE_COLS; c++) {
             if (code_cell[r][c].glyph == 0) {
                 continue;
@@ -764,7 +777,7 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
     for (int y = 0; y < 6; y++) {
         for (int x = 0; x < 4; x++) {
             plot(fb, 3 + (code_col < CODE_COLS ? code_col : CODE_COLS - 1) * 5 + x,
-                 CODE_BOTTOM + (int)code_scroll + y, CODE_LEVELS - 1);
+                 CODE_BOTTOM - (CODE_ROWS - 1 - code_row) * CODE_PITCH + (int)code_scroll + y, CODE_LEVELS - 1);
         }
     }
 }
@@ -1895,7 +1908,8 @@ static const struct {
       .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
     {"CODE", code_start, code_frame,
      {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
+      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL},
+     .saver = FX_TR_MELT},
     {"THERMAL", thermal_start, thermal_frame,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
       .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0, .font = FX_FONT_PIXEL}},
@@ -2022,9 +2036,26 @@ static inline uint16_t split_colors(uint16_t r, uint16_t g, uint16_t b) {
 
 static float infect_was; /* `t` at the last step */
 
+/* Melting: when each column starts to run, in 255ths of MELT_LAST. A column
+ * takes the rest of the time (1 - MELT_LAST) to go, so the last is gone
+ * just as the transition ends. */
+#define MELT_LAST 0.58f
+static uint8_t melt_from[FX_W];
+
 void fx_transition_begin(int kind) {
-    (void)kind;
     infect_was = -1;
+    if (kind == FX_TR_MELT) {
+        /* neighbours start near together, in runs; spread to use all the time */
+        float from[FX_W], lo = 1, hi = 0;
+        for (int x = 0; x < FX_W; x++) {
+            from[x] = smooth_noise(x / 9.0f, 3) + 0.15f * hashf(x, 9);
+            lo = from[x] < lo ? from[x] : lo;
+            hi = from[x] > hi ? from[x] : hi;
+        }
+        for (int x = 0; x < FX_W; x++) {
+            melt_from[x] = (uint8_t)(255 * (from[x] - lo) / (hi - lo + 0.001f));
+        }
+    }
 }
 
 float fx_transition_energy(int kind, float t) {
@@ -2063,6 +2094,28 @@ static void infect_step(const struct fx_transition *tr) {
 void fx_transition_step(const struct fx_transition *tr) {
     if (tr->kind == FX_TR_INFECT) {
         infect_step(tr);
+    } else if (tr->kind == FX_TR_MELT) {
+        code_clear(); /* nothing is written until the picture has gone */
+    }
+}
+
+/*
+ * Into Code. The picture runs down the screen like wax, column by column,
+ * each stretching as it goes (the foot of a column falls faster than its
+ * head) and swaying a little, with a dark lip at its top edge. Behind it is
+ * the empty page.
+ */
+static void melt_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const float sway = sinf(y * 0.2f + tr->t * 10) * 2.5f, stretch = 0.58f + 0.42f * y / FX_H;
+    for (int x = 0; x < FX_W; x++) {
+        const float u = clampf((tr->t - melt_from[x] * (MELT_LAST / 255)) / (1 - MELT_LAST), 0, 1);
+        const float sy = y - u * u * 230 * stretch;
+        if (sy < 0) {
+            out[x] = 0;
+            continue;
+        }
+        const uint16_t c = tr->old_palette[pixel_at(tr->old, x + (int)(sway * u), (int)sy)];
+        out[x] = sy < 2 && u > 0 ? dimmed(c, 150) : c;
     }
 }
 
@@ -2187,6 +2240,9 @@ void fx_transition_row(const struct fx_transition *tr, int y, uint16_t *out) {
         break;
     case FX_TR_INFECT:
         infect_row(tr, y, out);
+        break;
+    case FX_TR_MELT:
+        melt_row(tr, y, out);
         break;
     case FX_TR_GLITCH:
         glitch_row(tr, y, out);

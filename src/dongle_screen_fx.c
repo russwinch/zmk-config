@@ -28,9 +28,10 @@
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below).
  *
- * When no key has been pressed for a while (DONGLE_SCREEN_FX_SAVER_MINUTES)
- * one of the animations that can be takes over as a screensaver, and any
- * key brings the chosen screen back: see "the screensaver" below.
+ * Some of the animations are screensavers instead (fx_saver_way_in): the
+ * keys skip them, and when no key has been pressed for a while
+ * (DONGLE_SCREEN_FX_SAVER_MINUTES) one takes over, until a key brings the
+ * chosen screen back: see "the screensaver" below.
  *
  * Settings: Kconfig at the repo root.
  */
@@ -838,8 +839,8 @@ static void saver_key(void) {
     }
 }
 
-/* No key for long enough: one of the animations that can be takes over,
- * picked at random from those that aren't the screen showing. */
+/* No key for long enough: one of the screensavers takes over, picked at
+ * random. */
 static void saver_cb(struct k_work *work) {
     if (saver != SAVER_OFF || atomic_get(&paused)) {
         return; /* the next key sets the wait off again */
@@ -932,11 +933,14 @@ static K_WORK_DELAYABLE_DEFINE(save_work, save_cb);
 
 #endif
 
+/* A screen the keys step through: not one of the screensavers. */
+static bool can_choose(int which) { return which == 0 || fx_saver_way_in(which - 1) == FX_TR_NONE; }
+
 /* The screen to start on: the saved one if it still exists, or -1. */
 static int saved_screen(void) {
 #if IS_ENABLED(CONFIG_SETTINGS)
     for (int which = 0; which <= fx_count(); which++) {
-        if (strcmp(saved_name, screen_name(which)) == 0) {
+        if (can_choose(which) && strcmp(saved_name, screen_name(which)) == 0) {
             return which;
         }
     }
@@ -950,7 +954,11 @@ void dongle_screen_fx_step(int by) {
     }
     const int screens = fx_count() + 1;
     atomic_set(&chosen, 1);
-    atomic_set(&wanted_screen, (atomic_get(&wanted_screen) + (by < 0 ? screens - 1 : 1)) % screens);
+    int want = atomic_get(&wanted_screen);
+    do {
+        want = (want + (by < 0 ? screens - 1 : 1)) % screens;
+    } while (!can_choose(want));
+    atomic_set(&wanted_screen, want);
     request_apply();
 #if IS_ENABLED(CONFIG_SETTINGS)
     k_work_reschedule(&save_work, K_MSEC(CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS));
@@ -1251,8 +1259,15 @@ static void start_cb(struct k_work *work) {
     if (atomic_get(&chosen)) {
         return; /* a key got there first */
     }
+    /* DONGLE_SCREEN_FX_START counts the screens the keys step through */
+    int start = 0;
+    for (int which = 0, nth = 0; which <= fx_count(); which++) {
+        if (can_choose(which) && nth++ == CONFIG_DONGLE_SCREEN_FX_START) {
+            start = which;
+        }
+    }
     const int saved = saved_screen();
-    atomic_set(&wanted_screen, saved >= 0 ? saved : MIN(CONFIG_DONGLE_SCREEN_FX_START, fx_count()));
+    atomic_set(&wanted_screen, saved >= 0 ? saved : start);
     request_apply();
 }
 

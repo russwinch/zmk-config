@@ -193,7 +193,7 @@ lines that animate as you type), change the layout line in
 #### Animated screens
 
 The **Screen +** key on the Config layer (the U key) steps the dongle from
-that status screen through eight full-screen animations, then the Keys
+that status screen through five full-screen animations, then the Keys
 screen and the [Debug screen](#debug-screen), and back to it;
 **Screen -** (the Y key) goes the other way. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
@@ -201,31 +201,34 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Warp | drifting stars | light speed down a tunnel; each key fires comets out through its place on the screen, and the view leans towards the side being typed on |
-| 2 | Fire | embers | a wall of flame; each key throws in a hot spot under its column |
-| 3 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
-| 4 | Code | a program in an alien script, written slowly | written fast: two characters a key (the same key always gives the same one), lines running off the top |
-| 5 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
-| 6 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 7 | Life | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
-| 8 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
-| 9 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 1 | Fire | embers | a wall of flame; each key throws in a hot spot under its column |
+| 2 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
+| 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
+| 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
+| 5 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
+| 6 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 
-After 15 minutes without a key (or an encoder turn) a screensaver takes
-over from whichever screen is showing: Warp or Life, picked at random, never
-the one already there. It comes in over 18 seconds by distorting the picture
-that was showing: into Warp the picture is torn open at the vanishing point
-and streaks past as the stars reach light speed; into Life its bright parts
-come alive in spreading patches and the cells eat it. (Over the status
-screen there is no picture to distort, so it comes in over black.) The first
-key starts the way back, which then runs its 9 seconds whether or not you
-keep typing: the screensaver reacts to the typing, starts to glitch lightly
-after 2 seconds and harder and harder until, in the last second, the screen
-you had cuts back in through it block by block (the status screen simply
-returns). An animation that comes back starts afresh: Hop's stars are
-counted from none again. The wait is `CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES`
-(0 for no screensaver); after an hour the panel still goes off, and a key
-then brings the screen straight back.
+Three more animations are screensavers, not screens to choose. After 15
+minutes without a key (or an encoder turn) one of them, picked at random,
+takes over from whichever screen is showing, coming in over 18 seconds by
+distorting the picture that was there:
+
+| Screensaver | The way in | Left alone | Typing (on the way out) |
+| --- | --- | --- | --- |
+| Warp | the picture is torn open at the vanishing point and streaks past as the stars reach light speed | drifting stars | light speed down a tunnel; each key fires comets out through its place on the screen, and the view leans towards the side being typed on |
+| Code | the picture runs down the screen like wax; nothing is written until it has all gone | a program in an alien script, written slowly down the page from the top, scrolling once the page is full | written fast: two characters a key (the same key always gives the same one) |
+| Life | the picture's bright parts come alive in spreading patches, and the cells eat it | Conway's Game of Life, three generations a second | up to fifteen a second; each key drops a clump of cells at its own place; cells age from white through green to blue |
+
+Over the status screen there is no picture to distort, so they come in over
+black. The first key starts the way back, which then runs its 9 seconds
+whether or not you keep typing: the screensaver reacts to the typing, starts
+to glitch lightly after 2 seconds and harder and harder until, in the last
+second, the screen you had cuts back in through it block by block (the
+status screen simply returns). An animation that comes back starts afresh:
+Hop's stars are counted from none again. The wait is
+`CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver); after an
+hour the panel still goes off, and a key then brings the screen straight
+back.
 
 Keys draws the keyboard the dongle is built for, from its matrix transform.
 A key counts as holding a modifier or a layer if its binding is `&kp` with a

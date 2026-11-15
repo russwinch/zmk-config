@@ -72,7 +72,8 @@ config DONGLE_SCREEN_FX
     imply BT_CTLR_CONN_RSSI
     help
       The &scr_next key steps from the Prospector module's status screen
-      through the animations in src/screen_fx/fx.c and back; &scr_prev goes
+      through the animations in src/screen_fx/fx.c (those that aren't
+      screensavers) and back; &scr_prev goes
       the other way. Each shows both batteries and the connection. After
       the animations comes a Debug screen of readings, for which this turns
       on the reset cause (HWINFO), LVGL's memory figures and, in the
@@ -85,12 +86,12 @@ if DONGLE_SCREEN_FX
 config DONGLE_SCREEN_FX_START
     int "Screen shown after power-up, until one has been chosen"
     default 0
-    range 0 10
+    range 0 7
     help
       0 is the Prospector module's status screen; 1 and up are the
-      animations, in the order &scr_next shows them (Warp, Fire, Terminal,
-      Code, Thermal, Tracker, Life, Hop), 9 the Keys screen and 10 the
-      Debug screen. Once a screen has been chosen with
+      animations, in the order &scr_next shows them (Fire, Terminal,
+      Thermal, Tracker, Hop), 6 the Keys screen and 7 the Debug screen.
+      The screensavers aren't among them. Once a screen has been chosen with
       the keys it is saved (with CONFIG_SETTINGS) and shown instead; a
       settings reset brings this one back.
 
@@ -111,8 +112,8 @@ config DONGLE_SCREEN_FX_SAVER_MINUTES
     default 15
     range 0 1440
     help
-      One of the animations that can be a screensaver (Warp, Life), picked
-      at random, takes over from whichever screen is showing, and the
+      One of the screensaver animations (Warp, Code, Life), picked at
+      random, takes over from whichever screen is showing, and the
       first key starts that screen on its way back. It only shows while
       the panel is on: keep this under ZMK_IDLE_TIMEOUT.
 

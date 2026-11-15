@@ -178,6 +178,7 @@ enum {
     FX_TR_NONE,
     FX_TR_HYPERSPACE, /* into Warp: torn open at the vanishing point, streaking past */
     FX_TR_INFECT,     /* into Life: the picture's bright parts come alive and eat it */
+    FX_TR_MELT,       /* into Code: it runs down the screen like wax, and only then is anything written */
     FX_TR_GLITCH,     /* `old_palette` is the screen to go back to; `old` isn't used */
     FX_TR_CUT,        /* `old` is the screensaver's last frame */
 };
@@ -192,7 +193,9 @@ struct fx_transition {
     const uint16_t *old_palette; /* the still's */
 };
 
-/* The animations that can be the screensaver, and the way into each. */
+/* The animations that are screensavers, and the way into each
+ * (FX_TR_NONE: it isn't one). The dongle keeps these out of the screens the
+ * Screen keys step through. */
 int fx_saver_count(void);
 int fx_saver(int n);
 int fx_saver_way_in(int fx);
