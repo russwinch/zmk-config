@@ -86,11 +86,11 @@ if DONGLE_SCREEN_FX
 config DONGLE_SCREEN_FX_START
     int "Screen shown after power-up, until one has been chosen"
     default 0
-    range 0 7
+    range 0 6
     help
       0 is the Prospector module's status screen; 1 and up are the
-      animations, in the order &scr_next shows them (Fire, Terminal,
-      Thermal, Tracker, Hop), 6 the Keys screen and 7 the Debug screen.
+      animations, in the order &scr_next shows them (Terminal, Thermal,
+      Tracker, Hop), 5 the Keys screen and 6 the Debug screen.
       The screensavers aren't among them. Once a screen has been chosen with
       the keys it is saved (with CONFIG_SETTINGS) and shown instead; a
       settings reset brings this one back.

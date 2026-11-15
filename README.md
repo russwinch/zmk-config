@@ -193,7 +193,7 @@ lines that animate as you type), change the layout line in
 #### Animated screens
 
 The **Screen +** key on the Config layer (the U key) steps the dongle from
-that status screen through five full-screen animations, then the Keys
+that status screen through four full-screen animations, then the Keys
 screen and the [Debug screen](#debug-screen), and back to it;
 **Screen -** (the Y key) goes the other way. The screen you leave it on is
 remembered: once it has been showing for five seconds it is saved, and the
@@ -201,12 +201,11 @@ dongle starts on it after being unplugged. A settings reset forgets it.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Fire | embers | a wall of flame; each key throws in a hot spot under its column |
-| 2 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
-| 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads and cools; a sight follows the last key |
-| 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 5 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
-| 6 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 1 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
+| 2 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above |
+| 3 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
+| 4 | Hop | a little creature strolling through a platform game, jumping what is in its way | it runs; each key plants a flower under its column and gets a hop out of it; stars it picks up are counted top right |
+| 5 | Keys | the keyboard's name, the layer, and a picture of its keys | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn) one of them, picked at random,
@@ -257,10 +256,9 @@ when it isn't; over USB there is no symbol at all. The text's colours are set
 per animation (the `theme` in the list at the end of `src/screen_fx/fx.c`):
 light with a dark edge. The theme also says which letters the numbers are in
 and how low they sit: Terminal, Code, Thermal and Tracker have them in the
-animations' own small pixel letters, a size down from the Field font; on Fire
-the flames burn above a black bar along the bottom that holds the text; and
-on Tracker it sits under the line across the bottom, with a gauge for each
-battery up the sides. The screen to start on
+animations' own small pixel letters, a size down from the Field font; on
+Tracker it sits under the line across the bottom; and Thermal and Tracker
+add a gauge for each battery up the sides. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 

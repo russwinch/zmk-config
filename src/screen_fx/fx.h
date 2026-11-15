@@ -108,6 +108,7 @@ struct fx_debug {
 struct fx_input {
     float step;                /* time since the last frame, in 30ths of a second */
     float energy;              /* 0..1: how hard you are typing */
+    uint16_t wpm;              /* words per minute, as ZMK counts them */
     uint8_t n_keys;            /* keys pressed since the last frame */
     uint8_t keys[FX_MAX_KEYS]; /* their key positions */
     uint8_t n_chars;           /* characters typed since the last frame */

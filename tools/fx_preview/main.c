@@ -183,6 +183,7 @@ int main(int argc, char **argv) {
             energy = 1;
         }
         in.energy = energy;
+        in.wpm = (uint16_t)wpm;
 
         const int now = at < 0.55f ? 0 : at < 0.85f ? 1 : 2;
         if (now != stage) {

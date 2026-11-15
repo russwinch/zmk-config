@@ -699,6 +699,7 @@ static void frame_cb(struct k_work *work) {
         fx_transition_step(&tr);
     }
     in.energy = energy;
+    in.wpm = (uint16_t)atomic_get(&wpm);
 
     if (now - status_at >= STATUS_MS) {
         const struct fx_status was = status;

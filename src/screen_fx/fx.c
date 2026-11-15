@@ -3,7 +3,7 @@
  *
  * Each animation is a start function (palette, state) and a frame function.
  * `canvas` is one spare picture they share for whatever has to survive from
- * frame to frame (flame heat, fading trails); the frame handed in is redrawn
+ * frame to frame (heat, fading trails); the frame handed in is redrawn
  * completely every time, because the banner is written over it. The
  * caller owns the canvas's memory (fx_set_canvas): the dongle has none to
  * spare for it.
@@ -448,59 +448,6 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
-/* --- fire: embers when idle, a wall of flame at full speed ----------------- */
-
-/* The flames are too bright to read anything over, so they burn above a
- * black bar along the bottom that the status text sits in (the theme's
- * `drop` puts it there). */
-#define FIRE_BAR 22
-
-static void fire_start(uint16_t *palette) {
-    /* white only at the very top, which just the keys' hot spots reach: the
-     * flames themselves stop at yellow, so they keep their shape at speed */
-    static const struct stop stops[] = {{0, 0, 0, 0},       {40, 70, 0, 0},      {100, 210, 25, 0},
-                                        {165, 255, 120, 0}, {225, 255, 215, 40}, {251, 255, 255, 220}};
-    gradient(palette, stops, 6);
-}
-
-static void fire_frame(uint8_t *fb, const struct fx_input *in) {
-    /* the fuel: the bottom three rows */
-    int base = 110 + (int)(in->energy * 95);
-    for (int i = PIXELS - 3 * FX_W; i < PIXELS; i++) {
-        int v = base - (int)(rnd() & 63);
-        canvas[i] = v > 0 ? v : 0;
-    }
-    /* each key throws a hot spot in */
-    for (int k = 0; k < in->n_keys; k++) {
-        int cx = key_x(in->keys[k]);
-        for (int y = FX_H - 7; y < FX_H; y++) {
-            for (int x = cx - 3; x <= cx + 3; x++) {
-                plot(canvas, x, y, 251);
-            }
-        }
-    }
-    /* flames cool fast when idle (they die low), slower at full speed, but
-     * still fast enough to leave dark between the tongues */
-    uint32_t cooling = 9 + (uint32_t)((1.0f - in->energy) * 5);
-    for (int pass = 0; pass < 2; pass++) {
-        for (int y = 0; y < FX_H - 3; y++) {
-            uint8_t *row = &canvas[y * FX_W];
-            for (int x = 0; x < FX_W; x++) {
-                uint32_t r = rnd();
-                /* heat comes from 1..3 rows down, drifting sideways */
-                int sx = x + (int)(r & 3) - 1;
-                if ((unsigned)sx >= FX_W) {
-                    sx = x;
-                }
-                int v = row[(1 + ((r >> 2) % 3)) * FX_W + sx] - (int)((r >> 8) % cooling);
-                row[x] = v > 0 ? v : 0;
-            }
-        }
-    }
-    memcpy(fb, canvas + FIRE_BAR * FX_W, PIXELS - FIRE_BAR * FX_W);
-    memset(fb + PIXELS - FIRE_BAR * FX_W, 0, FIRE_BAR * FX_W);
-}
-
 /* --- terminal: what you type, in green, fading away ------------------------ */
 
 #define TERM_COLS 26
@@ -786,79 +733,240 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
 
 /*
  * The screen is the board seen from above: each key leaves a hot spot at its
- * own place, which spreads and cools from white through red, yellow and
- * green back into the cold blue. Two warm patches wander about so there is
- * something to see when idle, the whole picture warms up with typing speed,
- * and a sight follows the last key pressed.
+ * own place, which spreads as it cools from white through red, yellow and
+ * green back into the cold blue, slowly enough for the spots of a word to
+ * run together. Two warm patches wander about so there is something to see
+ * when idle, the whole picture warms up with typing speed, and a sight
+ * follows the last key pressed. A gauge up each side is that half's battery.
+ *
+ * From THERMAL_FIRE_WPM the board catches: each key burns for a second or
+ * two after it is pressed, as a heat camera shows a flame: a white core that
+ * flickers and cools quickly, and above it the smoke, a faint warm plume
+ * that drifts and widens on its way up.
+ *
+ * The canvas holds two pictures: the board's heat at half size (it is smooth
+ * anyway, and spreads further for the same work), and the flames and smoke
+ * at full size over the rows the board takes up.
  */
 
-static float thermal_time, thermal_x, thermal_y, thermal_lock;
-static int thermal_tx, thermal_ty;
+#define THERMAL_FIRE_WPM 50
+#define HEAT_W (FX_W / 2)
+#define HEAT_H (FX_H / 2)
+#define HEAT_CELLS (HEAT_W * HEAT_H)
+#define HEAT_MAX 226    /* as hot as the board shows: white is the flames' */
+#define GAS_H 90        /* rows of flame and smoke, from the top */
+#define GAS_SMOKE 85    /* under this it is smoke, which cools slowly */
+#define GAS_LINGER 80   /* frames the smoke gets to clear once the fire is out */
+#define BURNERS 12      /* keys alight at once */
+
+_Static_assert(HEAT_CELLS + FX_W * GAS_H <= PIXELS, "the canvas holds both");
+
+static float thermal_time, thermal_x, thermal_y, thermal_lock, thermal_blaze;
+static int thermal_tx, thermal_ty, thermal_frames, thermal_smoke, thermal_next;
+static struct {
+    uint8_t x, y, life; /* life: frames left to burn */
+} burners[BURNERS];
 
 static void thermal_start(uint16_t *palette) {
     static const struct stop stops[] = {{0, 0, 0, 35},      {45, 0, 25, 150},   {95, 0, 160, 130}, {140, 150, 225, 0},
                                         {175, 255, 210, 0}, {215, 255, 35, 0},  {251, 255, 245, 235}};
     gradient(palette, stops, 7);
-    thermal_time = 0;
+    thermal_time = thermal_blaze = 0;
     thermal_x = thermal_tx = FX_W / 2;
     thermal_y = thermal_ty = FX_H / 2 - 12;
     thermal_lock = 0;
+    thermal_frames = thermal_smoke = 0;
+    memset(burners, 0, sizeof(burners));
 }
 
-/* Warm the canvas around (cx, cy): `peak` in the middle, nothing at `radius`.
- * Added to what is there, or with `hold` only bringing it up to that. */
-static void glow_spot(int cx, int cy, int radius, int peak, bool hold) {
+/* Warm a picture `w` by `h` around (cx, cy): `peak` in the middle, nothing at
+ * `radius`. Added to what is there, or with `hold` only bringing it up to
+ * that. */
+static void glow_spot_in(uint8_t *buf, int w, int h, int cx, int cy, int radius, int peak, bool hold) {
     for (int y = cy - radius; y <= cy + radius; y++) {
         for (int x = cx - radius; x <= cx + radius; x++) {
             int far = (x - cx) * (x - cx) + (y - cy) * (y - cy);
-            if (far >= radius * radius || (unsigned)x >= FX_W || (unsigned)y >= FX_H) {
+            if (far >= radius * radius || x < 0 || x >= w || y < 0 || y >= h) {
                 continue;
             }
-            int was = canvas[y * FX_W + x], v = peak * (radius * radius - far) / (radius * radius);
+            int was = buf[y * w + x], v = peak * (radius * radius - far) / (radius * radius);
             v = hold ? (v > was ? v : was) : v + was;
-            canvas[y * FX_W + x] = v > 251 ? 251 : v;
+            buf[y * w + x] = v > 251 ? 251 : v;
+        }
+    }
+}
+
+/* The same, on the whole canvas. */
+static void glow_spot(int cx, int cy, int radius, int peak, bool hold) {
+    glow_spot_in(canvas, FX_W, FX_H, cx, cy, radius, peak, hold);
+}
+
+/* A battery: a gauge from y 16 to 90 at `x`, on `back`. */
+static void side_battery(uint8_t *fb, int x, uint8_t percent, bool connected, uint8_t edge, uint8_t full,
+                         uint8_t back) {
+    const int top = 16, bottom = 90;
+    const bool low = !connected || (percent > 0 && percent <= 15);
+    int fill = 0;
+    if (connected && percent > 0) {
+        fill = (bottom - top - 1) * (percent > 100 ? 100 : percent) / 100;
+    }
+    for (int y = top; y <= bottom; y++) {
+        for (int dx = -1; dx <= 5; dx++) {
+            const bool side = y == top || y == bottom || dx == 0 || dx == 4;
+            const bool inside = dx > 0 && dx < 4 && y > bottom - 1 - fill;
+            /* a gap every tenth of the way up */
+            const bool gap = (bottom - y) % 8 == 0;
+            plot(fb, x + dx, y,
+                 dx < 0 || dx > 4 ? back : side ? edge : inside && !gap ? (low ? FX_RED : full) : back);
+        }
+    }
+}
+
+/* One step left or right, or (half the time) neither, from two random bits. */
+static inline int sidestep(uint32_t bits) { return (bits & 3) == 0 ? -1 : (bits & 3) == 3 ? 1 : 0; }
+
+/* The flames and the smoke. Everything rises: a pixel takes the heat of two
+ * a row or three below it, a step to either side, less what it lost on the
+ * way: a lot while it is flame, little once it is smoke. */
+static void thermal_burn(uint8_t *gas) {
+    /* what was at the bottom has gone up */
+    memset(gas + (GAS_H - 1) * FX_W, 0, FX_W);
+
+    const int flame_cool = 19 - (int)(thermal_blaze * 8); /* taller flames at speed */
+    for (int y = 0; y < GAS_H - 1; y++) {
+        uint8_t *row = &gas[y * FX_W];
+        /* the air sways: bands of it leaning one way and the other, going up */
+        int lean = (y * 2 + (int)(thermal_time * 0.9f)) % 96;
+        lean = (lean < 48 ? lean : 96 - lean) - 24; /* -24..24 */
+        const int lean_to = lean < 0 ? -1 : 1, lean_odds = (lean < 0 ? -lean : lean) / 3; /* in 16 */
+        const int below = GAS_H - 1 - y;
+        for (int x = 0; x < FX_W; x++) {
+            const uint32_t r = rnd();
+            const int drift = (int)((r >> 28) & 15) < lean_odds ? lean_to : 0;
+            int ya = 1 + (int)((r >> 4) & 1), yb = 1 + (int)((r >> 5) % 3);
+            int xa = x + sidestep(r) + drift, xb = x + sidestep(r >> 2) * 2 + drift;
+            ya = ya > below ? below : ya;
+            yb = yb > below ? below : yb;
+            xa = (unsigned)xa < FX_W ? xa : x;
+            xb = (unsigned)xb < FX_W ? xb : x;
+            int v = (row[ya * FX_W + xa] + row[yb * FX_W + xb] + 1) >> 1;
+            if (v == 0) {
+                row[x] = 0;
+                continue;
+            }
+            const int chance = (int)((r >> 8) & 0xfff);
+            v -= v > GAS_SMOKE ? chance % flame_cool : chance % 3;
+            row[x] = v > 0 ? (uint8_t)v : 0;
+        }
+    }
+
+    /* the keys alight: each a flickering spot, dying down */
+    for (int i = 0; i < BURNERS; i++) {
+        const int life = burners[i].life;
+        if (life == 0) {
+            continue;
+        }
+        burners[i].life--;
+        const uint32_t r = rnd();
+        int peak = 130 + life * 7 - (int)((r >> 4) & 63);
+        peak = peak > 251 ? 251 : peak;
+        if (peak > 0) {
+            glow_spot_in(gas, FX_W, GAS_H, burners[i].x + sidestep(r) * 2, burners[i].y + sidestep(r >> 2),
+                         life > 18 ? 5 : life > 6 ? 4 : 3, peak, true);
         }
     }
 }
 
 static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
+    uint8_t *heat = canvas, *gas = canvas + HEAT_CELLS;
     thermal_time += in->step;
+    thermal_frames++;
 
-    /* the board fills the screen above the status text, the halves apart */
+    /* the fire: from THERMAL_FIRE_WPM, growing with speed. ZMK's figure
+     * moves once a second, so it is eased in and out. */
+    const float fire = in->wpm >= THERMAL_FIRE_WPM
+                           ? clampf(0.35f + (in->wpm - THERMAL_FIRE_WPM) / 45.0f, 0.0f, 1.0f)
+                           : 0.0f;
+    thermal_blaze += (fire - thermal_blaze) * clampf(0.06f * in->step, 0.0f, 1.0f);
+    const bool alight = thermal_blaze > 0.05f;
+
+    /* the board fills the screen above the status text, the halves apart,
+     * between the gauges */
     for (int k = 0; k < in->n_keys; k++) {
         int col = key_col(in->keys[k]), row = key_row(in->keys[k]);
-        thermal_tx = 13 + col * 12 + (col >= 5 ? 7 : 0);
+        thermal_tx = 16 + col * 11 + (col >= 5 ? 9 : 0);
         thermal_ty = 14 + row * 21;
-        glow_spot(thermal_tx, thermal_ty, 9, 210, false);
+        /* up to red hot, and a little more each time: a key hit over and
+         * over glows wider, but doesn't swamp the board */
+        glow_spot_in(heat, HEAT_W, HEAT_H, thermal_tx / 2, thermal_ty / 2, 5, 205, true);
+        glow_spot_in(heat, HEAT_W, HEAT_H, thermal_tx / 2, thermal_ty / 2, 6, 30, false);
+        if (alight) {
+            thermal_next = (thermal_next + 1) % BURNERS;
+            burners[thermal_next].x = (uint8_t)thermal_tx;
+            burners[thermal_next].y = (uint8_t)(thermal_ty - 2);
+            burners[thermal_next].life = (uint8_t)(14 + thermal_blaze * 22);
+        }
         thermal_lock = 1;
     }
     /* the wanderers, warmer the faster you type */
     int warm = 60 + (int)(in->energy * 70);
-    glow_spot(FX_W / 2 + (int)(sinf(thermal_time * 0.013f) * 52), 45 + (int)(sinf(thermal_time * 0.021f + 2) * 30),
-                 15, warm, true);
-    glow_spot(FX_W / 2 + (int)(sinf(thermal_time * 0.017f + 4) * 50), 50 + (int)(sinf(thermal_time * 0.011f) * 32),
-                 12, warm, true);
+    glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.013f) * 24),
+                 22 + (int)(sinf(thermal_time * 0.021f + 2) * 15), 7, warm, true);
+    glow_spot_in(heat, HEAT_W, HEAT_H, HEAT_W / 2 + (int)(sinf(thermal_time * 0.017f + 4) * 23),
+                 25 + (int)(sinf(thermal_time * 0.011f) * 16), 6, warm, true);
 
-    /* heat spreads to the pixels around and leaks away, the hottest fastest */
-    for (int y = 1; y < FX_H - 1; y++) {
-        uint8_t *row = &canvas[y * FX_W];
-        for (int x = 1; x < FX_W - 1; x++) {
-            int v = (row[x - 1] + row[x + 1] + row[x - FX_W] + row[x + FX_W] + 2) >> 2;
-            row[x] = v > 1 ? v - (v >> 5) - ((x ^ y) & 1) : 0;
+    /* heat spreads to the cells around, half of it a frame, and leaks away a
+     * little at a time. Worked through forwards and backwards by turns, so
+     * that it doesn't creep one way. */
+    const bool backwards = thermal_frames & 1;
+    uint32_t r = 0;
+    for (int n = 0; n < HEAT_H - 2; n++) {
+        uint8_t *row = &heat[(backwards ? HEAT_H - 2 - n : 1 + n) * HEAT_W];
+        for (int m = 0; m < HEAT_W - 2; m++) {
+            const int x = backwards ? HEAT_W - 2 - m : 1 + m;
+            if ((m & 3) == 0) {
+                r = rnd();
+            }
+            int v = (4 * row[x] + row[x - 1] + row[x + 1] + row[x - HEAT_W] + row[x + HEAT_W] + 4) >> 3;
+            v -= (v + (int)(r & 127)) >> 7;
+            r >>= 7;
+            row[x] = (uint8_t)v;
         }
     }
 
-    /* the picture: the heat on a cold, noisy background that typing warms */
+    if (alight) {
+        thermal_smoke = GAS_LINGER;
+    }
+    if (thermal_smoke > 0) {
+        thermal_smoke--;
+        thermal_burn(gas);
+        if (thermal_smoke == 0) {
+            memset(gas, 0, FX_W * GAS_H);
+        }
+    }
+
+    /* the picture: the heat, and the flames over it, on a cold, noisy
+     * background that typing warms */
     int ambient = 12 + (int)(in->energy * 28);
     int band = (int)(thermal_time * 0.8f) % (FX_H + 40) - 20; /* a brighter line rolling down */
     for (int y = 0; y < FX_H; y++) {
         int lift = ambient + (y > band - 3 && y < band + 3 ? 7 : 0);
-        uint32_t r = 0;
+        /* each cell is two pixels each way: the ones between are averaged */
+        const uint8_t *h0 = &heat[(y >> 1) * HEAT_W];
+        const uint8_t *h1 = (y & 1) && (y >> 1) + 1 < HEAT_H ? h0 + HEAT_W : h0;
+        const bool burning = thermal_smoke > 0 && y < GAS_H;
         for (int x = 0; x < FX_W; x++) {
             if ((x & 3) == 0) {
                 r = rnd();
             }
-            int v = canvas[y * FX_W + x] + lift + (int)(r & 7);
+            const int cx = x >> 1, cx1 = (x & 1) && cx + 1 < HEAT_W ? cx + 1 : cx;
+            int v = ((h0[cx] + h0[cx1] + h1[cx] + h1[cx1]) >> 2) + lift + (int)(r & 7);
+            v = v > HEAT_MAX ? HEAT_MAX : v;
+            if (burning) {
+                /* over the board, not added to it: only the flame's own
+                 * core comes out white, however hot the key under it */
+                v += gas[y * FX_W + x] * (256 - v) >> 8;
+            }
             r >>= 3;
             fb[y * FX_W + x] = v > 251 ? 251 : v;
         }
@@ -878,6 +986,12 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
         line(fb, sx + dx * size, sy + dy * size, sx + dx * size, sy + dy * (size - arm), color);
     }
     plot(fb, sx, sy, color);
+
+    if (in->status) {
+        side_battery(fb, 5, in->status->battery[0], in->status->half_connected[0], FX_GREY, FX_WHITE, FX_BLACK);
+        side_battery(fb, FX_W - 10, in->status->battery[1], in->status->half_connected[1], FX_GREY, FX_WHITE,
+                     FX_BLACK);
+    }
 }
 
 /* --- tracker: a motion tracker; the faster you type, the closer they get --- */
@@ -930,25 +1044,6 @@ static void half_ring(uint8_t *buf, int r, uint8_t c) {
         } else {
             x--;
             err += 2 * (y - x) + 1;
-        }
-    }
-}
-
-/* A battery: a gauge from y 16 to 90 at `x`. */
-static void track_battery(uint8_t *fb, int x, uint8_t percent, bool connected) {
-    const int top = 16, bottom = 90;
-    const bool low = !connected || (percent > 0 && percent <= 15);
-    int fill = 0;
-    if (connected && percent > 0) {
-        fill = (bottom - top - 1) * (percent > 100 ? 100 : percent) / 100;
-    }
-    for (int y = top; y <= bottom; y++) {
-        for (int dx = -1; dx <= 5; dx++) {
-            const bool edge = y == top || y == bottom || dx == 0 || dx == 4;
-            const bool inside = dx > 0 && dx < 4 && y > bottom - 1 - fill;
-            /* a gap every tenth of the way up */
-            const bool gap = (bottom - y) % 8 == 0;
-            plot(fb, x + dx, y, dx < 0 || dx > 4 ? 0 : edge ? TRACK_LINE : inside && !gap ? (low ? FX_RED : TRACK_TEXT) : 0);
         }
     }
 }
@@ -1058,8 +1153,9 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
     glyph(fb, FX_W - 18, 13, 'm', TRACK_TEXT);
 
     if (in->status) {
-        track_battery(fb, 5, in->status->battery[0], in->status->half_connected[0]);
-        track_battery(fb, FX_W - 10, in->status->battery[1], in->status->half_connected[1]);
+        side_battery(fb, 5, in->status->battery[0], in->status->half_connected[0], TRACK_LINE, TRACK_TEXT, 0);
+        side_battery(fb, FX_W - 10, in->status->battery[1], in->status->half_connected[1], TRACK_LINE, TRACK_TEXT,
+                     0);
     }
 }
 
@@ -1883,7 +1979,6 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 #define RGB565(r, g, b) ((uint16_t)(((r) >> 3) << 11 | ((g) >> 2) << 5 | (b) >> 3))
 #define LOW_RED RGB565(255, 70, 50)
-#define FIRE_DROP 16  /* the text's foot 9 rows from the bottom of the panel */
 #define TRACK_DROP 12 /* under the line at TRACK_CY */
 
 static const struct {
@@ -1899,10 +1994,6 @@ static const struct {
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
       .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0},
      .saver = FX_TR_HYPERSPACE},
-    /* in the black bar under the flames (FIRE_BAR) */
-    {"FIRE", fire_start, fire_frame,
-     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(255, 170, 40),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .drop = FIRE_DROP}},
     {"TERMINAL", term_start, term_frame,
      {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
       .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
