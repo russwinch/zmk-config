@@ -137,6 +137,13 @@
             display-name = "Next theme";
             theme;
         };
+        // The dongle's backlight: low, medium, high, and round again.
+        scr_bright: scr_bright {
+            compatible = "zmk,behavior-screen-next";
+            #binding-cells = <0>;
+            display-name = "Screen brightness";
+            brightness;
+        };
     };
 };
 
@@ -214,7 +221,7 @@
         config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
-    XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme,    XXX,           XXX,
+    XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme,    XXX,           &scr_bright,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
     &kp C_PWR,     &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
                                                  ___,           ___,               ___,           ___

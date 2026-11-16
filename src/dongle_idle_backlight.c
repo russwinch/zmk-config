@@ -19,6 +19,12 @@
  * before the backlight returns. Both are done on ZMK's display work queue so
  * the commands can't land in the middle of a screen redraw on the SPI bus.
  *
+ * How bright "on" is has three levels, low, medium and high, which the
+ * Config layer's Bright key steps through (dongle_backlight_step): medium is
+ * the Prospector module's CONFIG_PROSPECTOR_FIXED_BRIGHTNESS, and what a
+ * dongle has until another is chosen. src/dongle_screen_fx.c saves the level
+ * with the chosen screen.
+ *
  * Only built with a fixed brightness (no ambient light sensor), since the
  * Prospector module's sensor thread would otherwise keep overriding it.
  * Settings: Kconfig at the repo root, values in config/prospector_adapter.conf.
@@ -56,6 +62,7 @@ static const struct pwm_dt_spec backlight_pwm = PWM_DT_SPEC_GET(DT_NODELABEL(dis
 #define DARK_PULSE_NS 250
 
 #define UP_MS 1000
+#define STEP_TO_MS 250 // from one brightness level to the next
 #define DOWN_MS 400
 #define STEP_MS 20
 // going down to nothing waits for the animated screens to close the picture
@@ -87,6 +94,16 @@ static void set_backlight(uint8_t percent) {
 }
 
 static const struct device *panel = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+
+// how bright "on" is: low, medium, high
+static const uint8_t level_percent[DONGLE_BACKLIGHT_LEVELS] = {
+    CONFIG_WATERFOWL_DONGLE_BRIGHTNESS_LOW,
+    CONFIG_PROSPECTOR_FIXED_BRIGHTNESS,
+    CONFIG_WATERFOWL_DONGLE_BRIGHTNESS_HIGH,
+};
+static atomic_t level = ATOMIC_INIT(DONGLE_BACKLIGHT_MEDIUM);
+
+static uint8_t on_percent(void) { return level_percent[atomic_get(&level)]; }
 
 // what was last asked for (any thread); `asked` counts the requests
 static atomic_t target_percent, target_over_ms, asked;
@@ -161,7 +178,7 @@ static int idle_backlight_listener(const zmk_event_t *eh) {
     switch (ev->state) {
     case ZMK_ACTIVITY_ACTIVE:
         k_work_cancel_delayable(&backlight_off_work);
-        request_backlight(CONFIG_PROSPECTOR_FIXED_BRIGHTNESS, UP_MS, 0);
+        request_backlight(on_percent(), UP_MS, 0);
         break;
     case ZMK_ACTIVITY_IDLE:
         request_backlight(CONFIG_WATERFOWL_DONGLE_IDLE_BRIGHTNESS, DOWN_MS,
@@ -193,8 +210,26 @@ static atomic_t lit;
 
 void dongle_backlight_on(void) {
     if (!atomic_set(&lit, 1)) {
-        request_backlight(CONFIG_PROSPECTOR_FIXED_BRIGHTNESS, UP_MS, 0);
+        request_backlight(on_percent(), UP_MS, 0);
     }
+}
+
+int dongle_backlight_level(void) { return (int)atomic_get(&level); }
+
+void dongle_backlight_set_level(int to) {
+    if (to < 0 || to >= DONGLE_BACKLIGHT_LEVELS || atomic_set(&level, to) == to) {
+        return;
+    }
+    // not while it is dark: before the first picture, or idle. It comes up to the new level then.
+    if (atomic_get(&target_percent) != 0) {
+        request_backlight(on_percent(), STEP_TO_MS, 0);
+    }
+}
+
+int dongle_backlight_step(void) {
+    const int to = (dongle_backlight_level() + 1) % DONGLE_BACKLIGHT_LEVELS;
+    dongle_backlight_set_level(to);
+    return to;
 }
 
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX) && !IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_MODULE_SCREEN)

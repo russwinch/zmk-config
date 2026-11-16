@@ -2,7 +2,8 @@
  * The `&scr_next` and `&scr_prev` keys: show the next or the previous screen
  * on the Prospector dongle (src/dongle_screen_fx.c). `&scr_theme` is the
  * same behavior with the `theme` property: it steps through the screens'
- * colour themes instead. The keymap is shared, so the behaviors exist on
+ * colour themes instead. `&scr_bright`, with `brightness`, steps the
+ * backlight through low, medium and high. The keymap is shared, so the behaviors exist on
  * every keyboard; without the dongle there is nothing to switch and the
  * keys do nothing.
  */
@@ -21,6 +22,7 @@
 struct screen_next_config {
     bool back;
     bool theme;
+    bool brightness;
 };
 
 static int screen_next_pressed(struct zmk_behavior_binding *binding,
@@ -28,7 +30,9 @@ static int screen_next_pressed(struct zmk_behavior_binding *binding,
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX)
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct screen_next_config *config = dev->config;
-    if (config->theme) {
+    if (config->brightness) {
+        dongle_screen_fx_brightness_step();
+    } else if (config->theme) {
         dongle_screen_fx_theme_step(config->back ? -1 : 1);
     } else {
         dongle_screen_fx_step(config->back ? -1 : 1);
@@ -54,6 +58,7 @@ static const struct behavior_driver_api screen_next_api = {
     static const struct screen_next_config screen_next_config_##n = {                              \
         .back = DT_INST_PROP(n, back),                                                             \
         .theme = DT_INST_PROP(n, theme),                                                           \
+        .brightness = DT_INST_PROP(n, brightness),                                                 \
     };                                                                                             \
     BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &screen_next_config_##n, POST_KERNEL,             \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &screen_next_api);

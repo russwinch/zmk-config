@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U) and colour theme (I) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme (I) and brightness (P) (shown as "Shit" on the screens) |
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
@@ -238,6 +238,13 @@ dot dies away, and then the backlight fades out. A key brings it back with
 the backlight fading up over a second and the screen you had chosen (not the
 screensaver) coming through white noise. The dongle starts the same way
 when it is plugged in.
+
+The **Screen bright** key (the P key) steps the backlight through low,
+medium and high (20, 50 and 90%: `CONFIG_WATERFOWL_DONGLE_BRIGHTNESS_LOW`,
+`CONFIG_PROSPECTOR_FIXED_BRIGHTNESS` and `CONFIG_WATERFOWL_DONGLE_BRIGHTNESS_HIGH`
+in `config/prospector_adapter.conf`), and round again; which shows on the
+screen for a second and a half. A dongle starts on medium, and the level is
+remembered as the screen and the theme are, after the same 30 seconds.
 
 #### Colour themes
 

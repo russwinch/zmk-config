@@ -97,7 +97,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define FRAME_MS 33
 #define DEBUG_FRAME_MS 100
 #define STATUS_MS 500
-#define THEME_NAME_MS 1500 /* a theme's name stays up this long after it is turned to */
+#define NOTICE_MS 1500 /* a theme's name, or the brightness, stays up this long after it is turned to */
 /* after leaving the module's screen: time for LVGL to finish with the panel */
 #define TAKEOVER_MS 300
 
@@ -198,8 +198,10 @@ static bool is_debug;        /* the Debug screen is the one showing */
 static bool plain;           /* that or the Keys screen: the readings, and no status text over them */
 static struct fx_debug debug_shown;
 static uint32_t frames_since, fps_at;
-static bool theme_named; /* the theme's name is up, until theme_named_until */
-static uint32_t theme_named_until;
+/* the notice that is up, until notice_until: the theme's name or the brightness */
+enum { NOTICE_NONE, NOTICE_THEME, NOTICE_BRIGHTNESS };
+static int notice;
+static uint32_t notice_until;
 
 /*
  * The screensaver. `wanted_screen` stays the screen that was chosen;
@@ -797,15 +799,17 @@ static void frame_cb(struct k_work *work) {
     }
 
     fx_frame(screen - 1, frame, &in);
-    if (theme_named) {
-        if ((int32_t)(theme_named_until - now) > 0) {
-            const int theme = atomic_get(&wanted_theme);
-            char place[8];
-            snprintf(place, sizeof(place), "%d/%d", theme + 1, fx_scheme_count());
-            fx_draw_notice(frame, fx_scheme_name(theme), place);
-        } else {
-            theme_named = false;
-        }
+    if (notice != NOTICE_NONE && (int32_t)(notice_until - now) <= 0) {
+        notice = NOTICE_NONE;
+    }
+    if (notice == NOTICE_THEME) {
+        const int theme = atomic_get(&wanted_theme);
+        char place[8];
+        snprintf(place, sizeof(place), "%d/%d", theme + 1, fx_scheme_count());
+        fx_draw_notice(frame, fx_scheme_name(theme), place);
+    } else if (notice == NOTICE_BRIGHTNESS) {
+        static const char *const names[DONGLE_BACKLIGHT_LEVELS] = {"LOW", "MEDIUM", "HIGH"};
+        fx_draw_notice(frame, names[dongle_backlight_level()], "BRIGHTNESS");
     }
     present(now);
     frames_since++;
@@ -917,8 +921,8 @@ static void request_apply(void) {
  * is one of those drawn in them, and the theme's name goes up on any. */
 static void theme_cb(struct k_work *work) {
     fx_set_scheme(atomic_get(&wanted_theme));
-    theme_named = true;
-    theme_named_until = k_uptime_get_32() + THEME_NAME_MS;
+    notice = NOTICE_THEME;
+    notice_until = k_uptime_get_32() + NOTICE_MS;
     if (screen == 0 || start_pending || frame == NULL) {
         return; /* nothing of ours showing yet: begin_animation sets the theme too */
     }
@@ -932,6 +936,14 @@ static void theme_cb(struct k_work *work) {
 }
 
 static K_WORK_DEFINE(theme_work, theme_cb);
+
+/* The Bright key: the backlight has changed already, this says to what. */
+static void brightness_cb(struct k_work *work) {
+    notice = NOTICE_BRIGHTNESS;
+    notice_until = k_uptime_get_32() + NOTICE_MS;
+}
+
+static K_WORK_DEFINE(brightness_work, brightness_cb);
 
 /* --- the panel going off ---------------------------------------------------------- */
 
@@ -1011,7 +1023,8 @@ static void saver_cb(struct k_work *work) {
  * Saved by name, so that adding or dropping an animation doesn't turn the
  * saved one into its neighbour. Only once the screen has been left showing
  * for SAVE_DELAY_MS: stepping through them all writes to flash once. The
- * colour theme is kept the same way, after the same wait.
+ * colour theme is kept the same way, after the same wait, and so is the
+ * backlight's brightness (src/dongle_idle_backlight.c), as its level.
  */
 #define STATUS_NAME "STATUS" /* the module's screen */
 
@@ -1021,12 +1034,27 @@ static const char *screen_name(int which) { return which == 0 ? STATUS_NAME : fx
 
 #define SAVED_SETTING "screen_fx/screen"
 #define SAVED_THEME_SETTING "screen_fx/theme"
+#define SAVED_BRIGHTNESS_SETTING "screen_fx/brightness"
 #define SAVED_NAME_SIZE 16
 
 /* what flash holds; empty: nothing saved */
 static char saved_name[SAVED_NAME_SIZE], saved_theme[SAVED_NAME_SIZE];
+static uint8_t saved_brightness = DONGLE_BACKLIGHT_MEDIUM; /* or what there is until one is */
 
 static int saved_screen_set(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg) {
+    if (settings_name_steq(key, "brightness", NULL)) {
+        uint8_t level;
+        if (len != sizeof(level)) {
+            return -EINVAL;
+        }
+        const ssize_t got = read_cb(cb_arg, &level, sizeof(level));
+        if (got < 0) {
+            return (int)got;
+        }
+        saved_brightness = level;
+        dongle_backlight_set_level(level); /* one there no longer is leaves medium */
+        return 0;
+    }
     const bool theme = settings_name_steq(key, "theme", NULL);
     char *const saved = theme ? saved_theme : saved_name;
 
@@ -1069,6 +1097,16 @@ static void save_name(const char *setting, const char *name, char *saved) {
 static void save_cb(struct k_work *work) {
     save_name(SAVED_SETTING, screen_name(atomic_get(&wanted_screen)), saved_name);
     save_name(SAVED_THEME_SETTING, fx_scheme_name(atomic_get(&wanted_theme)), saved_theme);
+
+    const uint8_t brightness = (uint8_t)dongle_backlight_level();
+    if (brightness != saved_brightness) {
+        const int err = settings_save_one(SAVED_BRIGHTNESS_SETTING, &brightness, sizeof(brightness));
+        if (err != 0) {
+            LOG_ERR("screen fx: saving the brightness failed (%d)", err);
+            return;
+        }
+        saved_brightness = brightness;
+    }
 }
 
 static K_WORK_DELAYABLE_DEFINE(save_work, save_cb);
@@ -1117,6 +1155,17 @@ void dongle_screen_fx_theme_step(int by) {
     const int themes = fx_scheme_count();
     atomic_set(&wanted_theme, (atomic_get(&wanted_theme) + (by < 0 ? themes - 1 : 1)) % themes);
     k_work_submit_to_queue(zmk_display_work_q(), &theme_work);
+#if IS_ENABLED(CONFIG_SETTINGS)
+    k_work_reschedule(&save_work, K_MSEC(CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS));
+#endif
+}
+
+void dongle_screen_fx_brightness_step(void) {
+    if (!zmk_display_is_initialized()) {
+        return;
+    }
+    dongle_backlight_step();
+    k_work_submit_to_queue(zmk_display_work_q(), &brightness_work);
 #if IS_ENABLED(CONFIG_SETTINGS)
     k_work_reschedule(&save_work, K_MSEC(CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS));
 #endif

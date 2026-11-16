@@ -1,6 +1,7 @@
 # The &scr_next and &scr_prev keys (config/keymap.dtsi): the next or the
 # previous screen on the Prospector dongle (src/dongle_screen_fx.c). With
-# `theme`, as &scr_theme has it, the next colour theme instead.
+# `theme`, as &scr_theme has it, the next colour theme instead; with
+# `brightness` (&scr_bright), the backlight's next brightness.
 
 description: Show the next (or previous) screen, or colour theme, on the Prospector dongle
 
@@ -15,3 +16,6 @@ properties:
   theme:
     type: boolean
     description: Step through the colour themes instead of the screens
+  brightness:
+    type: boolean
+    description: Step the backlight through low, medium and high instead

@@ -9,7 +9,7 @@ config WATERFOWL_DONGLE_IDLE_BACKLIGHT
       After CONFIG_ZMK_IDLE_TIMEOUT without a key press the backlight fades to
       WATERFOWL_DONGLE_IDLE_BRIGHTNESS; after a further
       WATERFOWL_DONGLE_BACKLIGHT_OFF_MS it goes off. Any key or encoder fades
-      it back up to CONFIG_PROSPECTOR_FIXED_BRIGHTNESS. With DONGLE_SCREEN_FX
+      it back up to the brightness chosen (WATERFOWL_DONGLE_BRIGHTNESS_LOW). With DONGLE_SCREEN_FX
       it also stays dark at power-up until the first picture is ready.
 
 if WATERFOWL_DONGLE_IDLE_BACKLIGHT
@@ -22,6 +22,20 @@ config WATERFOWL_DONGLE_IDLE_BRIGHTNESS
       0 also switches the panel off (display blanking). The backlight PWM
       keeps running at its shortest pulse rather than being stopped (see
       src/dongle_idle_backlight.c).
+
+config WATERFOWL_DONGLE_BRIGHTNESS_LOW
+    int "Backlight brightness (%) at the low level"
+    default 20
+    range 1 100
+    help
+      The &scr_bright key steps the backlight through low, medium and high.
+      Medium is CONFIG_PROSPECTOR_FIXED_BRIGHTNESS, and what a dongle has
+      until another is chosen.
+
+config WATERFOWL_DONGLE_BRIGHTNESS_HIGH
+    int "Backlight brightness (%) at the high level"
+    default 90
+    range 1 100
 
 config WATERFOWL_DONGLE_BACKLIGHT_OFF_MS
     int "Milliseconds after going idle before the backlight goes off (0 = never)"
@@ -108,7 +122,7 @@ config DONGLE_SCREEN_FX_START
       settings reset brings this one back.
 
 config DONGLE_SCREEN_FX_SAVE_DELAY_MS
-    int "Milliseconds a chosen screen or colour theme must stay up before it is saved"
+    int "Milliseconds a chosen screen, colour theme or brightness must stay before it is saved"
     default 30000
     help
       Stepping through the screens, or the themes, doesn't write each one
