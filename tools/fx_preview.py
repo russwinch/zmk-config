@@ -9,6 +9,7 @@ draw, without flashing anything:
     tools/fx_preview.py --fps 30     # what a faster screen link would give
     tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
     tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
+    tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
 
 The battery levels and the output are drawn over them as on the dongle
 (src/screen_fx/status_overlay.c), in fonts from the Prospector module. Those
@@ -78,6 +79,20 @@ def savers() -> list[str]:
     return [name for name, entry in entries if ".saver" in entry]
 
 
+def themes() -> list[str]:
+    # the names in fx.c's `schemes` table, in order
+    text = (FX_DIR / "fx.c").read_text()
+    table = text[text.index("} schemes[] = {"):text.index("#define SCHEMES")]
+    return re.findall(r'\{"(\w+)"', table)
+
+
+def themed() -> list[str]:
+    # the animations drawn in the theme's colours: the table gives them a colours function
+    text = (FX_DIR / "fx.c").read_text()
+    table = text[text.index("} effects[] = {"):text.index("#define FX_COUNT")]
+    return [name for name, colors in re.findall(r'\{"(\w+)", \w+, \w+, (\w+)', table) if colors != "NULL"]
+
+
 def save(images: list[Image.Image], path: Path, fps: float) -> None:
     images[0].save(path, save_all=True, append_images=images[1:], duration=round(1000 / fps), loop=0)
     print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
@@ -98,6 +113,8 @@ def main() -> None:
                         help="instead: each screensaver coming over this animation and going again")
     parser.add_argument("--power", metavar="ANIMATION",
                         help="instead: the panel going off and coming back on, with this animation showing")
+    parser.add_argument("--themes", action="store_true",
+                        help="instead: one picture of every colour theme, on each screen drawn in them")
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
     args = parser.parse_args()
@@ -118,6 +135,20 @@ def main() -> None:
             save(render(exe, "power", showing, args.fps), args.out / f"power_{args.power.lower()}.gif", args.fps)
             return
         frames = int(args.seconds * args.fps)
+        if args.themes:
+            # a row a theme: the first screen as it is turned to (its name up), then each typing flat out
+            screens = [names().index(name) for name in themed()]
+            still = int(frames * 0.7)
+            sheet = [[render(exe, screens[0], still + 1, args.fps, theme, "name")[still]] +
+                     [render(exe, screen, still + 1, args.fps, theme)[still] for screen in screens]
+                     for theme in range(len(themes()))]
+            contact = Image.new("RGB", ((WIDTH + 4) * len(sheet[0]) - 4, (HEIGHT + 4) * len(sheet) - 4), "#202020")
+            for row, shots in enumerate(sheet):
+                for col, shot in enumerate(shots):
+                    contact.paste(shot, (col * (WIDTH + 4), row * (HEIGHT + 4)))
+            contact.save(args.out / "themes.png")
+            print(f"wrote themes.png (rows: {', '.join(themes())}; columns: the name, {', '.join(themed())})")
+            return
         sheet = []
         for index, name in enumerate(names()):
             images = render(exe, index, frames, args.fps)

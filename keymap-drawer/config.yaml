@@ -69,6 +69,7 @@ parse_config:
     "&ind_bat": "Battery"
     "&scr_next": "Screen next"
     "&scr_prev": "Screen prev"
+    "&scr_theme": "Theme next"
     "&to 0": "Mac"
     "&to 1": "Windows"
 draw_config:

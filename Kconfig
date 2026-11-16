@@ -74,7 +74,8 @@ config DONGLE_SCREEN_FX
     help
       The &scr_next key steps through the animations in
       src/screen_fx/fx.c (those that aren't screensavers) and round again;
-      &scr_prev goes the other way. Each shows both batteries and the
+      &scr_prev goes the other way, and &scr_theme steps through the colour
+      themes of the Keys, Debug and Tracker screens. Each shows both batteries and the
       connection. Before the animations come the Keys screen and a Debug
       screen of readings, for which this turns
       on the reset cause (HWINFO), LVGL's memory figures and, in the
@@ -107,11 +108,11 @@ config DONGLE_SCREEN_FX_START
       settings reset brings this one back.
 
 config DONGLE_SCREEN_FX_SAVE_DELAY_MS
-    int "Milliseconds a chosen screen must stay up before it is saved"
-    default 5000
+    int "Milliseconds a chosen screen or colour theme must stay up before it is saved"
+    default 30000
     help
-      Stepping through the screens doesn't write each one to flash, only
-      the one that is left showing.
+      Stepping through the screens, or the themes, doesn't write each one
+      to flash, only the one that is left showing.
 
 config DONGLE_SCREEN_FX_WPM_REFERENCE
     int "Words per minute at which the animations run flat out"

@@ -47,6 +47,86 @@ struct stop {
     uint8_t at, r, g, b;
 };
 
+/* --- colour themes --------------------------------------------------------- */
+
+/*
+ * The Keys, Debug and Tracker screens are drawn in the colours of the theme
+ * that is set (fx_set_scheme; the Config layer's Theme key steps through
+ * them). The other animations keep their own: Thermal's are the heat, and
+ * so on.
+ *
+ * To add one, add a line: its name (15 letters at most, in the animations'
+ * capitals: it is shown when the theme is turned to, and it is what the
+ * dongle saves) and eleven colours, red, green, blue.
+ *
+ *   bg      the background: keep it nearly black, the panel is backlit
+ *   dim     rules, keys that aren't pressed, the unlit part of a meter
+ *   label   captions, and readings that aren't known
+ *   text    the readings
+ *   bright  a key held down, headings, the newest of anything
+ *   glow    a key just let go (it fades from this to dim), the level meters
+ *   good, warn, bad   connected and strong; getting weak or low; lost or flat
+ *   mod     a key holding a modifier down
+ *   layer   a key holding a layer on
+ */
+struct color {
+    uint8_t r, g, b;
+};
+
+static const struct scheme {
+    const char *name;
+    struct color bg, dim, label, text, bright, glow, good, warn, bad, mod, layer;
+} schemes[] = {
+    /* the first is what a dongle has until another is chosen */
+    {"ICE", {0, 5, 14}, {0, 45, 70}, {50, 120, 150}, {150, 220, 245}, {255, 255, 255}, {90, 225, 235},
+     {70, 235, 130}, {255, 190, 40}, {255, 60, 40}, {255, 150, 30}, {205, 110, 255}},
+    /* Tron: the Grid's cyan on black, captioned in the other side's orange */
+    {"GRID", {0, 2, 4}, {0, 50, 64}, {190, 92, 0}, {70, 230, 255}, {240, 255, 255}, {130, 245, 255},
+     {120, 255, 190}, {255, 215, 70}, {255, 50, 60}, {255, 120, 0}, {255, 240, 150}},
+    /* Alien: the Nostromo's computer, which is also the green phosphor terminal */
+    {"MOTHER", {0, 7, 2}, {0, 58, 22}, {25, 135, 60}, {70, 250, 110}, {225, 255, 230}, {150, 255, 170},
+     {170, 255, 190}, {255, 190, 50}, {255, 70, 50}, {255, 170, 40}, {110, 215, 255}},
+    /* Alien, the animal: acid green over a violet dark */
+    {"XENO", {5, 3, 12}, {42, 34, 78}, {105, 115, 95}, {190, 240, 90}, {245, 255, 225}, {215, 255, 130},
+     {80, 235, 170}, {255, 200, 60}, {255, 70, 90}, {255, 140, 70}, {185, 125, 255}},
+    /* Star Wars, the dark side: black and crimson, with one lightsaber of each colour */
+    {"SITH", {7, 0, 1}, {72, 10, 14}, {165, 45, 42}, {240, 200, 192}, {255, 255, 255}, {255, 95, 70},
+     {120, 225, 140}, {255, 200, 70}, {255, 40, 40}, {255, 165, 60}, {110, 170, 255}},
+    /* the amber terminal */
+    {"AMBER", {8, 4, 0}, {76, 40, 0}, {168, 98, 0}, {255, 176, 0}, {255, 238, 195}, {255, 212, 105},
+     {150, 232, 115}, {255, 242, 100}, {255, 65, 40}, {90, 215, 255}, {255, 120, 160}},
+    /* Star Trek's LCARS: peach, lilac and periwinkle on black */
+    {"LCARS", {0, 0, 0}, {66, 48, 76}, {170, 125, 185}, {255, 204, 153}, {255, 246, 232}, {255, 153, 0},
+     {150, 225, 165}, {255, 225, 100}, {235, 70, 70}, {153, 153, 255}, {220, 105, 165}},
+    /* Synthwave '84: pink and cyan neon */
+    {"NEON", {10, 5, 20}, {58, 42, 96}, {132, 139, 189}, {255, 126, 219}, {255, 255, 255}, {255, 190, 240},
+     {114, 241, 184}, {254, 222, 93}, {254, 68, 80}, {249, 150, 100}, {54, 249, 246}},
+    /* the terminal themes of those names, on darker backgrounds than their own */
+    {"DRACULA", {20, 21, 30}, {68, 71, 90}, {98, 114, 164}, {235, 235, 228}, {255, 255, 255}, {139, 233, 253},
+     {80, 250, 123}, {241, 250, 140}, {255, 85, 85}, {255, 184, 108}, {255, 121, 198}},
+    {"GRUVBOX", {20, 22, 23}, {80, 73, 69}, {146, 131, 116}, {235, 219, 178}, {251, 241, 199}, {142, 192, 124},
+     {184, 187, 38}, {250, 189, 47}, {251, 73, 52}, {254, 128, 25}, {211, 134, 155}},
+    {"SOLARIZED", {0, 24, 31}, {12, 68, 80}, {88, 110, 117}, {160, 175, 172}, {253, 246, 227}, {42, 161, 152},
+     {133, 153, 0}, {212, 160, 20}, {220, 50, 47}, {225, 95, 40}, {125, 130, 225}},
+};
+#define SCHEMES ((int)(sizeof(schemes) / sizeof(schemes[0])))
+
+static const struct scheme *scheme = &schemes[0];
+
+int fx_scheme_count(void) { return SCHEMES; }
+
+const char *fx_scheme_name(int which) { return which >= 0 && which < SCHEMES ? schemes[which].name : ""; }
+
+void fx_set_scheme(int which) { scheme = &schemes[which >= 0 && which < SCHEMES ? which : 0]; }
+
+/* `k` 256ths of the way from `a` to `b`. */
+static struct color mix(struct color a, struct color b, int k) {
+    return (struct color){(uint8_t)(a.r + (b.r - a.r) * k / 256), (uint8_t)(a.g + (b.g - a.g) * k / 256),
+                          (uint8_t)(a.b + (b.b - a.b) * k / 256)};
+}
+
+static inline uint16_t color565(struct color c) { return rgb(c.r, c.g, c.b); }
+
 /* Fill palette entries with a gradient through `stops` (ascending `at`). */
 static void gradient(uint16_t *palette, const struct stop *stops, int n) {
     for (int s = 0; s < n - 1; s++) {
@@ -1056,9 +1136,22 @@ static struct {
 static float track_pulse, track_time;
 static int track_next;
 
-static void tracker_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 5, 14}, {TRACK_LINE, 0, 60, 95}, {TRACK_TEXT, 90, 190, 225}, {251, 235, 250, 255}};
+/* The theme's colours, as one run from its background up to nearly white. */
+static struct color tracker_line(void) { return mix(scheme->dim, scheme->label, 64); }
+static struct color tracker_text(void) { return mix(scheme->label, scheme->text, 170); }
+static struct color tracker_top(void) { return mix(scheme->text, (struct color){255, 255, 255}, 205); }
+
+static void tracker_colors(uint16_t *palette) {
+    const struct color at[] = {scheme->bg, tracker_line(), tracker_text(), tracker_top()};
+    const struct stop stops[] = {{0, at[0].r, at[0].g, at[0].b},
+                                 {TRACK_LINE, at[1].r, at[1].g, at[1].b},
+                                 {TRACK_TEXT, at[2].r, at[2].g, at[2].b},
+                                 {251, at[3].r, at[3].g, at[3].b}};
     gradient(palette, stops, 4);
+}
+
+static void tracker_start(uint16_t *palette) {
+    (void)palette;
     memset(contacts, 0, sizeof(contacts));
     track_pulse = track_time = 0;
 }
@@ -1309,7 +1402,7 @@ static void life_frame(uint8_t *fb, const struct fx_input *in) {
  */
 
 enum {
-    DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN,
+    DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN, DBG_BAD,
     DBG_MOD,   /* a key holding a modifier down */
     DBG_LAYER, /* a key holding a layer on */
     DBG_HEAT   /* ..DBG_HEAT + 15 */
@@ -1318,19 +1411,25 @@ enum {
 static uint8_t debug_heat[64]; /* how lately each key was pressed */
 static float debug_fade;
 
-static void debug_start(uint16_t *palette) {
-    palette[DBG_BG] = rgb(0, 5, 14);
-    palette[DBG_DIM] = rgb(0, 45, 70);
-    palette[DBG_LABEL] = rgb(50, 120, 150);
-    palette[DBG_TEXT] = rgb(150, 220, 245);
-    palette[DBG_BRIGHT] = rgb(255, 255, 255);
-    palette[DBG_GOOD] = rgb(70, 235, 130);
-    palette[DBG_WARN] = rgb(255, 190, 40);
-    palette[DBG_MOD] = rgb(255, 150, 30);
-    palette[DBG_LAYER] = rgb(205, 110, 255);
+/* The theme's colours: the Keys screen's too. */
+static void debug_colors(uint16_t *palette) {
+    palette[DBG_BG] = color565(scheme->bg);
+    palette[DBG_DIM] = color565(scheme->dim);
+    palette[DBG_LABEL] = color565(scheme->label);
+    palette[DBG_TEXT] = color565(scheme->text);
+    palette[DBG_BRIGHT] = color565(scheme->bright);
+    palette[DBG_GOOD] = color565(scheme->good);
+    palette[DBG_WARN] = color565(scheme->warn);
+    palette[DBG_BAD] = color565(scheme->bad);
+    palette[DBG_MOD] = color565(scheme->mod);
+    palette[DBG_LAYER] = color565(scheme->layer);
     for (int i = 0; i < 16; i++) {
-        palette[DBG_HEAT + i] = rgb(i * 6, 45 + i * 12, 70 + i * 11);
+        palette[DBG_HEAT + i] = color565(mix(scheme->dim, scheme->glow, i * 256 / 15));
     }
+}
+
+static void debug_start(uint16_t *palette) {
+    (void)palette;
     memset(debug_heat, 0, sizeof(debug_heat));
 }
 
@@ -1353,7 +1452,7 @@ static void rule(uint8_t *fb, int y) { line(fb, 4, y, FX_W - 5, y, DBG_DIM); }
 static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
     const int rssi = link->rssi;
     const int lit = !link->up || !link->rssi_known ? 0 : rssi > -55 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : rssi > -85 ? 1 : 0;
-    const uint8_t color = lit >= 3 ? DBG_GOOD : lit == 2 ? DBG_WARN : FX_RED;
+    const uint8_t color = lit >= 3 ? DBG_GOOD : lit == 2 ? DBG_WARN : DBG_BAD;
     for (int bar = 0; bar < 4; bar++) {
         const int high = 1 + bar * 2;
         for (int dy = 0; dy < high; dy++) {
@@ -1414,14 +1513,14 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
                        uint8_t level_color, int age_s) {
     char buf[12];
     const char label[2] = {name, '\0'};
-    put(fb, 5, y, label, link->up ? DBG_BRIGHT : FX_RED);
+    put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
     signal_bars(fb, 12, y, link);
     put_right(fb, DBG_COL_LEVEL, y, level, level_color);
     if (link->up) {
         if (link->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", link->rssi);
             put_right(fb, DBG_COL_RSSI, y, buf,
-                      link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED);
+                      link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : DBG_BAD);
         }
         /* 1.25 ms units, to a tenth of a millisecond when that isn't .0 */
         const int tenths = link->interval * 25 / 2;
@@ -1434,7 +1533,7 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
         snprintf(buf, sizeof(buf), "%d", link->latency > 99 ? 99 : link->latency);
         put_right(fb, DBG_COL_LATENCY, y, buf, DBG_TEXT);
     } else {
-        put_right(fb, DBG_COL_RSSI, y, "--", FX_RED);
+        put_right(fb, DBG_COL_RSSI, y, "--", DBG_BAD);
     }
     snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
     put_right(fb, DBG_COL_DROPS, y, buf, link->drops ? DBG_WARN : DBG_LABEL);
@@ -1516,15 +1615,15 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     x = put(fb, 7, 12, "RST", DBG_LABEL) + 3;
     const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
-    x = put(fb, x, 12, reset_name(d->reset_cause), fault ? FX_RED : DBG_TEXT) + 3;
+    x = put(fb, x, 12, reset_name(d->reset_cause), fault ? DBG_BAD : DBG_TEXT) + 3;
     snprintf(buf, sizeof(buf), "%02X", (unsigned)(d->reset_cause & 0xff));
     put(fb, x, 12, buf, DBG_LABEL);
     if (d->heap_known) {
         x = put(fb, 73, 12, "MEM", DBG_LABEL) + 3;
         snprintf(buf, sizeof(buf), "%u%%", d->heap_used);
-        x = put(fb, x, 12, buf, d->heap_used > 90 ? FX_RED : DBG_TEXT) + 3;
+        x = put(fb, x, 12, buf, d->heap_used > 90 ? DBG_BAD : DBG_TEXT) + 3;
         snprintf(buf, sizeof(buf), "^%u", d->heap_peak);
-        put(fb, x, 12, buf, d->heap_peak > 95 ? FX_RED : DBG_LABEL);
+        put(fb, x, 12, buf, d->heap_peak > 95 ? DBG_BAD : DBG_LABEL);
     }
     rule(fb, 21);
 
@@ -1544,7 +1643,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
             strcpy(buf, "--");
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? FX_RED : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT,
+                   level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT,
                    level ? d->battery_age_s[half] : -1);
     }
     const bool usb_out = in->status && in->status->usb;
@@ -1557,7 +1656,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     x = put(fb, 50, 59, "USB", DBG_LABEL) + 3;
     x = put(fb, x, 59, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--", d->usb == 2 ? DBG_GOOD : DBG_TEXT) + 6;
     x = put(fb, x, 59, "OUT", DBG_LABEL) + 3;
-    put(fb, x, 59, usb_out ? "USB" : "BLE", in->status && in->status->host_connected ? DBG_GOOD : FX_RED);
+    put(fb, x, 59, usb_out ? "USB" : "BLE", in->status && in->status->host_connected ? DBG_GOOD : DBG_BAD);
 
     /* layer (number, name, all that are on), typing speed */
     snprintf(buf, sizeof(buf), "L%u", d->layer);
@@ -1602,7 +1701,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     x = put(fb, 14, 112, "BNC", DBG_LABEL) + 3;
     if (d->bounce_ms) {
         snprintf(buf, sizeof(buf), "%uMS P%02u", d->bounce_ms, d->bounce_key);
-        put(fb, x, 112, buf, d->bounce_ms < 30 ? FX_RED : DBG_TEXT);
+        put(fb, x, 112, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
     } else {
         put(fb, x, 112, "--", DBG_LABEL);
     }
@@ -1673,7 +1772,7 @@ static void keys_start(uint16_t *palette) {
 static void spark(uint8_t *fb, int x, int y, const uint8_t *values, int count, int high, uint8_t color) {
     for (int i = 0; i < count; i++) {
         const int v = (values[i] & SPARK_HIGH) > high ? high : values[i] & SPARK_HIGH;
-        const uint8_t top = values[i] & SPARK_RED ? FX_RED : values[i] & SPARK_WARN ? DBG_WARN : color;
+        const uint8_t top = values[i] & SPARK_RED ? DBG_BAD : values[i] & SPARK_WARN ? DBG_WARN : color;
         plot(fb, x + i, y + high - 1, DBG_DIM);
         for (int up = 0; up < v; up++) {
             plot(fb, x + i, y + high - 1 - up, up == v - 1 ? top : DBG_DIM);
@@ -1691,7 +1790,7 @@ static int keys_block_x(int place) {
 }
 
 static uint8_t signal_color(const struct fx_link *link) {
-    return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : FX_RED;
+    return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : DBG_BAD;
 }
 
 /* A battery, 10 by 6 with its cap on the right: as full as `level` percent,
@@ -1715,7 +1814,7 @@ static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
     uint8_t dbm_color = DBG_LABEL;
     if (!link->up) {
         strcpy(dbm, "--");
-        dbm_color = FX_RED;
+        dbm_color = DBG_BAD;
     } else if (link->rssi_known) {
         snprintf(dbm, sizeof(dbm), "%d", link->rssi);
         dbm_color = signal_color(link);
@@ -1749,7 +1848,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
             /* a second of weak signal keeps its colour in the history */
             if (high > 0 && signal_color(links[i]) != DBG_GOOD) {
-                high |= signal_color(links[i]) == FX_RED ? SPARK_RED : SPARK_WARN;
+                high |= signal_color(links[i]) == DBG_BAD ? SPARK_RED : SPARK_WARN;
             }
             history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
         }
@@ -1761,7 +1860,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const uint8_t color = level == 0                 ? DBG_LABEL
-                              : level <= FX_LOW_BATTERY  ? FX_RED
+                              : level <= FX_LOW_BATTERY  ? DBG_BAD
                               : level <= FX_WARN_BATTERY ? DBG_WARN
                                                          : DBG_TEXT;
         if (level == 0) {
@@ -1782,7 +1881,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
          * amber when it has put the port to sleep), and the typing speed
          * where the halves have their signal */
         put(fb, (FX_W - 15 + 1) / 2, 6, "USB",
-            d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : FX_RED);
+            d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
         snprintf(buf, sizeof(buf), "%u", d->wpm);
         const int left = (FX_W - (5 * (int)strlen(buf) + 1 + 15)) / 2;
         put(fb, put(fb, left, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT) + 1, 15, "WPM", DBG_LABEL);
@@ -1840,7 +1939,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         const int x = left + col * pitch + (col >= board_cols / 2 ? split : 0);
         for (int step = 0; step < METER_STEPS; step++) {
             /* the top light red and the one under it amber, as a hi-fi's are */
-            const uint8_t color = step < lit ? (step == METER_STEPS - 1   ? FX_RED
+            const uint8_t color = step < lit ? (step == METER_STEPS - 1   ? DBG_BAD
                                                 : step == METER_STEPS - 2 ? DBG_WARN
                                                                           : DBG_HEAT + 6 + step * 3)
                                   : step == mark - 1 ? DBG_BRIGHT
@@ -1865,32 +1964,31 @@ static const struct {
     const char *name;
     void (*start)(uint16_t *palette);
     void (*frame)(uint8_t *fb, const struct fx_input *in);
+    void (*colors)(uint16_t *palette); /* it is in the theme's colours, and this fills them in */
     struct fx_theme theme; /* the status text over it: see fx.h */
     bool debug;            /* see fx_is_debug */
     bool keys;             /* see fx_shows_keys */
     uint8_t saver;         /* can be the screensaver: the way into it (FX_TR_*) */
 } effects[] = {
-    {"KEYS", keys_start, keys_frame, {0}, .keys = true},
-    {"DEBUG", debug_start, debug_frame, {0}, .debug = true},
-    {"THERMAL", thermal_start, thermal_frame,
+    {"KEYS", keys_start, keys_frame, debug_colors, {0}, .keys = true},
+    {"DEBUG", debug_start, debug_frame, debug_colors, {0}, .debug = true},
+    {"THERMAL", thermal_start, thermal_frame, NULL,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
       .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0, .font = FX_FONT_PIXEL}},
-    {"TRACKER", tracker_start, tracker_frame,
-     {.ink = RGB565(150, 220, 245), .dim = RGB565(60, 120, 150), .accent = RGB565(235, 250, 255),
-      .search = RGB565(110, 150, 170), .low = LOW_RED, .halo = RGB565(0, 5, 14), .font = FX_FONT_PIXEL,
-      .drop = TRACK_DROP}},
-    {"TERMINAL", term_start, term_frame,
+    /* its text's colours are the theme's: fx_theme */
+    {"TRACKER", tracker_start, tracker_frame, tracker_colors, {.font = FX_FONT_PIXEL, .drop = TRACK_DROP}},
+    {"TERMINAL", term_start, term_frame, NULL,
      {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
       .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
-    {"WARP", warp_start, warp_frame,
+    {"WARP", warp_start, warp_frame, NULL,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
       .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
      .saver = FX_TR_HYPERSPACE},
-    {"CODE", code_start, code_frame,
+    {"CODE", code_start, code_frame, NULL,
      {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
       .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL, .dots = true},
      .saver = FX_TR_MELT},
-    {"LIFE", life_start, life_frame,
+    {"LIFE", life_start, life_frame, NULL,
      {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
       .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
      .saver = FX_TR_INFECT},
@@ -1905,7 +2003,41 @@ bool fx_is_debug(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].debug;
 
 bool fx_shows_keys(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].keys; }
 
-const struct fx_theme *fx_theme(int fx) { return &effects[fx >= 0 && fx < FX_COUNT ? fx : 0].theme; }
+const struct fx_theme *fx_theme(int fx) {
+    static struct fx_theme themed;
+    const int which = fx >= 0 && fx < FX_COUNT ? fx : 0;
+
+    if (effects[which].colors == NULL) {
+        return &effects[which].theme;
+    }
+    themed = effects[which].theme;
+    themed.ink = color565(scheme->text);
+    themed.dim = color565(scheme->label);
+    themed.accent = color565(tracker_top());
+    themed.search = color565(tracker_text());
+    themed.low = color565(scheme->bad);
+    themed.halo = color565(scheme->bg);
+    return &themed;
+}
+
+/* The fixed colours, and the theme's if the animation is in them. */
+static void fill_colors(int fx, uint16_t *palette) {
+    if (effects[fx].colors != NULL) {
+        effects[fx].colors(palette);
+    }
+    palette[FX_BLACK] = rgb(0, 0, 0);
+    palette[FX_RED] = rgb(255, 60, 40);
+    palette[FX_GREY] = rgb(150, 150, 150);
+    palette[FX_WHITE] = rgb(255, 255, 255);
+}
+
+bool fx_recolor(int fx, uint16_t *palette) {
+    if (fx < 0 || fx >= FX_COUNT || effects[fx].colors == NULL) {
+        return false;
+    }
+    fill_colors(fx, palette);
+    return true;
+}
 
 void fx_start(int fx, uint16_t *palette) {
     if (fx < 0 || fx >= FX_COUNT) {
@@ -1914,15 +2046,45 @@ void fx_start(int fx, uint16_t *palette) {
     memset(canvas, 0, PIXELS);
     memset(palette, 0, 256 * sizeof(palette[0]));
     effects[fx].start(palette);
-    palette[FX_BLACK] = rgb(0, 0, 0);
-    palette[FX_RED] = rgb(255, 60, 40);
-    palette[FX_GREY] = rgb(150, 150, 150);
-    palette[FX_WHITE] = rgb(255, 255, 255);
+    fill_colors(fx, palette);
 }
 
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
     if (fx >= 0 && fx < FX_COUNT) {
         effects[fx].frame(fb, in);
+    }
+}
+
+/* --- a notice over the picture ------------------------------------------------ */
+
+/* Letters twice the size, as the Tracker's range is. */
+static void big_text(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
+    for (; *s; s++, x += 10) {
+        const uint8_t *rows = fx_glyph_rows(*s);
+        for (int dot = 0; rows != NULL && dot < 35; dot++) {
+            if (rows[dot / 5] & (0x10 >> dot % 5)) {
+                for (int d = 0; d < 4; d++) {
+                    plot(fb, x + dot % 5 * 2 + (d & 1), y + dot / 5 * 2 + (d >> 1), color);
+                }
+            }
+        }
+    }
+}
+
+void fx_draw_notice(uint8_t *fb, const char *title, const char *detail) {
+    const int title_w = 10 * (int)strlen(title) - 2, detail_w = 5 * (int)strlen(detail) - 1;
+    const int w = (title_w > detail_w ? title_w : detail_w) + 12, h = *detail ? 35 : 24;
+    const int left = (FX_W - w) / 2, top = (FX_H - h) / 2;
+
+    for (int y = top; y < top + h; y++) {
+        for (int x = left; x < left + w; x++) {
+            const bool edge = y == top || y == top + h - 1 || x == left || x == left + w - 1;
+            plot(fb, x, y, edge ? FX_GREY : FX_BLACK);
+        }
+    }
+    big_text(fb, (FX_W - title_w) / 2, top + 5, title, FX_WHITE);
+    for (int x = (FX_W - detail_w) / 2; *detail; detail++, x += 5) {
+        glyph(fb, x, top + 23, *detail, FX_GREY);
     }
 }
 

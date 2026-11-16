@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U) and colour theme (I) (shown as "Shit" on the screens) |
 
 The Config layer's power key sends the computer's power key; it doesn't turn
 the keyboard off. macOS ignores a quick tap of it: hold it for about a second
@@ -198,12 +198,15 @@ The **Screen next** key on the Config layer (the U key) steps the dongle
 through the Keys screen, the [Debug screen](#debug-screen) and three
 full-screen animations, and round again; **Screen prev** (the Y key)
 goes the other way. It starts on Keys. The screen you leave it on is
-remembered: once it has been showing for five seconds it is saved, and the
+remembered: once it has been showing for 30 seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
+
+The **Theme next** key (the I key) steps through the [colour
+themes](#colour-themes) of Keys, Debug and Tracker.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on |
+| 1 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on (the ICE theme's colours: each [theme](#colour-themes) has its own) |
 | 2 | Debug | a page of readings: [see below](#debug-screen) | |
 | 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
@@ -235,6 +238,36 @@ dot dies away, and then the backlight fades out. A key brings it back with
 the backlight fading up over a second and the screen you had chosen (not the
 screensaver) coming through white noise. The dongle starts the same way
 when it is plugged in.
+
+#### Colour themes
+
+Keys, Debug and Tracker are drawn in the colours of a theme, which the
+Config layer's **Theme next** key (the I key) steps through, and round
+again. The screen showing changes colour as it is, and the theme's name
+and its place in the list (`GRID 2/11`) show in the middle of the screen
+for a second and a half, on any screen. Thermal and Terminal, and the
+screensavers, keep their own colours: there the name is all that shows.
+The theme is remembered as the screen is, 30 seconds after it was last
+changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
+
+| # | Theme | After | Looks like |
+| --- | --- | --- | --- |
+| 1 | ICE | | pale blue on navy, with orange and violet: what a dongle has until another is chosen |
+| 2 | GRID | Tron | electric cyan on black, captions in orange |
+| 3 | MOTHER | Alien's ship's computer, and the green phosphor terminal | green on black |
+| 4 | XENO | Alien, the animal | acid green readings over violet |
+| 5 | SITH | Star Wars | crimson on black, pale readings |
+| 6 | AMBER | the amber terminal | amber on black |
+| 7 | LCARS | Star Trek | peach and lilac on black |
+| 8 | NEON | Synthwave '84 | pink and cyan on deep purple |
+| 9 | DRACULA | the terminal theme | white on slate, pink and cyan |
+| 10 | GRUVBOX | the terminal theme | cream on warm grey |
+| 11 | SOLARIZED | the terminal theme (dark) | grey on deep teal |
+
+A theme is one line of eleven colours in `src/screen_fx/fx.c` (`schemes`):
+add, change or drop lines there. Every theme keeps green, amber and red for
+good, weak and lost, and its own two colours for a key holding a modifier
+and one holding a layer. `tools/fx_preview.py --themes` draws them all.
 
 #### Keys screen
 

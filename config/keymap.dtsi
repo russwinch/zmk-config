@@ -129,6 +129,14 @@
             display-name = "Previous screen";
             back;
         };
+        // Next colour theme for the dongle's Keys, Debug and Tracker
+        // screens (the list is in src/screen_fx/fx.c), and round again.
+        scr_theme: scr_theme {
+            compatible = "zmk,behavior-screen-next";
+            #binding-cells = <0>;
+            display-name = "Next theme";
+            theme;
+        };
     };
 };
 
@@ -206,7 +214,7 @@
         config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
-    XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     XXX,           XXX,           XXX,
+    XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme,    XXX,           XXX,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
     &kp C_PWR,     &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
                                                  ___,           ___,               ___,           ___

@@ -54,7 +54,9 @@ struct fx_status {
 };
 
 /* Colours (RGB565) for the status text drawn over an animation
- * (status_overlay.c), chosen to suit its picture. */
+ * (status_overlay.c), chosen to suit its picture. Not the colour themes
+ * the Theme key steps through: those are the "schemes" below, and an
+ * animation drawn in a scheme's colours has its text in them too. */
 struct fx_theme {
     uint16_t ink;    /* the battery levels, and the Bluetooth profile number */
     uint16_t dim;    /* the profile number when the computer isn't connected */
@@ -165,6 +167,26 @@ void fx_set_canvas(uint8_t *memory);
 
 /* Start animation `fx`: resets it, fills `palette` (256 x RGB565). */
 void fx_start(int fx, uint16_t *palette);
+
+/*
+ * Colour themes: the list is in fx.c. The Keys, Debug and Tracker screens
+ * are drawn in the colours of the one that is set (the first, until another
+ * is); the other animations have their own. Setting one changes nothing
+ * that is showing: the next fx_start has it, and so does fx_recolor, which
+ * fills `palette` in again without starting the animation afresh. That one
+ * returns false, with the palette as it was, for an animation that isn't in
+ * the theme's colours. fx_theme follows the theme too, so set the status
+ * text's colours again after either.
+ */
+int fx_scheme_count(void);
+const char *fx_scheme_name(int scheme);
+void fx_set_scheme(int scheme);
+bool fx_recolor(int fx, uint16_t *palette);
+
+/* A boxed notice in the middle of a frame, over whatever is drawn there:
+ * `title` in letters twice the size, `detail` ("" for none) small under
+ * it. In the fixed colours, so it reads on any animation. */
+void fx_draw_notice(uint8_t *fb, const char *title, const char *detail);
 
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);

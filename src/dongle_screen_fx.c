@@ -27,7 +27,10 @@
  * text, the animations run without it.
  *
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
- * shown again after a restart (see "the chosen screen" below).
+ * shown again after a restart (see "the chosen screen" below). So is the
+ * colour theme, which the &scr_theme key steps through: the Keys, Debug and
+ * Tracker screens are drawn in its colours (fx.c has the list), and its
+ * name shows for a moment when it is turned to.
  *
  * Some of the animations are screensavers instead (fx_saver_way_in): the
  * keys skip them, and when no key has been pressed for a while
@@ -42,6 +45,7 @@
  * Settings: Kconfig at the repo root.
  */
 
+#include <stdio.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
@@ -93,6 +97,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define FRAME_MS 33
 #define DEBUG_FRAME_MS 100
 #define STATUS_MS 500
+#define THEME_NAME_MS 1500 /* a theme's name stays up this long after it is turned to */
 /* after leaving the module's screen: time for LVGL to finish with the panel */
 #define TAKEOVER_MS 300
 
@@ -114,6 +119,7 @@ static uint16_t native_palette[256], old_palette[256];
 /* --- what the rest of the keyboard tells us (any thread) -------------------- */
 
 static atomic_t wanted_screen; /* 0 = the module's, 1.. = animation */
+static atomic_t wanted_theme;  /* fx.c's schemes, from 0 */
 static atomic_t chosen;        /* a key has picked the screen since power-up */
 static atomic_t paused;        /* keyboard idle: the panel is off */
 static atomic_t sleep_wanted;  /* keyboard idle: the picture is to close, and then that */
@@ -192,6 +198,8 @@ static bool is_debug;        /* the Debug screen is the one showing */
 static bool plain;           /* that or the Keys screen: the readings, and no status text over them */
 static struct fx_debug debug_shown;
 static uint32_t frames_since, fps_at;
+static bool theme_named; /* the theme's name is up, until theme_named_until */
+static uint32_t theme_named_until;
 
 /*
  * The screensaver. `wanted_screen` stays the screen that was chosen;
@@ -596,6 +604,7 @@ static void begin_animation(void) {
 #ifdef KEY_TRANSFORM
     fx_set_keys(key_places, ARRAY_SIZE(key_places));
 #endif
+    fx_set_scheme(atomic_get(&wanted_theme));
     fx_start(screen - 1, native);
     overlay_set_theme(fx_theme(screen - 1));
     is_debug = fx_is_debug(screen - 1);
@@ -788,6 +797,16 @@ static void frame_cb(struct k_work *work) {
     }
 
     fx_frame(screen - 1, frame, &in);
+    if (theme_named) {
+        if ((int32_t)(theme_named_until - now) > 0) {
+            const int theme = atomic_get(&wanted_theme);
+            char place[8];
+            snprintf(place, sizeof(place), "%d/%d", theme + 1, fx_scheme_count());
+            fx_draw_notice(frame, fx_scheme_name(theme), place);
+        } else {
+            theme_named = false;
+        }
+    }
     present(now);
     frames_since++;
     const uint32_t took = k_uptime_get_32() - now;
@@ -892,6 +911,28 @@ static void request_apply(void) {
     }
 }
 
+/* --- the colour theme ------------------------------------------------------------- */
+
+/* The Theme key: the screen showing takes the new colours as it is, if it
+ * is one of those drawn in them, and the theme's name goes up on any. */
+static void theme_cb(struct k_work *work) {
+    fx_set_scheme(atomic_get(&wanted_theme));
+    theme_named = true;
+    theme_named_until = k_uptime_get_32() + THEME_NAME_MS;
+    if (screen == 0 || start_pending || frame == NULL) {
+        return; /* nothing of ours showing yet: begin_animation sets the theme too */
+    }
+    if (fx_recolor(screen - 1, native_palette)) {
+        for (int i = 0; i < 256; i++) {
+            palette[i] = sys_cpu_to_be16(native_palette[i]);
+        }
+        overlay_set_theme(fx_theme(screen - 1));
+        redraw_all = true;
+    }
+}
+
+static K_WORK_DEFINE(theme_work, theme_cb);
+
 /* --- the panel going off ---------------------------------------------------------- */
 
 /* The keyboard has gone idle: close the picture, if there is one of ours. */
@@ -969,7 +1010,8 @@ static void saver_cb(struct k_work *work) {
 /*
  * Saved by name, so that adding or dropping an animation doesn't turn the
  * saved one into its neighbour. Only once the screen has been left showing
- * for SAVE_DELAY_MS: stepping through them all writes to flash once.
+ * for SAVE_DELAY_MS: stepping through them all writes to flash once. The
+ * colour theme is kept the same way, after the same wait.
  */
 #define STATUS_NAME "STATUS" /* the module's screen */
 
@@ -978,39 +1020,55 @@ static const char *screen_name(int which) { return which == 0 ? STATUS_NAME : fx
 #if IS_ENABLED(CONFIG_SETTINGS)
 
 #define SAVED_SETTING "screen_fx/screen"
+#define SAVED_THEME_SETTING "screen_fx/theme"
+#define SAVED_NAME_SIZE 16
 
-static char saved_name[16]; /* what flash holds; empty: nothing saved */
+/* what flash holds; empty: nothing saved */
+static char saved_name[SAVED_NAME_SIZE], saved_theme[SAVED_NAME_SIZE];
 
 static int saved_screen_set(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg) {
-    if (!settings_name_steq(key, "screen", NULL)) {
+    const bool theme = settings_name_steq(key, "theme", NULL);
+    char *const saved = theme ? saved_theme : saved_name;
+
+    if (!theme && !settings_name_steq(key, "screen", NULL)) {
         return -ENOENT;
     }
-    if (len >= sizeof(saved_name)) {
+    if (len >= SAVED_NAME_SIZE) {
         return -EINVAL;
     }
-    const ssize_t got = read_cb(cb_arg, saved_name, len);
+    const ssize_t got = read_cb(cb_arg, saved, len);
     if (got < 0) {
-        saved_name[0] = '\0';
+        saved[0] = '\0';
         return (int)got;
     }
-    saved_name[got] = '\0';
+    saved[got] = '\0';
+    /* a theme there no longer is leaves the first */
+    for (int which = 0; theme && which < fx_scheme_count(); which++) {
+        if (strcmp(saved, fx_scheme_name(which)) == 0) {
+            atomic_set(&wanted_theme, which);
+        }
+    }
     return 0;
 }
 
 SETTINGS_STATIC_HANDLER_DEFINE(dongle_screen_fx, "screen_fx", NULL, saved_screen_set, NULL, NULL);
 
-static void save_cb(struct k_work *work) {
-    const char *name = screen_name(atomic_get(&wanted_screen));
-
-    if (strcmp(name, saved_name) == 0 || strlen(name) >= sizeof(saved_name)) {
+/* Write `name` to `setting` unless `saved`, what flash has, is that already. */
+static void save_name(const char *setting, const char *name, char *saved) {
+    if (strcmp(name, saved) == 0 || strlen(name) >= SAVED_NAME_SIZE) {
         return;
     }
-    const int err = settings_save_one(SAVED_SETTING, name, strlen(name));
+    const int err = settings_save_one(setting, name, strlen(name));
     if (err != 0) {
-        LOG_ERR("screen fx: saving the screen failed (%d)", err);
+        LOG_ERR("screen fx: saving %s failed (%d)", setting, err);
         return;
     }
-    strcpy(saved_name, name);
+    strcpy(saved, name);
+}
+
+static void save_cb(struct k_work *work) {
+    save_name(SAVED_SETTING, screen_name(atomic_get(&wanted_screen)), saved_name);
+    save_name(SAVED_THEME_SETTING, fx_scheme_name(atomic_get(&wanted_theme)), saved_theme);
 }
 
 static K_WORK_DELAYABLE_DEFINE(save_work, save_cb);
@@ -1047,6 +1105,18 @@ void dongle_screen_fx_step(int by) {
     } while (!can_choose(want));
     atomic_set(&wanted_screen, want);
     request_apply();
+#if IS_ENABLED(CONFIG_SETTINGS)
+    k_work_reschedule(&save_work, K_MSEC(CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS));
+#endif
+}
+
+void dongle_screen_fx_theme_step(int by) {
+    if (!zmk_display_is_initialized()) {
+        return;
+    }
+    const int themes = fx_scheme_count();
+    atomic_set(&wanted_theme, (atomic_get(&wanted_theme) + (by < 0 ? themes - 1 : 1)) % themes);
+    k_work_submit_to_queue(zmk_display_work_q(), &theme_work);
 #if IS_ENABLED(CONFIG_SETTINGS)
     k_work_reschedule(&save_work, K_MSEC(CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS));
 #endif

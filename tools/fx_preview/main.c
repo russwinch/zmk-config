@@ -2,7 +2,11 @@
  * Runs the dongle's screen animations (src/screen_fx) on a computer and
  * writes the frames to stdout as raw RGB, 280x240 each, for fx_preview.py.
  *
- *   main <animation number> <frames> <frames per second>
+ *   main <animation number> <frames> <frames per second> [<theme number> [name]]
+ *
+ * In that colour theme (fx.c's schemes, from 0; it only shows on the screens
+ * drawn in the theme's colours), and with a last argument, with the theme's
+ * name over the picture as the dongle shows it when the theme is turned to.
  *
  * The typing is made up: idle, then speeding up to a fast burst, then idle
  * again, with a key press at the matching rate, each typing the next
@@ -150,6 +154,10 @@ int main(int argc, char **argv) {
     int fx = argc > 1 ? atoi(argv[1]) : 0;
     int frames = argc > 2 ? atoi(argv[2]) : 150;
     float fps = argc > 3 ? atof(argv[3]) : 15;
+    const int theme = argc > 4 ? atoi(argv[4]) : 0;
+    const bool named = argc > 5;
+    char place[16];
+    snprintf(place, sizeof(place), "%d/%d", theme + 1, fx_scheme_count());
 
     static uint8_t fb[FX_W * FX_H], canvas[FX_W * FX_H];
     static uint8_t out[FX_W * 2 * 3], masks[OVERLAY_BYTES];
@@ -168,6 +176,7 @@ int main(int argc, char **argv) {
     };
 
     fx_set_canvas(canvas);
+    fx_set_scheme(theme);
     fx_start(fx, palette);
     overlay_set_memory(masks);
     overlay_set_theme(fx_theme(fx));
@@ -247,6 +256,9 @@ int main(int argc, char **argv) {
         }
         in.debug = &debug;
         fx_frame(fx, fb, &in);
+        if (named) {
+            fx_draw_notice(fb, fx_scheme_name(theme), place);
+        }
 
         for (int y = 0; y < FX_H * 2; y++) {
             /* as the dongle does: the panel's byte order, then the text */
