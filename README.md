@@ -24,7 +24,7 @@ the Windows layer read ⌘ as Win.
 | --- | --- | --- |
 | Mac | default | QWERTY, home-row mods Ctrl Alt Cmd Shift / Shift Cmd Alt Ctrl |
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
-| Lower | hold Esc | media, browser tabs, desktops, Mission Control, arrows, symbols |
+| Lower | hold Esc | media, browser tabs, desktops, screenshots (C: drag out an area, to the clipboard; X: the whole screen, to a file on the desktop), Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
 | Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme (I) and brightness (P) (shown as "Shit" on the screens) |
 

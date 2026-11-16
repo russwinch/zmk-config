@@ -48,6 +48,9 @@
 #define M_CTRL  &kp LC(UP)
 #define M_WINS  &kp LC(DOWN)
 #define M_GBP   &kp LA(3)
+// screenshots: an area you drag out, to the clipboard; the whole screen, to a file on the desktop
+#define M_SNIP  &kp LG(LC(LS(N4)))
+#define M_SHOT  &kp LG(LS(N3))
 
 // boards without encoders get no sensor-bindings
 #ifndef SENSORS
@@ -193,13 +196,13 @@
             SENSORS
         };
 
-        // left: media, tabs, desktops, Mission Control | right: arrows, symbols
+        // left: media, tabs, desktops, screenshots, Mission Control | right: arrows, symbols
         lower_layer {
             display-name = "Lower";
             bindings = <KB_LAYOUT(
     XXX,           XXX,           M_GBP,         M_PTAB,        M_NTAB,            &kp PLUS,      &kp MINUS,     &kp UNDER,     &kp PIPE,      &kp BSLH,
     &kp C_PREV,    &kp C_PP,      &kp C_NEXT,    M_PDSK,        M_NDSK,            &kp LEFT,      &kp DOWN,      &kp UP,        &kp RIGHT,     &kp SQT,
-    XXX,           XXX,           &kp PSCRN,     M_CTRL,        M_WINS,            XXX,           XXX,           XXX,           &kp EQUAL,     &kp DQT,
+    XXX,           M_SHOT,        M_SNIP,        M_CTRL,        M_WINS,            XXX,           XXX,           XXX,           &kp EQUAL,     &kp DQT,
                                                  ___,           ___,               &kp DEL,       ___
             )>;
             SENSORS_LOWER
