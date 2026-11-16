@@ -33,7 +33,7 @@ the keyboard off. macOS ignores a quick tap of it: hold it for about a second
 to sleep the Mac, longer for the shut-down prompt. On a dongle it also starts
 the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
-the Bluetooth connection state when it changes. Both flashes last 500ms
+the Bluetooth connection state when it changes. Both flashes last 250ms
 (set for every board in `config/default.conf`).
 
 ### Timing
@@ -81,6 +81,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/nice_view_gem.conf` | The same way, for every half with a nice-view-gem display (Urchin, Aurora Corne). |
 | `config/<keyboard>.conf` | Only what is particular to one keyboard (encoders, LED widget, display options); also read for its dongle. A `config/<keyboard>_dongle.conf` would be read for that dongle alone, but none is needed. |
 | `config/<keyboard>_layout.dtsi` | Glue shared by a keyboard's normal and dongle keymaps (Urchin, Aurora Corne, Waterfowl; the Forager dongle uses `forager.keymap` itself). |
+| `config/half_status.dtsi` | The behavior the dongle sends its status to, for the left half's nice!view (Waterfowl, Urchin, Aurora Corne keymaps). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module. |
 | `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, the dongle's animated screens, and the left half's nice!view screen when behind the dongle. |
@@ -167,10 +168,11 @@ steps below in order. By hand:
 The Config layer's battery key works with the dongle too: the dongle passes it
 on and each half blinks its own battery level.
 
-Urchin and Aurora Corne halves keep nice-view-gem's peripheral screen, and
-the Forager halves their RGB LED. On the Waterfowl, the left half's nice!view
-(in `waterfowl_left_peripheral_for_dongle`) swaps
-ZMK's stock picture for a small status screen, read with the screen vertical:
+The Forager halves keep their RGB LED, and the Urchin's and Aurora Corne's
+right halves nice-view-gem's peripheral screen. Every left half with a
+nice!view (Waterfowl, Urchin, Aurora Corne; in
+`<keyboard>_left_peripheral_for_dongle`) shows a small status screen in place
+of ZMK's stock picture or nice-view-gem's, read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
@@ -182,7 +184,7 @@ ZMK's stock picture for a small status screen, read with the screen vertical:
 The dongle sends this when the profile, output or a battery changes, and again
 every minute (`src/dongle_half_status.c`, `src/half_status_screen.c`). It uses
 ZMK's existing "run a behavior on a half" message: a `hstatus` behavior in
-`config/waterfowl.keymap` that no key is bound to. The `R` battery is the
+`config/half_status.dtsi` that no key is bound to. The `R` battery is the
 dongle's last reading, so it can be out of date while the right half sleeps.
 
 The dongle's screen shows this repo's own screens, below. The Prospector

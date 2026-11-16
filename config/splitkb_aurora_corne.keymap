@@ -11,3 +11,4 @@
 
 #include "splitkb_aurora_corne_layout.dtsi"
 #include "keymap.dtsi"
+#include "half_status.dtsi"

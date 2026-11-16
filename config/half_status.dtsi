@@ -1,0 +1,19 @@
+/*
+ * For a keyboard whose left half has a nice!view: included by its
+ * <keyboard>.keymap (the halves' keymap, not the dongle's).
+ *
+ * With the Prospector dongle, the dongle sends its Bluetooth profile and the
+ * other half's battery to this behavior, for the left half's nice!view
+ * (src/half_status_screen.c). Not bound to any key; unused otherwise.
+ * The node name is what the dongle sends, and ZMK's Bluetooth split message
+ * only carries 8 characters of it: keep it that short.
+ */
+
+/ {
+    behaviors {
+        half_status: hstatus {
+            compatible = "zmk,behavior-half-status";
+            #binding-cells = <2>;
+        };
+    };
+};

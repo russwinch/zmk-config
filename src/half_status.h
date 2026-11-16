@@ -1,12 +1,13 @@
 /*
- * Status the Prospector dongle sends to the Waterfowl halves, so the left
+ * Status the Prospector dongle sends to the halves (Waterfowl, Urchin,
+ * Aurora Corne), so the left
  * half's nice!view can show the dongle's Bluetooth profile and the other
  * half's battery.
  *
  * It rides on ZMK's normal "run this behavior on the peripheral" message:
  * the dongle invokes the behavior named HALF_STATUS_BEHAVIOR_NAME on each
  * half with the two 32-bit parameters below. The half defines that behavior
- * (node `hstatus` in config/waterfowl.keymap) and stores the values.
+ * (node `hstatus` in config/half_status.dtsi) and stores the values.
  *
  * Sender:   src/dongle_half_status.c   (dongle)
  * Receiver: src/half_status_screen.c   (left half)

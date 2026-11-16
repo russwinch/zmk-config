@@ -1,5 +1,6 @@
 /*
- * Waterfowl left half (peripheral of the Prospector dongle): nice!view screen
+ * Left half behind the Prospector dongle (Waterfowl, Urchin, Aurora Corne):
+ * nice!view screen
  * showing both halves' batteries and the dongle's Bluetooth profile.
  *
  * Replaces ZMK's stock peripheral screen (picture + own battery). The data the

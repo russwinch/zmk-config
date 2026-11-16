@@ -48,9 +48,10 @@ endif
 config WATERFOWL_DONGLE_HALF_STATUS
     bool "Send the Bluetooth profile and battery levels to the halves"
     default y
-    depends on SHIELD_WATERFOWL_DONGLE && ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
+    depends on SHIELD_WATERFOWL_DONGLE || SHIELD_URCHIN_DONGLE || SHIELD_SPLITKB_AURORA_CORNE_DONGLE
+    depends on ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     help
-      The dongle tells each half the active profile (and which profiles are
+      Not the Forager dongle: its halves have no display. The dongle tells each half the active profile (and which profiles are
       connected/paired), whether it is typing over USB, and the other half's
       battery. Used by WATERFOWL_HALF_STATUS_SCREEN on the left half.
 
@@ -60,7 +61,7 @@ config WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S
     depends on WATERFOWL_DONGLE_HALF_STATUS
 
 config WATERFOWL_HALF_STATUS_SCREEN
-    bool "nice!view screen for a Waterfowl half behind the dongle"
+    bool "nice!view screen for a left half behind the dongle"
     depends on SHIELD_NICE_VIEW && ZMK_DISPLAY && ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL
     depends on !NICE_VIEW_WIDGET_STATUS
     select LV_USE_CANVAS
@@ -71,8 +72,9 @@ config WATERFOWL_HALF_STATUS_SCREEN
     help
       Replaces ZMK's stock peripheral screen with both batteries and the
       dongle's Bluetooth profile. Needs NICE_VIEW_WIDGET_STATUS=n (the stock
-      screen) and the half_status behavior node (config/waterfowl.keymap).
-      Turned on for the dongle build of the left half in build.yaml.
+      screen) and the half_status behavior node (config/half_status.dtsi).
+      Turned on for the dongle build of each left half with a nice!view
+      (Waterfowl, Urchin, Aurora Corne) in build.yaml.
 
 # --- Animated screens on the dongle (src/dongle_screen_fx.c) ---
 
