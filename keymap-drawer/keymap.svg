@@ -803,7 +803,7 @@ path.combo { stroke: #7f7f7f; }
 </g>
 <g transform="translate(30, 140)" class="key keypos-20">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
-<text x="0" y="0" class="key tap">Power</text>
+<text x="0" y="0" class="key tap">Lock</text>
 </g>
 <g transform="translate(90, 140)" class="key keypos-21">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>

@@ -71,7 +71,7 @@ layers:
   Config:
   - ['', '', '', '', '', Screen prev, Screen next, Theme next, '', Screen bright]
   - ['', '', '', '', '', '', '', '', '', '']
-  - [Power, Mac, Windows, '', Battery, BT prev, BT next, '', '', BT clear]
+  - [Lock, Mac, Windows, '', Battery, BT prev, BT next, '', '', BT clear]
   - - {type: held}
     - {t: ▽, type: trans}
     - {t: ▽, type: trans}
