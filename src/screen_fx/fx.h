@@ -169,8 +169,8 @@ void fx_set_canvas(uint8_t *memory);
 void fx_start(int fx, uint16_t *palette);
 
 /*
- * Colour themes: the list is in fx.c. The Keys, Debug and Tracker screens
- * are drawn in the colours of the one that is set (the first, until another
+ * Colour themes: the list is in colors.h, with every other colour. The
+ * Keys, Debug, Tracker and Terminal screens are drawn in the colours of the one that is set (the first, until another
  * is); the other animations have their own. Setting one changes nothing
  * that is showing: the next fx_start has it, and so does fx_recolor, which
  * fills `palette` in again without starting the animation afresh. That one

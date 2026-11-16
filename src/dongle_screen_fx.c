@@ -28,8 +28,8 @@
  *
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below). So is the
- * colour theme, which the &scr_theme key steps through: the Keys, Debug and
- * Tracker screens are drawn in its colours (fx.c has the list), and its
+ * colour theme, which the &scr_theme key steps through: the Keys, Debug,
+ * Tracker and Terminal screens are drawn in its colours (colors.h has the list), and its
  * name shows for a moment when it is turned to.
  *
  * Some of the animations are screensavers instead (fx_saver_way_in): the
@@ -119,7 +119,7 @@ static uint16_t native_palette[256], old_palette[256];
 /* --- what the rest of the keyboard tells us (any thread) -------------------- */
 
 static atomic_t wanted_screen; /* 0 = the module's, 1.. = animation */
-static atomic_t wanted_theme;  /* fx.c's schemes, from 0 */
+static atomic_t wanted_theme;  /* colors.h's schemes, from 0 */
 static atomic_t chosen;        /* a key has picked the screen since power-up */
 static atomic_t paused;        /* keyboard idle: the panel is off */
 static atomic_t sleep_wanted;  /* keyboard idle: the picture is to close, and then that */

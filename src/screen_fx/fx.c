@@ -10,6 +10,7 @@
  */
 
 #include "fx.h"
+#include "colors.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -43,74 +44,6 @@ static inline uint16_t rgb(int r, int g, int b) {
     return (uint16_t)(((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3));
 }
 
-struct stop {
-    uint8_t at, r, g, b;
-};
-
-/* --- colour themes --------------------------------------------------------- */
-
-/*
- * The Keys, Debug and Tracker screens are drawn in the colours of the theme
- * that is set (fx_set_scheme; the Config layer's Theme key steps through
- * them). The other animations keep their own: Thermal's are the heat, and
- * so on.
- *
- * To add one, add a line: its name (15 letters at most, in the animations'
- * capitals: it is shown when the theme is turned to, and it is what the
- * dongle saves) and eleven colours, red, green, blue.
- *
- *   bg      the background: keep it nearly black, the panel is backlit
- *   dim     rules, keys that aren't pressed, the unlit part of a meter
- *   label   captions, and readings that aren't known
- *   text    the readings
- *   bright  a key held down, headings, the newest of anything
- *   glow    a key just let go (it fades from this to dim), the level meters
- *   good, warn, bad   connected and strong; getting weak or low; lost or flat
- *   mod     a key holding a modifier down
- *   layer   a key holding a layer on
- */
-struct color {
-    uint8_t r, g, b;
-};
-
-static const struct scheme {
-    const char *name;
-    struct color bg, dim, label, text, bright, glow, good, warn, bad, mod, layer;
-} schemes[] = {
-    /* the first is what a dongle has until another is chosen */
-    {"ICE", {0, 5, 14}, {0, 45, 70}, {50, 120, 150}, {150, 220, 245}, {255, 255, 255}, {90, 225, 235},
-     {70, 235, 130}, {255, 190, 40}, {255, 60, 40}, {255, 150, 30}, {205, 110, 255}},
-    /* Tron: the Grid's cyan on black, captioned in the other side's orange */
-    {"GRID", {0, 2, 4}, {0, 50, 64}, {190, 92, 0}, {70, 230, 255}, {240, 255, 255}, {130, 245, 255},
-     {120, 255, 190}, {255, 215, 70}, {255, 50, 60}, {255, 120, 0}, {255, 240, 150}},
-    /* Alien: the Nostromo's computer, which is also the green phosphor terminal */
-    {"MOTHER", {0, 7, 2}, {0, 58, 22}, {25, 135, 60}, {70, 250, 110}, {225, 255, 230}, {150, 255, 170},
-     {170, 255, 190}, {255, 190, 50}, {255, 70, 50}, {255, 170, 40}, {110, 215, 255}},
-    /* Alien, the animal: acid green over a violet dark */
-    {"XENO", {5, 3, 12}, {42, 34, 78}, {105, 115, 95}, {190, 240, 90}, {245, 255, 225}, {215, 255, 130},
-     {80, 235, 170}, {255, 200, 60}, {255, 70, 90}, {255, 140, 70}, {185, 125, 255}},
-    /* Star Wars, the dark side: black and crimson, with one lightsaber of each colour */
-    {"SITH", {7, 0, 1}, {72, 10, 14}, {165, 45, 42}, {240, 200, 192}, {255, 255, 255}, {255, 95, 70},
-     {120, 225, 140}, {255, 200, 70}, {255, 40, 40}, {255, 165, 60}, {110, 170, 255}},
-    /* the amber terminal */
-    {"AMBER", {8, 4, 0}, {76, 40, 0}, {168, 98, 0}, {255, 176, 0}, {255, 238, 195}, {255, 212, 105},
-     {150, 232, 115}, {255, 242, 100}, {255, 65, 40}, {90, 215, 255}, {255, 120, 160}},
-    /* Star Trek's LCARS: peach, lilac and periwinkle on black */
-    {"LCARS", {0, 0, 0}, {66, 48, 76}, {170, 125, 185}, {255, 204, 153}, {255, 246, 232}, {255, 153, 0},
-     {150, 225, 165}, {255, 225, 100}, {235, 70, 70}, {153, 153, 255}, {220, 105, 165}},
-    /* Synthwave '84: pink and cyan neon */
-    {"NEON", {10, 5, 20}, {58, 42, 96}, {132, 139, 189}, {255, 126, 219}, {255, 255, 255}, {255, 190, 240},
-     {114, 241, 184}, {254, 222, 93}, {254, 68, 80}, {249, 150, 100}, {54, 249, 246}},
-    /* the terminal themes of those names, on darker backgrounds than their own */
-    {"DRACULA", {20, 21, 30}, {68, 71, 90}, {98, 114, 164}, {235, 235, 228}, {255, 255, 255}, {139, 233, 253},
-     {80, 250, 123}, {241, 250, 140}, {255, 85, 85}, {255, 184, 108}, {255, 121, 198}},
-    {"GRUVBOX", {20, 22, 23}, {80, 73, 69}, {146, 131, 116}, {235, 219, 178}, {251, 241, 199}, {142, 192, 124},
-     {184, 187, 38}, {250, 189, 47}, {251, 73, 52}, {254, 128, 25}, {211, 134, 155}},
-    {"SOLARIZED", {0, 24, 31}, {12, 68, 80}, {88, 110, 117}, {160, 175, 172}, {253, 246, 227}, {42, 161, 152},
-     {133, 153, 0}, {212, 160, 20}, {220, 50, 47}, {225, 95, 40}, {125, 130, 225}},
-};
-#define SCHEMES ((int)(sizeof(schemes) / sizeof(schemes[0])))
-
 static const struct scheme *scheme = &schemes[0];
 
 int fx_scheme_count(void) { return SCHEMES; }
@@ -126,6 +59,8 @@ static struct color mix(struct color a, struct color b, int k) {
 }
 
 static inline uint16_t color565(struct color c) { return rgb(c.r, c.g, c.b); }
+
+/* --- the colour theme that is set: colors.h has the list ------------------- */
 
 /* Fill palette entries with a gradient through `stops` (ascending `at`). */
 static void gradient(uint16_t *palette, const struct stop *stops, int n) {
@@ -378,14 +313,8 @@ static void star_spawn(int i, float z) {
 }
 
 static void warp_start(uint16_t *palette) {
-    static const struct stop stops[] = {
-        {0, 0, 0, 0},   {22, 30, 50, 140},   {50, 170, 200, 255},  {62, 255, 255, 255}, /* stars */
-        {63, 0, 0, 0},  {85, 0, 80, 110},    {113, 40, 240, 230},  {125, 220, 255, 255},
-        {126, 0, 0, 0}, {148, 130, 45, 0},   {176, 255, 180, 30},  {188, 255, 250, 210},
-        {189, 0, 0, 0}, {211, 110, 0, 120},  {239, 255, 70, 220},  {251, 255, 225, 255},
-    };
     for (int h = 0; h < 4; h++) {
-        gradient(palette, &stops[h * 4], 4);
+        gradient(palette, &warp_stops[h * 4], 4);
     }
     for (int i = 0; i < STARS; i++) {
         star_spawn(i, 0.05f + (rnd() & 1023) / 1080.0f);
@@ -531,9 +460,19 @@ static void term_prompt_line(void) {
     term_col = 2;
 }
 
-static void term_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 0}, {70, 0, 70, 20}, {TERM_LIT, 40, 255, 90}, {251, 215, 255, 225}};
+/* The theme's colours: black, then what is typed fading in reverse, dim to
+ * text, with bright for its first flash. */
+static void term_colors(uint16_t *palette) {
+    const struct color at[] = {scheme->dim, scheme->text, scheme->bright};
+    const struct stop stops[] = {{0, 0, 0, 0},
+                                 {70, at[0].r, at[0].g, at[0].b},
+                                 {TERM_LIT, at[1].r, at[1].g, at[1].b},
+                                 {251, at[2].r, at[2].g, at[2].b}};
     gradient(palette, stops, 4);
+}
+
+static void term_start(uint16_t *palette) {
+    (void)palette;
     memset(term_lum, 0, sizeof(term_lum));
     term_row = 0;
     term_blink = term_fade = 0;
@@ -725,14 +664,8 @@ static void code_clear(void) {
 }
 
 static void code_start(uint16_t *palette) {
-    static const struct stop stops[] = {
-        {0, 0, 0, 0},   {20, 0, 70, 25},   {50, 40, 255, 100},  {62, 220, 255, 225}, /* green */
-        {63, 0, 0, 0},  {83, 0, 60, 80},   {113, 60, 230, 255}, {125, 225, 255, 255},
-        {126, 0, 0, 0}, {146, 90, 50, 0},  {176, 255, 190, 40}, {188, 255, 250, 215},
-        {189, 0, 0, 0}, {209, 40, 70, 60}, {239, 110, 170, 145}, {251, 200, 235, 220}, /* comments */
-    };
     for (int h = 0; h < 4; h++) {
-        gradient(palette, &stops[h * 4], 4);
+        gradient(palette, &code_stops[h * 4], 4);
     }
     if (code_glyphs[1] == 0) {
         code_make_glyphs();
@@ -840,9 +773,7 @@ static struct {
 static uint16_t thermal_held[THERMAL_KEYS]; /* how long each key has been down */
 
 static void thermal_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 35},      {45, 0, 25, 150},   {95, 0, 160, 130}, {140, 150, 225, 0},
-                                        {175, 255, 210, 0}, {215, 255, 35, 0},  {251, 255, 245, 235}};
-    gradient(palette, stops, 7);
+    gradient(palette, thermal_stops, 7);
     thermal_time = thermal_blaze = 0;
     thermal_x = thermal_tx = FX_W / 2;
     thermal_y = thermal_ty = FX_H / 2 - 5;
@@ -1299,16 +1230,12 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
 #define LIFE_W (FX_W / 2)
 #define LIFE_H (FX_H / 2)
 #define LIFE_CELLS (LIFE_W * LIFE_H)
-#define LIFE_TRAIL 50 /* palette: 1..50 the glow, 60..251 a live cell by age */
-#define LIFE_OLD 60
 
 static float life_tick;
 static int life_count[2], life_settled; /* cells alive one and two generations ago */
 
 static void life_start(uint16_t *palette) {
-    static const struct stop stops[] = {{0, 0, 0, 0},         {LIFE_TRAIL, 70, 0, 110}, {LIFE_OLD, 0, 60, 170},
-                                        {130, 0, 190, 110},   {200, 210, 235, 0},       {251, 255, 255, 240}};
-    gradient(palette, stops, 6);
+    gradient(palette, life_stops, 6);
     life_tick = 0;
     life_count[0] = life_count[1] = life_settled = 0;
 }
@@ -1956,42 +1883,29 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- the list --------------------------------------------------------------- */
 
-#define RGB565(r, g, b) ((uint16_t)(((r) >> 3) << 11 | ((g) >> 2) << 5 | (b) >> 3))
-#define LOW_RED RGB565(255, 70, 50)
 #define TRACK_DROP 12 /* under the line at TRACK_CY */
 
 static const struct {
     const char *name;
     void (*start)(uint16_t *palette);
     void (*frame)(uint8_t *fb, const struct fx_input *in);
-    void (*colors)(uint16_t *palette); /* it is in the theme's colours, and this fills them in */
-    struct fx_theme theme; /* the status text over it: see fx.h */
+    /* its colours: a function that fills in the theme's, or else its own for
+     * the status text over it (colors.h), the picture's being in `start` */
+    void (*colors)(uint16_t *palette);
+    const struct text_colors *text;
+    struct fx_theme theme; /* how that text is set out, see fx.h: fx_theme adds the colours */
     bool debug;            /* see fx_is_debug */
     bool keys;             /* see fx_shows_keys */
     uint8_t saver;         /* can be the screensaver: the way into it (FX_TR_*) */
 } effects[] = {
-    {"KEYS", keys_start, keys_frame, debug_colors, {0}, .keys = true},
-    {"DEBUG", debug_start, debug_frame, debug_colors, {0}, .debug = true},
-    {"THERMAL", thermal_start, thermal_frame, NULL,
-     {.ink = RGB565(255, 255, 255), .dim = RGB565(170, 170, 170), .accent = RGB565(255, 255, 255),
-      .search = RGB565(190, 190, 190), .low = RGB565(255, 60, 60), .halo = 0, .font = FX_FONT_PIXEL}},
-    /* its text's colours are the theme's: fx_theme */
-    {"TRACKER", tracker_start, tracker_frame, tracker_colors, {.font = FX_FONT_PIXEL, .drop = TRACK_DROP}},
-    {"TERMINAL", term_start, term_frame, NULL,
-     {.ink = RGB565(40, 255, 90), .dim = RGB565(0, 130, 45), .accent = RGB565(215, 255, 225),
-      .search = RGB565(120, 160, 130), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL}},
-    {"WARP", warp_start, warp_frame, NULL,
-     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(40, 240, 230),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
-     .saver = FX_TR_HYPERSPACE},
-    {"CODE", code_start, code_frame, NULL,
-     {.ink = RGB565(220, 255, 225), .dim = RGB565(110, 170, 145), .accent = RGB565(60, 230, 255),
-      .search = RGB565(150, 180, 165), .low = LOW_RED, .halo = 0, .font = FX_FONT_PIXEL, .dots = true},
-     .saver = FX_TR_MELT},
-    {"LIFE", life_start, life_frame, NULL,
-     {.ink = RGB565(255, 255, 255), .dim = RGB565(160, 160, 160), .accent = RGB565(60, 235, 130),
-      .search = RGB565(208, 208, 208), .low = LOW_RED, .halo = 0, .dots = true},
-     .saver = FX_TR_INFECT},
+    {"KEYS", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
+    {"DEBUG", debug_start, debug_frame, debug_colors, NULL, {0}, .debug = true},
+    {"THERMAL", thermal_start, thermal_frame, NULL, &thermal_text, {.font = FX_FONT_PIXEL}},
+    {"TRACKER", tracker_start, tracker_frame, tracker_colors, NULL, {.font = FX_FONT_PIXEL, .drop = TRACK_DROP}},
+    {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL}},
+    {"WARP", warp_start, warp_frame, NULL, &warp_text, {.dots = true}, .saver = FX_TR_HYPERSPACE},
+    {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true}, .saver = FX_TR_MELT},
+    {"LIFE", life_start, life_frame, NULL, &life_text, {.dots = true}, .saver = FX_TR_INFECT},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 
@@ -2003,20 +1917,21 @@ bool fx_is_debug(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].debug;
 
 bool fx_shows_keys(int fx) { return fx >= 0 && fx < FX_COUNT && effects[fx].keys; }
 
+/* The status text over an animation: set out as the table has it, in the
+ * animation's own colours or the theme's. */
 const struct fx_theme *fx_theme(int fx) {
     static struct fx_theme themed;
     const int which = fx >= 0 && fx < FX_COUNT ? fx : 0;
+    const struct text_colors *own = effects[which].text;
 
-    if (effects[which].colors == NULL) {
-        return &effects[which].theme;
-    }
     themed = effects[which].theme;
-    themed.ink = color565(scheme->text);
-    themed.dim = color565(scheme->label);
-    themed.accent = color565(tracker_top());
-    themed.search = color565(tracker_text());
-    themed.low = color565(scheme->bad);
-    themed.halo = color565(scheme->bg);
+    themed.ink = color565(own ? own->ink : scheme->text);
+    themed.dim = color565(own ? own->dim : scheme->label);
+    themed.accent = color565(own ? own->accent : tracker_top());
+    themed.search = color565(own ? own->search : tracker_text());
+    themed.low = color565(own ? own->low : scheme->bad);
+    /* around it: Tracker's background is the theme's, the others' black */
+    themed.halo = effects[which].colors == tracker_colors ? color565(scheme->bg) : 0;
     return &themed;
 }
 
@@ -2025,10 +1940,10 @@ static void fill_colors(int fx, uint16_t *palette) {
     if (effects[fx].colors != NULL) {
         effects[fx].colors(palette);
     }
-    palette[FX_BLACK] = rgb(0, 0, 0);
-    palette[FX_RED] = rgb(255, 60, 40);
-    palette[FX_GREY] = rgb(150, 150, 150);
-    palette[FX_WHITE] = rgb(255, 255, 255);
+    palette[FX_BLACK] = color565(fixed_black);
+    palette[FX_RED] = color565(fixed_red);
+    palette[FX_GREY] = color565(fixed_grey);
+    palette[FX_WHITE] = color565(fixed_white);
 }
 
 bool fx_recolor(int fx, uint16_t *palette) {

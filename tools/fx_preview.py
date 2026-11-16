@@ -80,8 +80,8 @@ def savers() -> list[str]:
 
 
 def themes() -> list[str]:
-    # the names in fx.c's `schemes` table, in order
-    text = (FX_DIR / "fx.c").read_text()
+    # the names in colors.h's `schemes` table, in order
+    text = (FX_DIR / "colors.h").read_text()
     table = text[text.index("} schemes[] = {"):text.index("#define SCHEMES")]
     return re.findall(r'\{"(\w+)"', table)
 

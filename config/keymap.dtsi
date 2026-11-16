@@ -129,8 +129,8 @@
             display-name = "Previous screen";
             back;
         };
-        // Next colour theme for the dongle's Keys, Debug and Tracker
-        // screens (the list is in src/screen_fx/fx.c), and round again.
+        // Next colour theme for the dongle's Keys, Debug, Tracker and Terminal
+        // screens (the list is in src/screen_fx/colors.h), and round again.
         scr_theme: scr_theme {
             compatible = "zmk,behavior-screen-next";
             #binding-cells = <0>;

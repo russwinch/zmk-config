@@ -4,7 +4,7 @@
  *
  *   main <animation number> <frames> <frames per second> [<theme number> [name]]
  *
- * In that colour theme (fx.c's schemes, from 0; it only shows on the screens
+ * In that colour theme (colors.h's schemes, from 0; it only shows on the screens
  * drawn in the theme's colours), and with a last argument, with the theme's
  * name over the picture as the dongle shows it when the theme is turned to.
  *

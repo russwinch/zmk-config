@@ -202,7 +202,7 @@ remembered: once it has been showing for 30 seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
 
 The **Theme next** key (the I key) steps through the [colour
-themes](#colour-themes) of Keys, Debug and Tracker.
+themes](#colour-themes) of Keys, Debug, Tracker and Terminal.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
@@ -210,7 +210,7 @@ themes](#colour-themes) of Keys, Debug and Tracker.
 | 2 | Debug | a page of readings: [see below](#debug-screen) | |
 | 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 5 | Terminal | a blinking cursor | what you type, in green, fading out over about 10 seconds |
+| 5 | Terminal | a blinking cursor | what you type, in the theme's colour (green in MOTHER), fading out over about 10 seconds |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Config layer's
@@ -241,12 +241,12 @@ when it is plugged in.
 
 #### Colour themes
 
-Keys, Debug and Tracker are drawn in the colours of a theme, which the
+Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
 Config layer's **Theme next** key (the I key) steps through, and round
 again. The screen showing changes colour as it is, and the theme's name
 and its place in the list (`GRID 2/11`) show in the middle of the screen
-for a second and a half, on any screen. Thermal and Terminal, and the
-screensavers, keep their own colours: there the name is all that shows.
+for a second and a half, on any screen. Thermal and the screensavers keep
+their own colours: there the name is all that shows.
 The theme is remembered as the screen is, 30 seconds after it was last
 changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 
@@ -254,7 +254,7 @@ changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 | --- | --- | --- | --- |
 | 1 | ICE | | pale blue on navy, with orange and violet: what a dongle has until another is chosen |
 | 2 | GRID | Tron | electric cyan on black, captions in orange |
-| 3 | MOTHER | Alien's ship's computer, and the green phosphor terminal | green on black |
+| 3 | MOTHER | Alien's ship's computer, and the green phosphor terminal | green on black: the theme for a green Terminal |
 | 4 | XENO | Alien, the animal | acid green readings over violet |
 | 5 | SITH | Star Wars | crimson on black, pale readings |
 | 6 | AMBER | the amber terminal | amber on black |
@@ -264,10 +264,13 @@ changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 | 10 | GRUVBOX | the terminal theme | cream on warm grey |
 | 11 | SOLARIZED | the terminal theme (dark) | grey on deep teal |
 
-A theme is one line of eleven colours in `src/screen_fx/fx.c` (`schemes`):
-add, change or drop lines there. Every theme keeps green, amber and red for
-good, weak and lost, and its own two colours for a key holding a modifier
-and one holding a layer. `tools/fx_preview.py --themes` draws them all.
+Every colour of the screens is in one file, `src/screen_fx/colors.h`. A
+theme is one line of eleven colours there (`schemes`): add, change or drop
+lines. Every theme keeps green, amber and red for good, weak and lost, and
+has its own two colours for a key holding a modifier and one holding a
+layer. Under the themes are the colours no theme touches: Thermal's and the
+screensavers', and those of the status text over them.
+`tools/fx_preview.py --themes` draws all the themes on a computer.
 
 #### Keys screen
 
@@ -313,9 +316,9 @@ to its right when there is something to say:
 | Bluetooth, not connected | pulses grey | stays |
 | USB | none, but for 2 seconds after the profile is changed (solid if that profile's computer is connected, grey if not), then it fades away | the same |
 
-The text's colours are set
-per animation (the `theme` in the list at the end of `src/screen_fx/fx.c`):
-light with a dark edge. The theme also says which letters the numbers are in
+The text's colours are set per animation in `src/screen_fx/colors.h`
+(Tracker's and Terminal's are the colour theme's): light with a dark edge.
+The list at the end of `src/screen_fx/fx.c` (its `theme`) says which letters the numbers are in
 and how low they sit: Terminal, Code, Thermal and Tracker have them in the
 animations' own small pixel letters, a size down from the Field font; on
 Tracker it sits under the line across the bottom; and Tracker

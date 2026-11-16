@@ -75,7 +75,7 @@ config DONGLE_SCREEN_FX
       The &scr_next key steps through the animations in
       src/screen_fx/fx.c (those that aren't screensavers) and round again;
       &scr_prev goes the other way, and &scr_theme steps through the colour
-      themes of the Keys, Debug and Tracker screens. Each shows both batteries and the
+      themes of the Keys, Debug, Tracker and Terminal screens. Each shows both batteries and the
       connection. Before the animations come the Keys screen and a Debug
       screen of readings, for which this turns
       on the reset cause (HWINFO), LVGL's memory figures and, in the
