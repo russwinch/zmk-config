@@ -48,6 +48,8 @@
 #define M_CTRL  &kp LC(UP)
 #define M_WINS  &kp LC(DOWN)
 #define M_GBP   &kp LA(3)
+// Lock Screen. The dongle starts its screensaver on it (src/dongle_screen_fx.c)
+#define M_LOCK  &kp LG(LC(Q))
 // screenshots: an area you drag out, to the clipboard; the whole screen, to a file on the desktop
 #define M_SNIP  &kp LG(LC(LS(N4)))
 #define M_SHOT  &kp LG(LS(N3))
@@ -220,14 +222,14 @@
             SENSORS
         };
 
-        // Config: Lower + Raise held together. Power, OS switch, battery,
+        // Config: Lower + Raise held together. Lock screen, OS switch, battery,
         // Bluetooth, the dongle's screen. Shown as "Shit" on the screens, which is what we call it.
         config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
     XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme,    XXX,           &scr_bright,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
-    &kp C_PWR,     &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
+    M_LOCK,        &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
                                                  ___,           ___,               ___,           ___
             )>;
             SENSORS

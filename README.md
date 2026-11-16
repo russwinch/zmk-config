@@ -26,11 +26,11 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, screenshots (C: drag out an area, to the clipboard; X: the whole screen, to a file on the desktop), Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | computer power key, Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme (I) and brightness (P) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | lock screen (Z), Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme (I) and brightness (P) (shown as "Shit" on the screens) |
 
-The Config layer's power key sends the computer's power key; it doesn't turn
-the keyboard off. macOS ignores a quick tap of it: hold it for about a second
-to sleep the Mac, longer for the shut-down prompt. On a dongle it also starts
+The Config layer's lock key sends Ctrl+Cmd+Q, the Mac's Lock Screen shortcut:
+the Mac locks at once and its display stays on until it times out. It is
+Mac only (Windows locks with Win+L). On a dongle it also starts
 the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
 the Bluetooth connection state when it changes. Both flashes last 250ms
@@ -216,7 +216,7 @@ themes](#colour-themes) of Keys, Debug, Tracker and Terminal.
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Config layer's
-power key is let go, one of them, picked at random,
+lock key is let go, one of them, picked at random,
 takes over from whichever screen is showing, coming in over 18 seconds by
 distorting the picture that was there:
 
@@ -231,7 +231,7 @@ whether or not you keep typing: the screensaver reacts to the typing, starts
 to glitch lightly after 2 seconds and harder and harder until, in the last
 second, the screen you had cuts back in through it block by block. An
 animation that comes back starts afresh. The wait is
-`CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver, the power key's
+`CONFIG_DONGLE_SCREEN_FX_SAVER_MINUTES` (0 for no screensaver, the lock key's
 included).
 
 After an hour without a key the panel goes off, as an old television did:

@@ -976,7 +976,7 @@ static void saver_key(void) {
     }
 }
 
-/* No key for long enough, or the power key: one of the screensavers takes
+/* No key for long enough, or the lock key: one of the screensavers takes
  * over, picked at random. */
 static void saver_cb(struct k_work *work) {
     if (saver != SAVER_OFF || atomic_get(&paused)) {
@@ -1377,12 +1377,19 @@ static int screen_fx_listener(const zmk_event_t *eh) {
                                         .mods = code->implicit_modifiers | code->explicit_modifiers},
                       k_uptime_get_32());
         }
-        /* the computer's power key (the Config layer's) puts it to sleep, so
-         * the screensaver comes on with it instead of 15 minutes later: when
-         * the key is let go, as a Mac wants it held for a second. Not if the
+        /* the Config layer's lock key (Ctrl+Cmd+Q, a Mac's Lock Screen)
+         * locks the computer, so the screensaver comes on with it instead of
+         * 15 minutes later: when the key is let go. The computer's power key
+         * (C_PWR) does the same, should a keymap have one. Not if the
          * screensaver is turned off (SAVER_MINUTES 0). */
-        if (SAVER_AFTER_MS > 0 && !code->state && code->usage_page == HID_USAGE_CONSUMER &&
-            code->keycode == HID_USAGE_CONSUMER_POWER && zmk_display_is_initialized()) {
+        const uint8_t lock_mods = MOD_LCTL | MOD_LGUI;
+        const bool lock_key = code->usage_page == HID_USAGE_KEY &&
+                              code->keycode == HID_USAGE_KEY_KEYBOARD_Q &&
+                              (code->implicit_modifiers & lock_mods) == lock_mods;
+        const bool power_key = code->usage_page == HID_USAGE_CONSUMER &&
+                               code->keycode == HID_USAGE_CONSUMER_POWER;
+        if (SAVER_AFTER_MS > 0 && !code->state && (lock_key || power_key) &&
+            zmk_display_is_initialized()) {
             k_work_reschedule_for_queue(zmk_display_work_q(), &saver_work, K_NO_WAIT);
         }
         /* only kept while an animation shows, and only until its next frame */
