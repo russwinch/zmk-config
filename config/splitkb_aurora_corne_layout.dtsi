@@ -2,7 +2,9 @@
  * splitkb Aurora Corne: 42 keys + 2 encoders. Layout glue shared by
  * splitkb_aurora_corne.keymap and splitkb_aurora_corne_dongle.keymap.
  * Layers live in keymap.dtsi.
- * Outer columns are unused; the outer thumb keys are mute / play-pause.
+ * Outer columns, top to bottom: Tab, Esc/Ctrl, Shift | Del, ', Enter/Shift
+ * (transparent on the other layers, so they work everywhere).
+ * The outer thumb keys are mute / play-pause.
  *
  *    0  1  2  3  4  5      6  7  8  9 10 11
  *   12 13 14 15 16 17     18 19 20 21 22 23
@@ -19,13 +21,18 @@
 #define KEYS_R  6 7 8 9 10 11 18 19 20 21 22 23 30 31 32 33 34 35
 #define THUMBS  36 37 38 39 40 41
 
-#define CORNE(X_LT, X_RT, k00, k01, k02, k03, k04, k05, k06, k07, k08, k09, k10, k11, k12, k13, k14, k15, k16, k17, k18, k19, k20, k21, k22, k23, k24, k25, k26, k27, k28, k29, k30, k31, k32, k33) \
-    XXX k00 k01 k02 k03 k04  k05 k06 k07 k08 k09 XXX \
-    XXX k10 k11 k12 k13 k14  k15 k16 k17 k18 k19 XXX \
-    XXX k20 k21 k22 k23 k24  k25 k26 k27 k28 k29 XXX \
+// O_xx: the outer columns (left top/home/bottom, right top/home/bottom)
+#define CORNE(O_LT, O_LH, O_LB, O_RT, O_RH, O_RB, X_LT, X_RT, k00, k01, k02, k03, k04, k05, k06, k07, k08, k09, k10, k11, k12, k13, k14, k15, k16, k17, k18, k19, k20, k21, k22, k23, k24, k25, k26, k27, k28, k29, k30, k31, k32, k33) \
+    O_LT k00 k01 k02 k03 k04  k05 k06 k07 k08 k09 O_RT \
+    O_LH k10 k11 k12 k13 k14  k15 k16 k17 k18 k19 O_RH \
+    O_LB k20 k21 k22 k23 k24  k25 k26 k27 k28 k29 O_RB \
                X_LT k30 k31  k32 k33 X_RT
-#define KB_LAYOUT_BASE(...) CORNE(&kp C_MUTE, &kp C_PP, __VA_ARGS__)
-#define KB_LAYOUT(...)      CORNE(___, ___, __VA_ARGS__)
+// &ts (keymap.dtsi): balanced hold-tap, so Ctrl/Shift as soon as another key
+// is pressed and released while held
+#define KB_LAYOUT_BASE(...) CORNE(&kp TAB, &ts LCTRL ESC, &kp LSHFT, \
+                                  &kp DEL, &kp SQT, &ts RSHFT RET, \
+                                  &kp C_MUTE, &kp C_PP, __VA_ARGS__)
+#define KB_LAYOUT(...)      CORNE(___, ___, ___, ___, ___, ___, ___, ___, __VA_ARGS__)
 
 #define SENSORS       sensor-bindings = <&inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp UP DOWN>;
 #define SENSORS_LOWER sensor-bindings = <&inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp PG_UP PG_DN>;

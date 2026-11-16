@@ -105,6 +105,7 @@
          * word (Space released first) still types a space. No
          * require-prior-idle-ms: capitals come straight after typing.
          * quick-tap-ms: tap then hold Space to repeat spaces.
+         * Also the Corne's outer Esc/Ctrl and Enter/Shift keys.
          */
         ts: thumb_shift {
             compatible = "zmk,behavior-hold-tap";

@@ -7,7 +7,7 @@ each board's own file only adds its extras.
 | Keyboard | Controller | Display / LEDs | Extras |
 | --- | --- | --- | --- |
 | Urchin | nice!nano v2 | nice!view gem, RGB LED widget | optional Prospector dongle |
-| splitkb Aurora Corne | nice!nano v2 | nice!view gem, RGB LED widget | 2 encoders, outer thumb keys (unused outer columns); optional Prospector dongle |
+| splitkb Aurora Corne | nice!nano v2 | nice!view gem, RGB LED widget | 2 encoders, outer thumb keys, an outer column per side; optional Prospector dongle |
 | Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side; optional Prospector dongle |
 | Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | optional Prospector dongle |
 
@@ -67,7 +67,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | Board | Encoders (turn) | Extra keys |
 | --- | --- | --- |
 | Urchin, Forager | none | none |
-| Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right) |
+| Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right); outer columns, top to bottom: Tab, Esc (hold: Ctrl), Shift on the left, Del, ', Enter (hold: Shift) on the right, the same on every layer |
 | Waterfowl | left roller (inner): page up/down; left dial (outer): volume; right dial (outer): up/down (page up/down on Lower); right roller (inner): left/right | pushes: left dial mute, left roller mute, right roller nothing, right dial play/pause; the outer thumb keys repeat the thumb next to them |
 
 ## Layout of this repo
