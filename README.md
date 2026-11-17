@@ -33,7 +33,7 @@ the Mac locks at once and its display stays on until it times out. It is
 Mac only (Windows locks with Win+L). On a dongle it also starts
 the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
-the Bluetooth connection state when it changes. Both flashes last 125ms
+the Bluetooth connection state when it changes. Both flashes last 100ms
 (set for every board in `config/default.conf`).
 
 ### Timing
@@ -285,7 +285,7 @@ screensavers', and those of the status text over them.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds: a second of amber or red signal stays that colour in it |
+| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds as a bar a second: a second of amber or red signal is a bar of that colour |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |
