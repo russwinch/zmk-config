@@ -1603,9 +1603,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     memset(fb, DBG_BG, PIXELS);
 
-    /* the dongle: up time, activity, this screen's speed; why it last
+    /* the dongle: which build it is, up time, activity, this screen's speed; why it last
      * restarted and how full LVGL's memory is */
-    int x = put(fb, 12, 4, "DBG", DBG_BRIGHT) + 5;
+    int x = put(fb, 5, 4, d->firmware ? d->firmware : "DBG", DBG_BRIGHT) + 5;
     snprintf(buf, sizeof(buf), "%u:%02u:%02u", (unsigned)(d->uptime_s / 3600), (unsigned)(d->uptime_s / 60 % 60),
              (unsigned)(d->uptime_s % 60));
     x = put(fb, x, 4, buf, DBG_TEXT) + 5;

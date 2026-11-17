@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
     struct fx_status status = {.battery = {100, 4}, .half_connected = {true, true}, .profile = 1};
     /* made-up readings for the Debug screen */
     static struct fx_debug debug = {
-        .uptime_s = 4365, .reset_cause = 2, .fps = 15, .frame_ms = 38, .heap_known = true, .heap_used = 62,
+        .firmware = "B149", .uptime_s = 4365, .reset_cause = 2, .fps = 15, .frame_ms = 38, .heap_known = true, .heap_used = 62,
         .heap_peak = 71,
         .half = {{.up = true, .rssi_known = true, .rssi = -52, .interval = 6, .latency = 30, .drops = 2, .reason = 0x08},
                  {.up = true, .rssi_known = true, .rssi = -71, .interval = 6, .latency = 30}},

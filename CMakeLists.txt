@@ -9,4 +9,9 @@ target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE src/half_st
 # all whichever status screen layout is chosen
 target_sources_ifdef(CONFIG_DONGLE_SCREEN_FX app PRIVATE
   src/dongle_screen_fx.c src/screen_fx/fx.c src/screen_fx/status_overlay.c)
+# the CI run that built it, as the Debug screen shows it: the release Keyboard
+# Writer lists for it is build-<that number>
+if(DEFINED ENV{GITHUB_RUN_NUMBER})
+  target_compile_definitions(app PRIVATE DONGLE_BUILD_NUMBER=$ENV{GITHUB_RUN_NUMBER})
+endif()
 target_sources_ifdef(CONFIG_BEHAVIOR_SCREEN_NEXT app PRIVATE src/behavior_screen_next.c)

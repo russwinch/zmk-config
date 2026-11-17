@@ -369,7 +369,7 @@ everything on it that the dongle can get at. Top to bottom:
 
 | Line | Shows |
 | --- | --- |
-| `DBG 1:12:46 ACT 10F 38MS` | time since the dongle started; `ACT`ive, `IDL`e or `SLP`; this screen's frames a second and the time one takes to draw and send |
+| `B149 1:12:46 ACT 10F 38MS` | the firmware: `B149` is CI build 149, the `build-149` release in Keyboard Writer (`DEV` if built anywhere else); time since the dongle started; `ACT`ive, `IDL`e or `SLP`; this screen's frames a second and the time one takes to draw and send |
 | `RST SOFT 02  MEM 62% ^71` | why the dongle last restarted (`POR` power on, `PIN` reset button, `SOFT` asked to, e.g. into the bootloader; in red `WDOG` watchdog, `LOCK` CPU lock-up, `BRWN` brown-out) and the raw bits; how full LVGL's memory is and the fullest it has been |
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
 | profile circles, `USB`, `OUT` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type; the output in use, green when the computer is listening |

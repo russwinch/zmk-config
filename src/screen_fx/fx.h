@@ -99,6 +99,7 @@ struct fx_event {
 };
 
 struct fx_debug {
+    const char *firmware; /* which build this is, short ("B149"), or NULL */
     uint32_t uptime_s;
     uint32_t reset_cause; /* Zephyr's RESET_* bits */
     uint8_t activity;     /* 0 active, 1 idle, 2 asleep */

@@ -327,6 +327,14 @@ static void read_link(struct bt_conn *conn, void *data) {
 
 static void read_keys(struct fx_debug *d);
 
+/* The build, for the Debug screen: CI's run number (CMakeLists.txt), the
+ * one in its release's name, build-149; DEV when built anywhere else. */
+#ifdef DONGLE_BUILD_NUMBER
+#define FIRMWARE_BUILD "B" STRINGIFY(DONGLE_BUILD_NUMBER)
+#else
+#define FIRMWARE_BUILD "DEV"
+#endif
+
 /* What lvgl_heap_stats fills in needs CONFIG_SYS_HEAP_RUNTIME_STATS. */
 void lvgl_heap_stats(struct sys_memory_stats *stats);
 
@@ -343,6 +351,7 @@ static void read_debug(uint32_t now) {
     }
     struct fx_debug *d = &debug_shown;
     d->uptime_s = (uint32_t)(k_uptime_get() / 1000);
+    d->firmware = FIRMWARE_BUILD;
     d->reset_cause = reset_cause;
     d->activity = (uint8_t)zmk_activity_get_state();
     d->wpm = (uint16_t)atomic_get(&wpm);
