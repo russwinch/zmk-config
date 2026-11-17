@@ -33,7 +33,7 @@ the Mac locks at once and its display stays on until it times out. It is
 Mac only (Windows locks with Win+L). On a dongle it also starts
 the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
-the Bluetooth connection state when it changes. Both flashes last 100ms
+the Bluetooth connection state when it changes. Both flashes last 150ms
 (set for every board in `config/default.conf`).
 
 ### Timing
