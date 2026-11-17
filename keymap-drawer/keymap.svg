@@ -447,7 +447,9 @@ path.combo { stroke: #7f7f7f; }
 </g>
 <g transform="translate(150, 28)" class="key keypos-2">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
-<text x="0" y="0" class="key tap">£</text>
+<text x="0" y="0" class="key tap">
+<tspan x="0" dy="-0.6em">App</tspan><tspan x="0" dy="1.2em">windows</tspan>
+</text>
 </g>
 <g transform="translate(210, 28)" class="key keypos-3">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
@@ -527,29 +529,32 @@ path.combo { stroke: #7f7f7f; }
 </g>
 <g transform="translate(30, 140)" class="key keypos-20">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
-</g>
-<g transform="translate(90, 140)" class="key keypos-21">
-<rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
 <text x="0" y="0" class="key tap">
 <tspan x="0" dy="-0.6em">Screen</tspan><tspan x="0" dy="1.2em">shot</tspan>
 </text>
 </g>
-<g transform="translate(150, 140)" class="key keypos-22">
+<g transform="translate(90, 140)" class="key keypos-21">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
 <text x="0" y="0" class="key tap">
 <tspan x="0" dy="-0.6em">Snip</tspan><tspan x="0" dy="1.2em">area</tspan>
 </text>
 </g>
-<g transform="translate(210, 140)" class="key keypos-23">
+<g transform="translate(150, 140)" class="key keypos-22">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
 <text x="0" y="0" class="key tap">
 <tspan x="0" dy="-0.6em">Mission</tspan><tspan x="0" dy="1.2em">Ctrl</tspan>
 </text>
 </g>
+<g transform="translate(210, 140)" class="key keypos-23">
+<rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
+<text x="0" y="0" class="key tap">
+<tspan x="0" dy="-0.6em">Prev</tspan><tspan x="0" dy="1.2em">app</tspan>
+</text>
+</g>
 <g transform="translate(270, 140)" class="key keypos-24">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
 <text x="0" y="0" class="key tap">
-<tspan x="0" dy="-0.6em">App</tspan><tspan x="0" dy="1.2em">windows</tspan>
+<tspan x="0" dy="-0.6em">Next</tspan><tspan x="0" dy="1.2em">app</tspan>
 </text>
 </g>
 <g transform="translate(360, 140)" class="key keypos-25">
@@ -560,6 +565,7 @@ path.combo { stroke: #7f7f7f; }
 </g>
 <g transform="translate(480, 140)" class="key keypos-27">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>
+<text x="0" y="0" class="key tap">£</text>
 </g>
 <g transform="translate(540, 140)" class="key keypos-28">
 <rect rx="6" ry="6" x="-28" y="-26" width="56" height="52" class="key"/>

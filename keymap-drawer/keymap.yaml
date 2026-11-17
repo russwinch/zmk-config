@@ -53,9 +53,9 @@ layers:
     - {t: ▽, type: trans}
     - {t: ▽, type: trans}
   Lower:
-  - ['', '', £, Prev tab, Next tab, +, '-', _, '|', \]
+  - ['', '', App windows, Prev tab, Next tab, +, '-', _, '|', \]
   - [⏮, ⏯, ⏭, Desk ←, Desk →, ←, ↓, ↑, →, '''']
-  - ['', Screen shot, Snip area, Mission Ctrl, App windows, '', '', '', '=', '"']
+  - [Screen shot, Snip area, Mission Ctrl, Prev app, Next app, '', '', £, '=', '"']
   - - {type: held}
     - {t: ▽, type: trans}
     - ⌦
