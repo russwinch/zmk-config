@@ -33,7 +33,7 @@ the Mac locks at once and its display stays on until it times out. It is
 Mac only (Windows locks with Win+L). On a dongle it also starts
 the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
 half's battery level on its RGB LED (green, yellow, red). The LED also flashes
-the Bluetooth connection state when it changes. Both flashes last 250ms
+the Bluetooth connection state when it changes. Both flashes last 125ms
 (set for every board in `config/default.conf`).
 
 ### Timing
@@ -208,7 +208,7 @@ themes](#colour-themes) of Keys, Debug, Tracker and Terminal.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for a second after; orange while it is holding a modifier down, violet while it is holding a layer on (the ICE theme's colours: each [theme](#colour-themes) has its own) |
+| 1 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for two seconds after; orange while it is holding a modifier down, violet while it is holding a layer on (the ICE theme's colours: each [theme](#colour-themes) has its own) |
 | 2 | Debug | a page of readings: [see below](#debug-screen) | |
 | 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
@@ -289,14 +289,14 @@ screensavers', and those of the status text over them.
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |
-| under the keys | a level meter for each column of keys, as on a hi-fi: a key pressed in the column sends its bar up (and its neighbours' a little), more keys send it higher, to amber and red at the top, and it falls back in about a second. A white mark stays at the highest each bar reached for a moment, then falls after it |
+| under the keys | a level meter for each column of keys, as on a hi-fi: a key pressed in the column sends its bar up (and its neighbours' a little), more keys send it higher, to amber and red at the top, and it falls back in about two seconds. A white mark stays at the highest each bar reached for a moment, then falls after it |
 
 ##### Encoder knobs
 
 On the Keys and Debug screens, a key position that is an encoder's push is
 drawn as a round knob instead of a square: on the Waterfowl both rollers and
 both dials, on the Aurora Corne the outer thumb keys. Pushed, it fills like a
-key (white, then glowing for a second). Turned, its ring glows for a second and
+key (white, then glowing for two seconds). Turned, its ring glows for two seconds and
 the mark on its rim steps an eighth of the way round per step, clockwise for a
 positive step (the `E0 +1` in the Debug log), so you can see it turn. Which
 position is which encoder is `encoder_keys` in `src/dongle_screen_fx.c`, in the
@@ -375,7 +375,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L3 NAV 0009   51WPM` | the highest active layer and its name, a bit for every active layer (hex), typing speed |
 | `CTL SFT ALT GUI   N29` | modifiers, lit while held; key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
-| key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
+| key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
 | `WATERFOWL` | under the key map: the keyboard the dongle is built for (dropping words from the front if the bounce reading leaves no room: `CORNE`) |
 

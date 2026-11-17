@@ -1454,9 +1454,9 @@ static void knob(uint8_t *fb, int x, int y, int wide, int high, uint8_t fill, ui
  * left at (left, top): keys `wide` by `high` with `gap` between them,
  * `pitch` apart across, and `split` more between the halves. A key is white
  * while held (orange if it is holding a modifier down, violet if a layer)
- * and glows for a second after. An encoder's push (fx_set_encoders) is a
+ * and glows for two seconds after. An encoder's push (fx_set_encoders) is a
  * knob instead: filled the same way while pressed, its ring glowing and its
- * mark bright for a second after it is turned, the mark moving round with it.
+ * mark bright for two seconds after it is turned, the mark moving round with it.
  */
 static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int pitch, int high, int gap,
                   int split) {
@@ -1497,7 +1497,7 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
         }
     }
     debug_fade += in->step;
-    if (debug_fade >= 2) { /* the glow is gone in a second */
+    if (debug_fade >= 4) { /* the glow is gone in two seconds */
         debug_fade = 0;
         for (unsigned key = 0; key < sizeof(debug_heat); key++) {
             debug_heat[key] -= debug_heat[key] > 0;
@@ -1744,7 +1744,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
  *
  *   a level meter under each column of the board, as on a hi-fi: a key
  *   pressed in the column sends its bar up (and its neighbours' a little),
- *   more keys send it higher, and it falls back in about a second. A mark
+ *   more keys send it higher, and it falls back in about two seconds. A mark
  *   stays at the highest each bar got to for a moment, then falls after it.
  *
  * Over USB the middle block has no radio link to show: it has the typing
@@ -1765,9 +1765,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 #define METER_FOOT 114
 #define METER_KEY 0.55f   /* what a key adds to its column's bar, of a full one */
 #define METER_SPILL 0.2f  /* and to the bars beside it */
-#define METER_FALL 1.0f   /* full bars a second */
-#define METER_HOLD 0.6f   /* seconds the mark stays up */
-#define METER_MARK_FALL 0.6f
+#define METER_FALL 0.5f   /* full bars a second */
+#define METER_HOLD 1.2f   /* seconds the mark stays up */
+#define METER_MARK_FALL 0.3f
 
 static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
 static uint8_t keys_speed[SIGNAL_W];         /* words a minute, the same way, 255 at most */
