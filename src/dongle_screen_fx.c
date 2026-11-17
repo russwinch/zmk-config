@@ -592,6 +592,19 @@ static bool borrow_memory(void) {
 static const uint16_t key_places[] = DT_PROP(KEY_TRANSFORM, map);
 #endif
 
+/* Which key position pressing each encoder is, in the order of the dongle
+ * overlay's &sensors (the halves' own order), so the Keys and Debug screens
+ * draw those keys as knobs. -1 for an encoder with no push. */
+#if IS_ENABLED(CONFIG_SHIELD_WATERFOWL_DONGLE)
+/* left roller (inner), left dial (outer), right dial (outer), right roller (inner) */
+static const int8_t encoder_keys[] = {34, 30, 39, 35};
+#define HAS_ENCODER_KEYS
+#elif IS_ENABLED(CONFIG_SHIELD_SPLITKB_AURORA_CORNE_DONGLE)
+/* left, right: in place of the outer thumb keys */
+static const int8_t encoder_keys[] = {36, 41};
+#define HAS_ENCODER_KEYS
+#endif
+
 static void begin_animation(void) {
     if (saver == SAVER_IN) {
         /* the still it comes in over: what was showing, or black */
@@ -605,6 +618,9 @@ static void begin_animation(void) {
     uint16_t *const native = native_palette;
 #ifdef KEY_TRANSFORM
     fx_set_keys(key_places, ARRAY_SIZE(key_places));
+#endif
+#ifdef HAS_ENCODER_KEYS
+    fx_set_encoders(encoder_keys, ARRAY_SIZE(encoder_keys));
 #endif
     fx_set_scheme(atomic_get(&wanted_theme));
     fx_start(screen - 1, native);
@@ -1436,6 +1452,9 @@ static int screen_fx_listener(const zmk_event_t *eh) {
     if (sensor != NULL) {
         saver_key(); /* an encoder counts */
         K_SPINLOCK(&debug_lock) {
+            if (sensor->sensor_index < FX_MAX_ENCODERS) {
+                debug.turned[sensor->sensor_index] += (int16_t)sensor->channel_data[0].value.val1;
+            }
             log_event((struct fx_event){.kind = 'E', .source = 2, .a = sensor->sensor_index,
                                         .b = (uint16_t)(int16_t)sensor->channel_data[0].value.val1},
                       k_uptime_get_32());

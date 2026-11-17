@@ -30,6 +30,10 @@
  * The panel going off and coming back on (FX_TR_CRT_OFF, FX_TR_STATIC): 2
  * seconds of the animation, off, half a second of nothing, on, 2 seconds
  * more. The backlight's own fading isn't shown.
+ *
+ * FX_PREVIEW_BOARD=waterfowl or corne in the environment draws that board
+ * (its keys, its encoders as knobs, its name) instead of the Forager, with
+ * its encoders turned and pressed now and then.
  */
 
 #include <stdio.h>
@@ -38,6 +42,45 @@
 
 #include "fx.h"
 #include "status_overlay.h"
+
+/* The boards FX_PREVIEW_BOARD picks, as their dongles' overlays and
+ * src/dongle_screen_fx.c's encoder_keys have them. */
+#define RC(row, col) ((row) << 8 | (col))
+static const uint16_t waterfowl_keys[] = {
+    RC(0, 0), RC(0, 1), RC(0, 2), RC(0, 3), RC(0, 4), RC(0, 5), RC(0, 6), RC(0, 7), RC(0, 8), RC(0, 9),
+    RC(1, 0), RC(1, 1), RC(1, 2), RC(1, 3), RC(1, 4), RC(1, 5), RC(1, 6), RC(1, 7), RC(1, 8), RC(1, 9),
+    RC(2, 0), RC(2, 1), RC(2, 2), RC(2, 3), RC(2, 4), RC(2, 5), RC(2, 6), RC(2, 7), RC(2, 8), RC(2, 9),
+    RC(3, 0), RC(3, 1), RC(3, 2), RC(3, 3), RC(3, 4), RC(3, 5), RC(3, 6), RC(3, 7), RC(3, 8), RC(3, 9),
+};
+static const int8_t waterfowl_encoders[] = {34, 30, 39, 35};
+static const uint16_t corne_keys[] = {
+    RC(0, 0), RC(0, 1), RC(0, 2), RC(0, 3), RC(0, 4), RC(0, 5), RC(0, 6), RC(0, 7), RC(0, 8), RC(0, 9), RC(0, 10), RC(0, 11),
+    RC(1, 0), RC(1, 1), RC(1, 2), RC(1, 3), RC(1, 4), RC(1, 5), RC(1, 6), RC(1, 7), RC(1, 8), RC(1, 9), RC(1, 10), RC(1, 11),
+    RC(2, 0), RC(2, 1), RC(2, 2), RC(2, 3), RC(2, 4), RC(2, 5), RC(2, 6), RC(2, 7), RC(2, 8), RC(2, 9), RC(2, 10), RC(2, 11),
+    RC(3, 3), RC(3, 4), RC(3, 5), RC(3, 6), RC(3, 7), RC(3, 8),
+};
+static const int8_t corne_encoders[] = {36, 41};
+#undef RC
+
+/* The board's name, and its encoders' push positions (NULL: none). */
+static const char *preview_board(const int8_t **encoders, int *n_encoders) {
+    const char *board = getenv("FX_PREVIEW_BOARD");
+    *encoders = NULL;
+    *n_encoders = 0;
+    if (board && strcmp(board, "waterfowl") == 0) {
+        fx_set_keys(waterfowl_keys, sizeof(waterfowl_keys) / sizeof(waterfowl_keys[0]));
+        *encoders = waterfowl_encoders;
+        *n_encoders = sizeof(waterfowl_encoders);
+        return "Waterfowl";
+    }
+    if (board && strcmp(board, "corne") == 0) {
+        fx_set_keys(corne_keys, sizeof(corne_keys) / sizeof(corne_keys[0]));
+        *encoders = corne_encoders;
+        *n_encoders = sizeof(corne_encoders);
+        return "Aurora Corne";
+    }
+    return "Forager";
+}
 
 static uint8_t saver_fb[FX_W * FX_H], saver_canvas[FX_W * FX_H], saver_old[FX_W * FX_H];
 static uint16_t saver_palette[256], saver_old_palette[256];
@@ -172,8 +215,12 @@ int main(int argc, char **argv) {
                  {.up = true, .rssi_known = true, .rssi = -71, .interval = 6, .latency = 30}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .interval = 12, .drops = 1, .reason = 0x13},
         .battery_age_s = {12, 340}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
-        .layers = 0x9, .bounce_ms = 18, .bounce_key = 23, .keyboard = "Forager",
+        .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };
+    const int8_t *encoders;
+    int n_encoders;
+    debug.keyboard = preview_board(&encoders, &n_encoders);
+    fx_set_encoders(encoders, n_encoders);
 
     fx_set_canvas(canvas);
     fx_set_scheme(theme);
@@ -229,6 +276,24 @@ int main(int argc, char **argv) {
         }
         in.energy = energy;
         in.held = f >= fps * 0.3f && f < fps * 7.3f ? 1ull << 11 : 0;
+        /* the encoders: each turned one way then the other in its own stretch,
+         * a step every few frames, then pressed for a moment */
+        for (int e = 0; e < n_encoders; e++) {
+            const float from = 0.05f + e * 0.2f, t = (at - from) / 0.15f;
+            if (t >= 0 && t < 1 && f % 3 == 0) {
+                const int step = t < 0.6f ? 1 : -1;
+                debug.turned[e] += step;
+                debug.log[0] = debug.log[1];
+                debug.log[1] = debug.log[2];
+                debug.log[2] = (struct fx_event){.kind = 'E', .source = 2, .a = e, .b = (uint16_t)step, .gap_ms = 200};
+                debug.n_log = 3;
+            }
+            if (t >= 1 && t < 1.2f) {
+                debug.held |= 1ull << encoders[e];
+            } else if (t >= 1.2f && t < 1.25f) {
+                debug.held &= ~(1ull << encoders[e]);
+            }
+        }
         in.wpm = (uint16_t)wpm;
 
         status.host_connected = at < 0.55f || at >= 0.8f;

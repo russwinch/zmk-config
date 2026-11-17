@@ -143,6 +143,27 @@ void fx_set_keys(const uint16_t *places, int count) {
 static inline int board_col(int key) { return key < key_count ? key_places[key] & 0xff : board_cols / 2; }
 static inline int board_row(int key) { return key < key_count ? key_places[key] >> 8 : 3; }
 
+/* The key positions that are an encoder's push, by sensor (fx_set_encoders). */
+static int8_t encoder_keys[FX_MAX_ENCODERS];
+static int encoder_count;
+
+void fx_set_encoders(const int8_t *keys, int count) {
+    encoder_count = 0;
+    for (int i = 0; keys != NULL && i < count && i < FX_MAX_ENCODERS; i++) {
+        encoder_keys[encoder_count++] = keys[i];
+    }
+}
+
+/* The encoder a key position is the push of, or -1. */
+static int key_encoder(int key) {
+    for (int i = 0; i < encoder_count; i++) {
+        if (encoder_keys[i] == key) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 /* The same for the animations, which take every board for 10 columns by 4
  * rows: on a wider one the outer columns count as the ones next to them, so
  * each half's keys stay on its side. */
@@ -1337,6 +1358,9 @@ enum {
 
 static uint8_t debug_heat[64]; /* how lately each key was pressed */
 static float debug_fade;
+static uint8_t knob_heat[FX_MAX_ENCODERS]; /* how lately each encoder was turned */
+static int16_t knob_seen[FX_MAX_ENCODERS];  /* its steps when last drawn */
+static bool knob_known;                     /* knob_seen has been read */
 
 /* The theme's colours: the Keys screen's too. */
 static void debug_colors(uint16_t *palette) {
@@ -1358,6 +1382,8 @@ static void debug_colors(uint16_t *palette) {
 static void debug_start(uint16_t *palette) {
     (void)palette;
     memset(debug_heat, 0, sizeof(debug_heat));
+    memset(knob_heat, 0, sizeof(knob_heat));
+    knob_known = false;
 }
 
 /* Text with nothing round it. Returns the next x. */
@@ -1397,12 +1423,40 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 #define DBG_COL_REASON 124
 #define DBG_COL_AGE 138
 
+#define KNOB_STEPS 8 /* an encoder step turns a knob's mark this much of the way round */
+
+/*
+ * An encoder, as a knob filling the `wide` by `high` cell at (x, y): a disc
+ * of `fill` inside a `ring`, with a `mark` on the rim (and, on a knob big
+ * enough, a line in to the middle) that turns a KNOB_STEPS'th of the way
+ * round, clockwise, for each step of `position`.
+ */
+static void knob(uint8_t *fb, int x, int y, int wide, int high, uint8_t fill, uint8_t ring, uint8_t mark,
+                 int position) {
+    const float r = (wide < high ? wide : high) / 2.0f, cx = x + (wide - 1) / 2.0f, cy = y + (high - 1) / 2.0f;
+    const int step = ((position % KNOB_STEPS) + KNOB_STEPS) % KNOB_STEPS;
+    const float ux = sinf(step * TWO_PI / KNOB_STEPS), uy = -cosf(step * TWO_PI / KNOB_STEPS); /* 0: up */
+    for (int py = y; py < y + high; py++) {
+        for (int px = x; px < x + wide; px++) {
+            const float dx = px - cx, dy = py - cy, d2 = dx * dx + dy * dy;
+            if (d2 > r * r) {
+                continue;
+            }
+            const bool rim = d2 > (r - 1) * (r - 1);
+            const bool on_mark = dx * ux + dy * uy > 0 && fabsf(dx * uy - dy * ux) < 0.75f && (rim || r >= 4);
+            plot(fb, px, py, on_mark ? mark : rim ? ring : fill);
+        }
+    }
+}
+
 /*
  * The board this dongle is built for, key for key (fx_set_keys), its top
  * left at (left, top): keys `wide` by `high` with `gap` between them,
  * `pitch` apart across, and `split` more between the halves. A key is white
  * while held (orange if it is holding a modifier down, violet if a layer)
- * and glows for a second after.
+ * and glows for a second after. An encoder's push (fx_set_encoders) is a
+ * knob instead: filled the same way while pressed, its ring glowing and its
+ * mark bright for a second after it is turned, the mark moving round with it.
  */
 static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int pitch, int high, int gap,
                   int split) {
@@ -1412,14 +1466,30 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
             debug_heat[in->keys[k]] = 15;
         }
     }
+    for (int i = 0; i < encoder_count; i++) {
+        if (knob_known && d->turned[i] != knob_seen[i]) {
+            knob_heat[i] = 15;
+        }
+        knob_seen[i] = d->turned[i];
+    }
+    knob_known = true;
     for (int key = 0; key < key_count && key < (int)sizeof(debug_heat); key++) {
         const int col = board_col(key), row = board_row(key) < 4 ? board_row(key) : 4;
         const int kx = left + col * pitch + (col >= board_cols / 2 ? split : 0), ky = top + row * (high + gap);
         const uint64_t bit = 1ull << key;
-        const uint8_t color = !(d->held & bit)   ? (debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM)
+        const bool held = (d->held & bit) != 0;
+        const uint8_t color = !held                 ? (debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM)
                               : d->held_layer & bit ? DBG_LAYER
                               : d->held_mod & bit   ? DBG_MOD
                                                     : DBG_BRIGHT;
+        const int encoder = key_encoder(key);
+        if (encoder >= 0) {
+            const int heat = knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
+            knob(fb, kx, ky, pitch - gap, high, held || debug_heat[key] ? color : DBG_BG,
+                 held ? color : heat ? DBG_HEAT + heat : DBG_DIM,
+                 held ? DBG_BG : knob_heat[encoder] ? DBG_BRIGHT : DBG_LABEL, d->turned[encoder]);
+            continue;
+        }
         for (int y = 0; y < high; y++) {
             for (int x = 0; x < pitch - gap; x++) {
                 plot(fb, kx + x, ky + y, color);
@@ -1431,6 +1501,9 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
         debug_fade = 0;
         for (unsigned key = 0; key < sizeof(debug_heat); key++) {
             debug_heat[key] -= debug_heat[key] > 0;
+        }
+        for (int i = 0; i < FX_MAX_ENCODERS; i++) {
+            knob_heat[i] -= knob_heat[i] > 0;
         }
     }
 }
@@ -1621,16 +1694,38 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put(fb, 5, 88 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
     }
 
-    board(fb, in, 139 - board_cols * (board_cols > 10 ? 4 : 5), 88, board_cols > 10 ? 4 : 5, 4, 1, 1);
+    const int board_pitch = board_cols > 10 ? 4 : 5, board_left = 139 - board_cols * board_pitch;
+    board(fb, in, board_left, 88, board_pitch, 4, 1, 1);
 
     /* the quickest a key has come back down after going up: a switch that
      * bounces shows here as a few milliseconds */
     x = put(fb, 14, 112, "BNC", DBG_LABEL) + 3;
     if (d->bounce_ms) {
         snprintf(buf, sizeof(buf), "%uMS P%02u", d->bounce_ms, d->bounce_key);
-        put(fb, x, 112, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
+        x = put(fb, x, 112, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
     } else {
-        put(fb, x, 112, "--", DBG_LABEL);
+        x = put(fb, x, 112, "--", DBG_LABEL);
+    }
+
+    /* the keyboard's name under the board: in the middle of it, or as far
+     * left as the bounce leaves room for. Too long for that, it loses words
+     * from the front (AURORA CORNE: CORNE), and then letters from the end */
+    if (d->keyboard) {
+        const int room = (FX_W - 4 - (x + 5)) / 5; /* letters, 5 apart */
+        const char *name = d->keyboard;
+        while ((int)strlen(name) > room && strchr(name, ' ') != NULL) {
+            name = strchr(name, ' ') + 1;
+        }
+        snprintf(buf, sizeof(buf), "%.*s", room < 0 ? 0 : room > (int)sizeof(buf) - 1 ? (int)sizeof(buf) - 1 : room,
+                 name);
+        for (char *c = buf; *c; c++) {
+            *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c;
+        }
+        const int wide = 5 * (int)strlen(buf);
+        int name_x = board_left + (FX_W - 1 - board_left - wide) / 2;
+        name_x = name_x + wide > FX_W - 4 ? FX_W - 4 - wide : name_x;
+        name_x = name_x < x + 5 ? x + 5 : name_x;
+        put(fb, name_x, 112, buf, DBG_LABEL);
     }
 }
 

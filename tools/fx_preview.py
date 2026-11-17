@@ -10,6 +10,7 @@ draw, without flashing anything:
     tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
     tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
     tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
+    tools/fx_preview.py --board waterfowl  # on the Waterfowl's keys and encoders (or corne)
 
 The battery levels and the output are drawn over them as on the dongle
 (src/screen_fx/status_overlay.c), in fonts from the Prospector module. Those
@@ -21,6 +22,7 @@ Needs gcc, git and Pillow (pip install pillow). Colours are the panel's
 """
 
 import argparse
+import os
 import re
 import subprocess
 import tempfile
@@ -33,6 +35,7 @@ FX_DIR = REPO / "src" / "screen_fx"
 TOOL_DIR = REPO / "tools" / "fx_preview"
 WIDTH, HEIGHT = 280, 240
 PROSPECTOR_URL = "https://github.com/carrefinho/prospector-zmk-module"
+ENV = dict(os.environ)  # for main.c: FX_PREVIEW_BOARD
 FONT_DIR = "boards/shields/prospector_adapter/src/fonts"
 
 
@@ -99,7 +102,7 @@ def save(images: list[Image.Image], path: Path, fps: float) -> None:
 
 
 def render(exe: Path, *arguments: object) -> list[Image.Image]:
-    raw = subprocess.run([str(exe), *map(str, arguments)], check=True, capture_output=True).stdout
+    raw = subprocess.run([str(exe), *map(str, arguments)], check=True, capture_output=True, env=ENV).stdout
     size = WIDTH * HEIGHT * 3
     return [Image.frombytes("RGB", (WIDTH, HEIGHT), raw[i:i + size]) for i in range(0, len(raw), size)]
 
@@ -117,7 +120,10 @@ def main() -> None:
                         help="instead: one picture of every colour theme, on each screen drawn in them")
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
+    parser.add_argument("--board", choices=["forager", "waterfowl", "corne"], default="forager",
+                        help="the keyboard the Keys and Debug screens draw (default forager)")
     args = parser.parse_args()
+    ENV["FX_PREVIEW_BOARD"] = args.board
 
     args.out.mkdir(parents=True, exist_ok=True)
     module = args.prospector or prospector(REPO / "fx_preview_out")

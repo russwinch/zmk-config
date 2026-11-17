@@ -76,6 +76,7 @@ struct fx_theme {
 
 #define FX_DEBUG_LOG 3
 #define FX_DEBUG_PROFILES 5
+#define FX_MAX_ENCODERS 4
 
 /* A Bluetooth link: to a half, or to the computer. */
 struct fx_link {
@@ -118,6 +119,7 @@ struct fx_debug {
     uint64_t held_mod;    /* those of them holding a modifier down */
     uint64_t held_layer;  /* and those holding a layer on */
     const char *keyboard; /* its name, or NULL */
+    int16_t turned[FX_MAX_ENCODERS]; /* each encoder's steps since power-up, by sensor (+ clockwise) */
     uint32_t presses;     /* key presses since power-up */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;
@@ -143,6 +145,12 @@ struct fx_input {
  * Debug screen draws the board from it. Kept, not copied; without it the
  * positions are taken to be the Urchin's (and Forager's). */
 void fx_set_keys(const uint16_t *places, int count);
+
+/* The board's encoders, by sensor index: the key position pressing each one
+ * is, or -1 for one that has none. The Keys and Debug screens draw those
+ * positions as knobs, turning with fx_debug's `turned`. Copied; without it
+ * the board has no encoders. */
+void fx_set_encoders(const int8_t *keys, int count);
 
 int fx_count(void);
 const char *fx_name(int fx);

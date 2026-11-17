@@ -288,8 +288,20 @@ screensavers', and those of the status text over them.
 | top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds: a second of amber or red signal stays that colour in it |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
-| the keys | every key position of the keyboard the dongle is built for |
+| the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |
 | under the keys | a level meter for each column of keys, as on a hi-fi: a key pressed in the column sends its bar up (and its neighbours' a little), more keys send it higher, to amber and red at the top, and it falls back in about a second. A white mark stays at the highest each bar reached for a moment, then falls after it |
+
+##### Encoder knobs
+
+On the Keys and Debug screens, a key position that is an encoder's push is
+drawn as a round knob instead of a square: on the Waterfowl both rollers and
+both dials, on the Aurora Corne the outer thumb keys. Pushed, it fills like a
+key (white, then glowing for a second). Turned, its ring glows for a second and
+the mark on its rim steps an eighth of the way round per step, clockwise for a
+positive step (the `E0 +1` in the Debug log), so you can see it turn. Which
+position is which encoder is `encoder_keys` in `src/dongle_screen_fx.c`, in the
+order of the dongle overlay's `&sensors`; a board missing from it has no knobs.
+On the Debug screen the knobs are only 4 pixels across (3 on the Corne).
 
 The battery levels and the output aren't drawn along the bottom of this
 screen as they are over the animations: they are in the blocks at the top.
@@ -363,8 +375,9 @@ everything on it that the dongle can get at. Top to bottom:
 | `L3 NAV 0009   51WPM` | the highest active layer and its name, a bit for every active layer (hex), typing speed |
 | `CTL SFT ALT GUI   N29` | modifiers, lit while held; key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
-| key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle |
+| key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for a second after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
+| `WATERFOWL` | under the key map: the keyboard the dongle is built for (dropping words from the front if the bounce reading leaves no room: `CORNE`) |
 
 The link rows' columns:
 
@@ -395,7 +408,8 @@ The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 GIF in `fx_preview_out/` (needs gcc, git and Pillow): the quick way to try a
 change or a new animation. The status text is drawn as on the dongle; its
 fonts are fetched from the Prospector module the first time.
-`tools/fx_preview.py --saver thermal` saves each screensaver coming over that
+`--board waterfowl` (or `corne`) draws Keys and Debug on that board,
+encoders turning, instead of the Forager. `tools/fx_preview.py --saver thermal` saves each screensaver coming over that
 animation and going again, and `--power keys` the panel going off and
 coming back on. Only one animation can run at a time (they share
 their memory), so the other picture in a transition is a still: the last
