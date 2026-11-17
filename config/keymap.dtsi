@@ -47,6 +47,10 @@
 #define M_NDSK  &kp LC(RIGHT)
 #define M_CTRL  &kp LC(UP)
 #define M_WINS  &kp LC(DOWN)
+// the app switcher: Cmd+Tab, Cmd+Shift+Tab. A tap goes to the last app; with the
+// Backspace/Cmd thumb held as well, the switcher stays open to step through
+#define M_NAPP  &kp LG(TAB)
+#define M_PAPP  &kp LG(LS(TAB))
 #define M_GBP   &kp LA(3)
 // Lock Screen. The dongle starts its screensaver on it (src/dongle_screen_fx.c)
 #define M_LOCK  &kp LG(LC(Q))
@@ -209,9 +213,9 @@
         lower_layer {
             display-name = "Lower";
             bindings = <KB_LAYOUT(
-    XXX,           XXX,           M_GBP,         M_PTAB,        M_NTAB,            &kp PLUS,      &kp MINUS,     &kp UNDER,     &kp PIPE,      &kp BSLH,
+    XXX,           XXX,           M_WINS,        M_PTAB,        M_NTAB,            &kp PLUS,      &kp MINUS,     &kp UNDER,     &kp PIPE,      &kp BSLH,
     &kp C_PREV,    &kp C_PP,      &kp C_NEXT,    M_PDSK,        M_NDSK,            &kp LEFT,      &kp DOWN,      &kp UP,        &kp RIGHT,     &kp SQT,
-    XXX,           M_SHOT,        M_SNIP,        M_CTRL,        M_WINS,            XXX,           XXX,           XXX,           &kp EQUAL,     &kp DQT,
+    M_SHOT,        M_SNIP,        M_CTRL,        M_PAPP,        M_NAPP,            XXX,           XXX,           M_GBP,         &kp EQUAL,     &kp DQT,
                                                  ___,           ___,               &kp DEL,       ___
             )>;
             SENSORS_LOWER

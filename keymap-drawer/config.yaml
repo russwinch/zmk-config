@@ -64,6 +64,8 @@ parse_config:
     "&kp LG(LC(Q))": "Lock"
     "&kp LG(LC(LS(N4)))": "Snip area"
     "&kp LG(LS(N3))": "Screen shot"
+    "&kp LG(TAB)": "Next app"
+    "&kp LG(LS(TAB))": "Prev app"
     "&bt BT_CLR": "BT clear"
     "&bt BT_PRV": "BT prev"
     "&bt BT_NXT": "BT next"
