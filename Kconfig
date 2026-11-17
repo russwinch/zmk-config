@@ -150,6 +150,13 @@ config DONGLE_SCREEN_FX_SAVER_MINUTES
 
 endif
 
+config BEHAVIOR_APP_SWITCH
+    bool
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_APP_SWITCH_ENABLED
+    # it works the keymap's layers, which only the central has
+    depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+
 config BEHAVIOR_SCREEN_NEXT
     bool
     default y

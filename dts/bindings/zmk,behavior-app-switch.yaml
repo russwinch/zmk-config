@@ -1,0 +1,15 @@
+# The &app_next and &app_prev keys (config/keymap.dtsi): the Mac app switcher
+# (src/behavior_app_switch.c). The first press holds Cmd down and each press
+# sends Tab (with `back`, Shift+Tab); Cmd is let go when the layer the key is
+# on turns off, so the switcher stays open while you step through it.
+
+description: Cmd+Tab app switcher that holds Cmd until its layer is released
+
+compatible: "zmk,behavior-app-switch"
+
+include: zero_param.yaml
+
+properties:
+  back:
+    type: boolean
+    description: Step back through the apps (Cmd+Shift+Tab) instead of forward

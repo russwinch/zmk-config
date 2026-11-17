@@ -47,10 +47,10 @@
 #define M_NDSK  &kp LC(RIGHT)
 #define M_CTRL  &kp LC(UP)
 #define M_WINS  &kp LC(DOWN)
-// the app switcher: Cmd+Tab, Cmd+Shift+Tab. A tap goes to the last app; with the
-// Backspace/Cmd thumb held as well, the switcher stays open to step through
-#define M_NAPP  &kp LG(TAB)
-#define M_PAPP  &kp LG(LS(TAB))
+// the app switcher, Cmd+Tab and Cmd+Shift+Tab, Cmd held until Lower is let go
+// (&app_next, &app_prev below)
+#define M_NAPP  &app_next
+#define M_PAPP  &app_prev
 #define M_GBP   &kp LA(3)
 // Lock Screen. The dongle starts its screensaver on it (src/dongle_screen_fx.c)
 #define M_LOCK  &kp LG(LC(Q))
@@ -152,6 +152,20 @@
             #binding-cells = <0>;
             display-name = "Previous theme";
             theme;
+            back;
+        };
+        // The Mac app switcher: Cmd+Tab (prev: Cmd+Shift+Tab) with Cmd held
+        // down until the layer is let go, so it steps through the apps
+        // (src/behavior_app_switch.c).
+        app_next: app_next {
+            compatible = "zmk,behavior-app-switch";
+            #binding-cells = <0>;
+            display-name = "Next app";
+        };
+        app_prev: app_prev {
+            compatible = "zmk,behavior-app-switch";
+            #binding-cells = <0>;
+            display-name = "Previous app";
             back;
         };
         // The dongle's backlight: low, medium, high, and round again.

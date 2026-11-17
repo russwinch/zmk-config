@@ -24,7 +24,7 @@ the Windows layer read ⌘ as Win.
 | --- | --- | --- |
 | Mac | default | QWERTY, home-row mods Ctrl Alt Cmd Shift / Shift Cmd Alt Ctrl |
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
-| Lower | hold Esc | media, browser tabs, desktops, app windows (E), screenshots (X: drag out an area, to the clipboard; Z: the whole screen, to a file on the desktop), Mission Control (C), the app switcher (V: Cmd+Shift+Tab, B: Cmd+Tab; hold the Backspace/Cmd thumb too to keep it open), £ (comma), arrows, symbols |
+| Lower | hold Esc | media, browser tabs, desktops, app windows (E), screenshots (X: drag out an area, to the clipboard; Z: the whole screen, to a file on the desktop), Mission Control (C), the app switcher (B: Cmd+Tab, V: Cmd+Shift+Tab; Cmd stays held until Esc/Lower is let go, so tap on through the apps), £ (comma), arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
 | Config | hold Esc + Enter | lock screen (Z), Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme prev/next (I and O) and brightness (P) (shown as "Shit" on the screens) |
 
@@ -84,7 +84,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/half_status.dtsi` | The behavior the dongle sends its status to, for the left half's nice!view (Waterfowl, Urchin, Aurora Corne keymaps). |
 | `config/leds_nice_nano_rgb.dtsi` | RGB LED wiring shared by the nice!nano boards (for zmk-rgbled-widget). |
 | `boards/shields/<keyboard>_dongle/` | Keyless dongle shields for the Waterfowl, Urchin and Aurora Corne (used with `prospector_adapter`); the Forager's comes from its module. |
-| `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, the dongle's animated screens, and the left half's nice!view screen when behind the dongle. |
+| `src/`, `CMakeLists.txt`, `Kconfig`, `dts/` | This repo's own code (it is a Zephyr module, `zephyr/module.yml`): dims the dongle's screen when idle, the dongle's animated screens, the left half's nice!view screen when behind the dongle, and the Mac app switcher keys. |
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
 | `tools/fx_preview.py` | Renders the dongle's animated screens to GIFs on a computer (see With the Prospector dongle). |
