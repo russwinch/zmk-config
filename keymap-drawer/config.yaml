@@ -71,6 +71,7 @@ parse_config:
     "&scr_next": "Screen next"
     "&scr_prev": "Screen prev"
     "&scr_theme": "Theme next"
+    "&scr_theme_prev": "Theme prev"
     "&scr_bright": "Screen bright"
     "&to 0": "Mac"
     "&to 1": "Windows"

@@ -26,7 +26,7 @@ the Windows layer read ⌘ as Win.
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
 | Lower | hold Esc | media, browser tabs, desktops, screenshots (C: drag out an area, to the clipboard; X: the whole screen, to a file on the desktop), Mission Control, arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | lock screen (Z), Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme (I) and brightness (P) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | lock screen (Z), Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme prev/next (I and O) and brightness (P) (shown as "Shit" on the screens) |
 
 The Config layer's lock key sends Ctrl+Cmd+Q, the Mac's Lock Screen shortcut:
 the Mac locks at once and its display stays on until it times out. It is
@@ -203,8 +203,9 @@ goes the other way. It starts on Keys. The screen you leave it on is
 remembered: once it has been showing for 30 seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
 
-The **Theme next** key (the I key) steps through the [colour
-themes](#colour-themes) of Keys, Debug, Tracker and Terminal.
+The **Theme next** key (the O key) steps through the [colour
+themes](#colour-themes) of Keys, Debug, Tracker and Terminal; **Theme prev**
+(the I key) goes the other way.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
@@ -251,8 +252,8 @@ remembered as the screen and the theme are, after the same 30 seconds.
 #### Colour themes
 
 Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
-Config layer's **Theme next** key (the I key) steps through, and round
-again. The screen showing changes colour as it is, and the theme's name
+Config layer's **Theme next** key (the O key) steps through, and round
+again (**Theme prev**, the I key, goes back). The screen showing changes colour as it is, and the theme's name
 and its place in the list (`GRID 2/11`) show in the middle of the screen
 for a second and a half, on any screen. Thermal and the screensavers keep
 their own colours: there the name is all that shows.

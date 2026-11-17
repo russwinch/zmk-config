@@ -135,13 +135,20 @@
             display-name = "Previous screen";
             back;
         };
-        // Next colour theme for the dongle's Keys, Debug, Tracker and Terminal
-        // screens (the list is in src/screen_fx/colors.h), and round again.
+        // Next and previous colour theme for the dongle's Keys, Debug, Tracker
+        // and Terminal screens (the list is in src/screen_fx/colors.h), and round again.
         scr_theme: scr_theme {
             compatible = "zmk,behavior-screen-next";
             #binding-cells = <0>;
             display-name = "Next theme";
             theme;
+        };
+        scr_theme_prev: scr_theme_prev {
+            compatible = "zmk,behavior-screen-next";
+            #binding-cells = <0>;
+            display-name = "Previous theme";
+            theme;
+            back;
         };
         // The dongle's backlight: low, medium, high, and round again.
         scr_bright: scr_bright {
@@ -227,7 +234,7 @@
         config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
-    XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme,    XXX,           &scr_bright,
+    XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme_prev, &scr_theme,  &scr_bright,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
     M_LOCK,        &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
                                                  ___,           ___,               ___,           ___

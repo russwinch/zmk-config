@@ -2,7 +2,7 @@
  * The `&scr_next` and `&scr_prev` keys: show the next or the previous screen
  * on the Prospector dongle (src/dongle_screen_fx.c). `&scr_theme` is the
  * same behavior with the `theme` property: it steps through the screens'
- * colour themes instead. `&scr_bright`, with `brightness`, steps the
+ * colour themes instead (`&scr_theme_prev`, with `back` too, the other way). `&scr_bright`, with `brightness`, steps the
  * backlight through low, medium and high. The keymap is shared, so the behaviors exist on
  * every keyboard; without the dongle there is nothing to switch and the
  * keys do nothing.
