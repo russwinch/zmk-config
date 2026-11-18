@@ -98,7 +98,7 @@ def themes() -> list[str]:
     # the names in colors.h's `schemes` table, in order
     text = (FX_DIR / "colors.h").read_text()
     table = text[text.index("} schemes[] = {"):text.index("#define SCHEMES")]
-    return re.findall(r'\{"(\w+)"', table)
+    return re.findall(r'\{"([\w ]+)"', table)
 
 
 def themed() -> list[str]:

@@ -502,11 +502,11 @@ static void term_prompt_line(void) {
     term_col = 2;
 }
 
-/* The theme's colours: black, then what is typed fading in reverse, dim to
- * text, with bright for its first flash. */
+/* The theme's colours: its background, then what is typed fading in
+ * reverse, dim to text, with bright for its first flash. */
 static void term_colors(uint16_t *palette) {
     const struct color at[] = {scheme->dim, scheme->text, scheme->bright};
-    const struct stop stops[] = {{0, 0, 0, 0},
+    const struct stop stops[] = {{0, scheme->bg.r, scheme->bg.g, scheme->bg.b},
                                  {70, at[0].r, at[0].g, at[0].b},
                                  {TERM_LIT, at[1].r, at[1].g, at[1].b},
                                  {251, at[2].r, at[2].g, at[2].b}};
@@ -1116,10 +1116,11 @@ static struct {
 static float track_pulse, track_time;
 static int track_next;
 
-/* The theme's colours, as one run from its background up to nearly white. */
+/* The theme's colours, as one run from its background up to nearly its
+ * bright (white on a dark theme, nearly black on a light one). */
 static struct color tracker_line(void) { return mix(scheme->dim, scheme->label, 64); }
 static struct color tracker_text(void) { return mix(scheme->label, scheme->text, 170); }
-static struct color tracker_top(void) { return mix(scheme->text, (struct color){255, 255, 255}, 205); }
+static struct color tracker_top(void) { return mix(scheme->text, scheme->bright, 205); }
 
 static void tracker_colors(uint16_t *palette) {
     const struct color at[] = {scheme->bg, tracker_line(), tracker_text(), tracker_top()};
@@ -2079,8 +2080,8 @@ const struct fx_theme *fx_theme(int fx) {
     themed.accent = color565(own ? own->accent : tracker_top());
     themed.search = color565(own ? own->search : tracker_text());
     themed.low = color565(own ? own->low : scheme->bad);
-    /* around it: Tracker's background is the theme's, the others' black */
-    themed.halo = effects[which].colors == tracker_colors ? color565(scheme->bg) : 0;
+    /* around it: the theme's background on those in its colours, else black */
+    themed.halo = own ? 0 : color565(scheme->bg);
     return &themed;
 }
 

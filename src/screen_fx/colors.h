@@ -30,15 +30,16 @@ struct color {
  * capitals: it is shown when the theme is turned to, and it is what the
  * dongle saves) and eleven colours, red, green, blue.
  *
- *   bg      the background: keep it nearly black, the panel is backlit
+ *   bg      the background: black on a dark theme (anything lighter looks
+ *           washed out on the backlit panel), or the light one's own
  *   dim     rules, keys that aren't pressed, the unlit part of a meter
  *   label   captions, and readings that aren't known
  *   text    the readings
  *   bright  a key held down, headings, the newest of anything
  *
- * Tracker runs from bg through dim and text up to nearly white; Terminal
- * is black, and what is typed flashes bright, then is text, and fades out
- * through dim.
+ * Tracker runs from bg through dim and text up to nearly bright; Terminal
+ * is bg, and what is typed flashes bright, then is text, and fades out
+ * through dim. On a light theme bright is the darkest of them.
  *
  *   glow    a key just let go (it fades from this to dim), the level meters
  *   good, warn, bad   connected and strong; getting weak or low; lost or flat
@@ -52,34 +53,36 @@ static const struct scheme {
     /* the first is what a dongle has until another is chosen */
     {"ICE", {0, 5, 14}, {0, 45, 70}, {50, 120, 150}, {150, 220, 245}, {255, 255, 255}, {90, 225, 235},
      {70, 235, 130}, {255, 190, 40}, {255, 60, 40}, {255, 150, 30}, {205, 110, 255}},
-    /* Tron: the Grid's cyan on black, captioned in the other side's orange */
-    {"GRID", {0, 2, 4}, {0, 50, 64}, {190, 92, 0}, {70, 230, 255}, {240, 255, 255}, {130, 245, 255},
-     {120, 255, 190}, {255, 215, 70}, {255, 50, 60}, {255, 120, 0}, {255, 240, 150}},
-    /* Alien: the Nostromo's computer, which is also the green phosphor terminal */
-    {"MOTHER", {0, 7, 2}, {0, 58, 22}, {25, 135, 60}, {70, 250, 110}, {225, 255, 230}, {150, 255, 170},
-     {170, 255, 190}, {255, 190, 50}, {255, 70, 50}, {255, 170, 40}, {110, 215, 255}},
-    /* Alien, the animal: acid green over a violet dark */
-    {"XENO", {5, 3, 12}, {42, 34, 78}, {105, 115, 95}, {190, 240, 90}, {245, 255, 225}, {215, 255, 130},
-     {80, 235, 170}, {255, 200, 60}, {255, 70, 90}, {255, 140, 70}, {185, 125, 255}},
-    /* Star Wars, the dark side: black and crimson, with one lightsaber of each colour */
-    {"SITH", {7, 0, 1}, {72, 10, 14}, {165, 45, 42}, {240, 200, 192}, {255, 255, 255}, {255, 95, 70},
-     {120, 225, 140}, {255, 200, 70}, {255, 40, 40}, {255, 165, 60}, {110, 170, 255}},
-    /* the amber terminal */
-    {"AMBER", {8, 4, 0}, {76, 40, 0}, {168, 98, 0}, {255, 176, 0}, {255, 238, 195}, {255, 212, 105},
-     {150, 232, 115}, {255, 242, 100}, {255, 65, 40}, {90, 215, 255}, {255, 120, 160}},
-    /* Star Trek's LCARS: peach, lilac and periwinkle on black */
-    {"LCARS", {0, 0, 0}, {66, 48, 76}, {170, 125, 185}, {255, 204, 153}, {255, 246, 232}, {255, 153, 0},
-     {150, 225, 165}, {255, 225, 100}, {235, 70, 70}, {153, 153, 255}, {220, 105, 165}},
-    /* Synthwave '84: pink and cyan neon */
-    {"NEON", {10, 5, 20}, {58, 42, 96}, {132, 139, 189}, {255, 126, 219}, {255, 255, 255}, {255, 190, 240},
-     {114, 241, 184}, {254, 222, 93}, {254, 68, 80}, {249, 150, 100}, {54, 249, 246}},
-    /* the terminal themes of those names, on darker backgrounds than their own */
-    {"DRACULA", {20, 21, 30}, {68, 71, 90}, {98, 114, 164}, {235, 235, 228}, {255, 255, 255}, {139, 233, 253},
-     {80, 250, 123}, {241, 250, 140}, {255, 85, 85}, {255, 184, 108}, {255, 121, 198}},
-    {"GRUVBOX", {20, 22, 23}, {80, 73, 69}, {146, 131, 116}, {235, 219, 178}, {251, 241, 199}, {142, 192, 124},
+    /* the Vim theme, after TextMate's Monokai */
+    {"MOLOKAI", {0, 0, 0}, {62, 61, 50}, {126, 142, 145}, {248, 248, 242}, {255, 255, 255}, {102, 217, 239},
+     {166, 226, 46}, {230, 219, 116}, {249, 38, 114}, {253, 151, 31}, {174, 129, 255}},
+    /* the Vim theme */
+    {"BADWOLF", {0, 0, 0}, {69, 65, 59}, {153, 143, 132}, {248, 246, 242}, {255, 255, 255}, {10, 157, 255},
+     {174, 238, 0}, {250, 222, 62}, {255, 44, 75}, {255, 167, 36}, {255, 158, 184}},
+    /* the Vim theme (dark) */
+    {"GRUVBOX", {0, 0, 0}, {80, 73, 69}, {168, 153, 132}, {235, 219, 178}, {251, 241, 199}, {142, 192, 124},
      {184, 187, 38}, {250, 189, 47}, {251, 73, 52}, {254, 128, 25}, {211, 134, 155}},
-    {"SOLARIZED", {0, 24, 31}, {12, 68, 80}, {88, 110, 117}, {160, 175, 172}, {253, 246, 227}, {42, 161, 152},
-     {133, 153, 0}, {212, 160, 20}, {220, 50, 47}, {225, 95, 40}, {125, 130, 225}},
+    /* the Neovim theme */
+    {"TOKYO NIGHT", {0, 0, 0}, {59, 66, 97}, {115, 122, 162}, {192, 202, 245}, {233, 236, 255}, {125, 207, 255},
+     {158, 206, 106}, {224, 175, 104}, {247, 118, 142}, {255, 158, 100}, {187, 154, 247}},
+    /* the theme (Mocha) */
+    {"CATPPUCCIN", {0, 0, 0}, {69, 71, 90}, {147, 153, 178}, {205, 214, 244}, {245, 224, 220}, {137, 220, 235},
+     {166, 227, 161}, {249, 226, 175}, {243, 139, 168}, {250, 179, 135}, {203, 166, 247}},
+    /* the theme (Rosé Pine) */
+    {"ROSE PINE", {0, 0, 0}, {64, 61, 82}, {144, 140, 170}, {224, 222, 244}, {250, 244, 237}, {196, 167, 231},
+     {156, 207, 216}, {246, 193, 119}, {235, 111, 146}, {235, 188, 186}, {62, 143, 176}},
+    /* the Neovim theme (Wave) */
+    {"KANAGAWA", {0, 0, 0}, {54, 54, 70}, {147, 138, 169}, {220, 215, 186}, {242, 236, 188}, {127, 180, 202},
+     {152, 187, 108}, {230, 195, 132}, {255, 93, 98}, {255, 160, 102}, {149, 127, 184}},
+    /* GitHub's light theme */
+    {"GITHUB LIGHT", {255, 255, 255}, {208, 215, 222}, {110, 119, 129}, {36, 41, 47}, {0, 0, 0}, {9, 105, 218},
+     {26, 127, 55}, {154, 103, 0}, {207, 34, 46}, {188, 76, 0}, {130, 80, 223}},
+    /* Catppuccin's light theme */
+    {"LATTE", {239, 241, 245}, {188, 192, 204}, {108, 111, 133}, {76, 79, 105}, {30, 30, 46}, {30, 102, 245},
+     {64, 160, 43}, {223, 142, 29}, {210, 15, 57}, {254, 100, 11}, {136, 57, 239}},
+    /* the Vim theme (light) */
+    {"GRUVBOX LIGHT", {251, 241, 199}, {213, 196, 161}, {124, 111, 100}, {60, 56, 54}, {40, 40, 40}, {7, 102, 120},
+     {121, 116, 14}, {181, 118, 20}, {157, 0, 6}, {175, 58, 3}, {143, 63, 113}},
 };
 #define SCHEMES ((int)(sizeof(schemes) / sizeof(schemes[0])))
 

@@ -213,7 +213,7 @@ themes](#colour-themes) of Keys, Debug, Tracker and Terminal; **Theme prev**
 | 2 | Debug | a page of readings: [see below](#debug-screen) | |
 | 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 5 | Terminal | a blinking cursor | what you type, in the theme's colour (green in MOTHER), fading out over about 10 seconds |
+| 5 | Terminal | a blinking cursor | what you type, in the theme's colour (cream in GRUVBOX), fading out over about 10 seconds |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Config layer's
@@ -254,7 +254,7 @@ remembered as the screen and the theme are, after the same 30 seconds.
 Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
 Config layer's **Theme next** key (the O key) steps through, and round
 again (**Theme prev**, the I key, goes back). The screen showing changes colour as it is, and the theme's name
-and its place in the list (`GRID 2/11`) show in the middle of the screen
+and its place in the list (`MOLOKAI 2/11`) show in the middle of the screen
 for a second and a half, on any screen. Thermal and the screensavers keep
 their own colours: there the name is all that shows.
 The theme is remembered as the screen is, 30 seconds after it was last
@@ -263,22 +263,26 @@ changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 | # | Theme | After | Looks like |
 | --- | --- | --- | --- |
 | 1 | ICE | | pale blue on navy, with orange and violet: what a dongle has until another is chosen |
-| 2 | GRID | Tron | electric cyan on black, captions in orange |
-| 3 | MOTHER | Alien's ship's computer, and the green phosphor terminal | green on black: the theme for a green Terminal |
-| 4 | XENO | Alien, the animal | acid green readings over violet |
-| 5 | SITH | Star Wars | crimson on black, pale readings |
-| 6 | AMBER | the amber terminal | amber on black |
-| 7 | LCARS | Star Trek | peach and lilac on black |
-| 8 | NEON | Synthwave '84 | pink and cyan on deep purple |
-| 9 | DRACULA | the terminal theme | white on slate, pink and cyan |
-| 10 | GRUVBOX | the terminal theme | cream on warm grey |
-| 11 | SOLARIZED | the terminal theme (dark) | grey on deep teal |
+| 2 | MOLOKAI | the Vim theme (Monokai) | white on black, pink, green and cyan |
+| 3 | BADWOLF | the Vim theme | white on black, lime, yellow and bright blue |
+| 4 | GRUVBOX | the Vim theme (dark) | cream on black, warm yellow and aqua |
+| 5 | TOKYO NIGHT | the Neovim theme | pale blue on black, lilac and cyan |
+| 6 | CATPPUCCIN | the theme (Mocha) | lavender-white on black, pastels |
+| 7 | ROSE PINE | the theme (Rosé Pine) | white on black, rose, gold and iris |
+| 8 | KANAGAWA | the Neovim theme (Wave) | old paper on black, muted blue and gold |
+| 9 | GITHUB LIGHT | GitHub's light theme | near-black on white |
+| 10 | LATTE | Catppuccin's light theme | slate on pale grey |
+| 11 | GRUVBOX LIGHT | the Vim theme (light) | dark grey on cream |
 
 Every colour of the screens is in one file, `src/screen_fx/colors.h`. A
 theme is one line of eleven colours there (`schemes`): add, change or drop
-lines. Every theme keeps green, amber and red for good, weak and lost, and
-has its own two colours for a key holding a modifier and one holding a
-layer. Under the themes are the colours no theme touches: Thermal's and the
+lines. The themes after editor themes take that theme's own colours, but
+the dark ones on pure black: the panel is backlit, and an off-black
+background looks washed out on it. Each takes its own green, yellow and
+red for good, weak and lost (Rosé Pine has no green: its foam), and two
+more of its colours for a key holding a modifier and one holding a layer.
+On a light theme `bright` (a held key, the newest of anything) is its
+darkest colour. Under the themes are the colours no theme touches: Thermal's and the
 screensavers', and those of the status text over them.
 `tools/fx_preview.py --themes` draws all the themes on a computer.
 
