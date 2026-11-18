@@ -1,0 +1,10 @@
+# The &wheel behavior (src/behavior_wheel.c): one turn of a mouse wheel, in
+# whole notches, MOVE_X / MOVE_Y as &msc takes them. config/waterfowl_layout.dtsi
+# binds it to the rollers through sensor-rotate behaviors. Needs
+# CONFIG_ZMK_POINTING (config/waterfowl.conf).
+
+description: Turns a mouse wheel by whole notches, once per press
+
+compatible: "zmk,behavior-wheel"
+
+include: one_param.yaml

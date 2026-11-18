@@ -68,7 +68,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | --- | --- | --- |
 | Urchin, Forager | none | none |
 | Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right); outer columns, top to bottom: Tab, Esc (hold: Ctrl), Shift on the left, Del, ', Enter (hold: Shift) on the right, the same on every layer |
-| Waterfowl | left roller (inner): page up/down; left dial (outer): volume; right dial (outer): up/down (page up/down on Lower); right roller (inner): left/right | pushes: left dial mute, left roller mute, right roller nothing, right dial play/pause; the outer thumb keys repeat the thumb next to them |
+| Waterfowl | left roller (outer): scrolls up/down, a mouse wheel notch a click; left dial (inner): volume; right dial (inner): up/down (page up/down on Lower); right roller (outer): scrolls left/right | pushes: left roller Home (top of the page), right roller End (bottom), left dial mute, right dial play/pause; the outer thumb keys repeat the thumb next to them. The scrolling is a mouse: over Bluetooth the computer has to forget the keyboard and pair again before it scrolls |
 
 ## Layout of this repo
 
@@ -312,10 +312,12 @@ both dials, on the Aurora Corne the outer thumb keys. Pushed, it fills like a
 key (white, then glowing for two seconds). Turned, its ring glows for two seconds and
 the mark on its rim turns with it, two and a half times as far (a click of a
 Waterfowl encoder, 18 degrees, moves it an eighth of the way round), gliding there
-over a few frames; clockwise for a positive turn (the `E0 +4` in the Debug log,
-in degrees as ZMK's encoder driver gives them). Which
+over a few frames, the way the encoder went. The Debug log has ZMK's own
+figure (`E0 +4`, in degrees as its encoder driver gives them), whose positive
+is anticlockwise on the Waterfowl. Which
 position is which encoder is `encoder_keys` in `src/dongle_screen_fx.c`, in the
-order of the dongle overlay's `&sensors`; a board missing from it has no knobs.
+order of the dongle overlay's `&sensors`, and `ENCODER_TURN_SIGN` there turns a
+board's knobs round; a board missing from it has no knobs.
 On the Debug screen the knobs are only 4 pixels across (3 on the Corne).
 
 The battery levels and the output aren't drawn along the bottom of this

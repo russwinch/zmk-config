@@ -161,3 +161,10 @@ config BEHAVIOR_SCREEN_NEXT
     bool
     default y
     depends on DT_HAS_ZMK_BEHAVIOR_SCREEN_NEXT_ENABLED
+
+config BEHAVIOR_WHEEL
+    bool
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_WHEEL_ENABLED
+    # the mouse report it sends, which only the central has
+    depends on ZMK_POINTING && (!ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL)

@@ -2,10 +2,8 @@
  * Waterfowl: 40 positions + 4 encoders. Layout glue shared by
  * waterfowl.keymap and waterfowl_dongle.keymap. Layers live in keymap.dtsi.
  * Bottom row per side: an encoder push at each end with three thumb keys
- * between. The pushes are the other way round from ZMK's own picture of the
- * board: 30 is the left roller (inner) and 34 the left dial (outer), 35 the
- * right dial (outer) and 39 the right roller (inner). The outer layer/space
- * keys repeat the core thumb next to them.
+ * between: the roller's push outside (30 left, 39 right), the dial's inside
+ * (34, 35). The outer layer/space keys repeat the core thumb next to them.
  *
  *    0  1  2  3  4             5  6  7  8  9
  *   10 11 12 13 14            15 16 17 18 19
@@ -17,14 +15,43 @@
 #define KEYS_R  5 6 7 8 9 15 16 17 18 19 25 26 27 28 29
 #define THUMBS  30 31 32 33 34 35 36 37 38 39
 
-#define WATERFOWL(X_LO, X_LI, X_RI, X_RO, k00, k01, k02, k03, k04, k05, k06, k07, k08, k09, k10, k11, k12, k13, k14, k15, k16, k17, k18, k19, k20, k21, k22, k23, k24, k25, k26, k27, k28, k29, k30, k31, k32, k33) \
+#include <dt-bindings/zmk/pointing.h>
+
+#define WATERFOWL(X_LROLL, X_LDIAL, X_RDIAL, X_RROLL, k00, k01, k02, k03, k04, k05, k06, k07, k08, k09, k10, k11, k12, k13, k14, k15, k16, k17, k18, k19, k20, k21, k22, k23, k24, k25, k26, k27, k28, k29, k30, k31, k32, k33) \
     k00 k01 k02 k03 k04  k05 k06 k07 k08 k09 \
     k10 k11 k12 k13 k14  k15 k16 k17 k18 k19 \
     k20 k21 k22 k23 k24  k25 k26 k27 k28 k29 \
-    X_LI k30 k30 k31 X_LO  X_RO k32 k33 k33 X_RI
-#define KB_LAYOUT_BASE(...) WATERFOWL(&kp C_MUTE, &kp C_MUTE, XXX, &kp C_PP, __VA_ARGS__)
+    X_LROLL k30 k30 k31 X_LDIAL  X_RDIAL k32 k33 k33 X_RROLL
+// pushes: the left roller to the top (Home), the right one to the bottom (End),
+// the left dial mute, the right dial play/pause
+#define KB_LAYOUT_BASE(...) WATERFOWL(&kp HOME, &kp C_MUTE, &kp C_PP, &kp END, __VA_ARGS__)
 #define KB_LAYOUT(...)      WATERFOWL(___, ___, ___, ___, __VA_ARGS__)
 
+/*
+ * The rollers turn a mouse wheel, a notch a click (src/behavior_wheel.c, as
+ * a mouse's wheel: a few lines, not a page): the left one up and down, the
+ * right one sideways. Clockwise is up, and left.
+ */
+/ {
+    behaviors {
+        wheel: wheel {
+            compatible = "zmk,behavior-wheel";
+            #binding-cells = <1>;
+            display-name = "Scroll wheel";
+        };
+        scroll_v: scroll_v {
+            compatible = "zmk,behavior-sensor-rotate";
+            #sensor-binding-cells = <0>;
+            bindings = <&wheel MOVE_Y(1)>, <&wheel MOVE_Y(-1)>;
+        };
+        scroll_h: scroll_h {
+            compatible = "zmk,behavior-sensor-rotate";
+            #sensor-binding-cells = <0>;
+            bindings = <&wheel MOVE_X(-1)>, <&wheel MOVE_X(1)>;
+        };
+    };
+};
+
 // sensor order (ZMK waterfowl.dtsi): left roller, left dial, right dial, right roller
-#define SENSORS       sensor-bindings = <&inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp UP DOWN &inc_dec_kp LEFT RIGHT>;
-#define SENSORS_LOWER sensor-bindings = <&inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp PAGE_UP PAGE_DOWN &inc_dec_kp LEFT RIGHT>;
+#define SENSORS       sensor-bindings = <&scroll_v &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp UP DOWN &scroll_h>;
+#define SENSORS_LOWER sensor-bindings = <&scroll_v &inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp PAGE_UP PAGE_DOWN &scroll_h>;
