@@ -213,7 +213,7 @@ themes](#colour-themes) of Keys, Debug, Tracker and Terminal; **Theme prev**
 | 2 | Debug | a page of readings: [see below](#debug-screen) | |
 | 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 5 | Terminal | a blinking cursor | what you type, in the theme's colour (cream in GRUVBOX), fading out over about 10 seconds |
+| 5 | Terminal | a blinking cursor | what you type, in the theme's colour (green in PHOSPHOR), fading out over about 10 seconds |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Config layer's
@@ -254,7 +254,7 @@ remembered as the screen and the theme are, after the same 30 seconds.
 Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
 Config layer's **Theme next** key (the O key) steps through, and round
 again (**Theme prev**, the I key, goes back). The screen showing changes colour as it is, and the theme's name
-and its place in the list (`MOLOKAI 2/11`) show in the middle of the screen
+and its place in the list (`PHOSPHOR 2/11`) show in the middle of the screen
 for a second and a half, on any screen. Thermal and the screensavers keep
 their own colours: there the name is all that shows.
 The theme is remembered as the screen is, 30 seconds after it was last
@@ -263,26 +263,26 @@ changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 | # | Theme | After | Looks like |
 | --- | --- | --- | --- |
 | 1 | ICE | | pale blue on navy, with orange and violet: what a dongle has until another is chosen |
-| 2 | MOLOKAI | the Vim theme (Monokai) | white on black, pink, green and cyan |
-| 3 | BADWOLF | the Vim theme | white on black, lime, yellow and bright blue |
-| 4 | GRUVBOX | the Vim theme (dark) | cream on black, warm yellow and aqua |
-| 5 | TOKYO NIGHT | the Neovim theme | pale blue on black, lilac and cyan |
-| 6 | CATPPUCCIN | the theme (Mocha) | lavender-white on black, pastels |
-| 7 | ROSE PINE | the theme (Rosé Pine) | white on black, rose, gold and iris |
-| 8 | KANAGAWA | the Neovim theme (Wave) | old paper on black, muted blue and gold |
-| 9 | GITHUB LIGHT | GitHub's light theme | near-black on white |
-| 10 | LATTE | Catppuccin's light theme | slate on pale grey |
-| 11 | GRUVBOX LIGHT | the Vim theme (light) | dark grey on cream |
+| 2 | PHOSPHOR | the green phosphor terminal | bright green on black, as Terminal was before themes |
+| 3 | AMBER | the amber phosphor terminal | amber on black |
+| 4 | SITH | Star Wars | red on black; lost or flat is magenta, as red is everywhere |
+| 5 | GRID | Tron: Legacy | electric cyan on black, orange for modifiers |
+| 6 | SYNTHWAVE | Synthwave '84 | neon pink, cyan captions, purple keys |
+| 7 | DRACULA | the editor theme | lilac and pink on black |
+| 8 | CYBERPUNK | Cyberpunk 2077 | yellow on black, cyan glow |
+| 9 | LCARS | Star Trek | orange, lilac captions, on black |
+| 10 | MOLOKAI | the Vim theme (Monokai) | white on black, hot pink captions |
+| 11 | MONO | the white phosphor terminal | white and greys on black |
 
 Every colour of the screens is in one file, `src/screen_fx/colors.h`. A
 theme is one line of eleven colours there (`schemes`): add, change or drop
-lines. The themes after editor themes take that theme's own colours, but
-the dark ones on pure black: the panel is backlit, and an off-black
-background looks washed out on it. Each takes its own green, yellow and
-red for good, weak and lost (Rosé Pine has no green: its foam), and two
-more of its colours for a key holding a modifier and one holding a layer.
-On a light theme `bright` (a held key, the newest of anything) is its
-darkest colour. Under the themes are the colours no theme touches: Thermal's and the
+lines. They are all on pure black, in strong colours with their captions
+and dim parts in the same strong hue rather than greyed down: under a desk
+lamp, a dark or off-black theme looks flat on the backlit panel. Every
+theme keeps green, amber and red for good, weak and lost (SITH's lost is
+magenta), and has its own colours for a key holding a modifier and one
+holding a layer. A light theme works too: its `bright` (a held key, the
+newest of anything) is then its darkest colour. Under the themes are the colours no theme touches: Thermal's and the
 screensavers', and those of the status text over them.
 `tools/fx_preview.py --themes` draws all the themes on a computer.
 
@@ -290,7 +290,7 @@ screensavers', and those of the status text over them.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds as a bar a second: a second of amber or red signal is a bar of that colour |
+| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds, a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |

@@ -1837,8 +1837,8 @@ static void keys_start(uint16_t *palette) {
 }
 
 /* A row of values as columns `high` at most (15 or under), on a line: each
- * a solid bar in `color`, or in amber or red if the value has SPARK_WARN or
- * SPARK_RED added. */
+ * a dim column topped in `color`, or a solid bar in amber or red if the
+ * value has SPARK_WARN or SPARK_RED added, so the bad seconds stand out. */
 #define SPARK_HIGH 0x0f
 #define SPARK_WARN 0x10
 #define SPARK_RED 0x20
@@ -1847,9 +1847,10 @@ static void spark(uint8_t *fb, int x, int y, const uint8_t *values, int count, i
     for (int i = 0; i < count; i++) {
         const int v = (values[i] & SPARK_HIGH) > high ? high : values[i] & SPARK_HIGH;
         const uint8_t top = values[i] & SPARK_RED ? DBG_BAD : values[i] & SPARK_WARN ? DBG_WARN : color;
+        const bool trouble = values[i] & (SPARK_RED | SPARK_WARN);
         plot(fb, x + i, y + high - 1, DBG_DIM);
         for (int up = 0; up < v; up++) {
-            plot(fb, x + i, y + high - 1 - up, top);
+            plot(fb, x + i, y + high - 1 - up, trouble || up == v - 1 ? top : DBG_DIM);
         }
     }
 }
