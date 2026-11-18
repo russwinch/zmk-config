@@ -5,7 +5,14 @@
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_IDLE_BACKLIGHT app PRIVATE src/dongle_idle_backlight.c)
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_half_status.c)
 target_sources_ifdef(CONFIG_HALF_CHARGING_STATUS app PRIVATE src/half_charging.c)
-target_sources_ifdef(CONFIG_DONGLE_HALF_CHARGING app PRIVATE src/dongle_half_charging.c)
+target_sources_ifdef(CONFIG_HALF_TEMPERATURE app PRIVATE src/half_temperature.c)
+target_sources_ifdef(CONFIG_DONGLE_HALF_INFO app PRIVATE src/dongle_half_info.c)
+# The Debug screen's USB report counts: ZMK's two send functions are wrapped
+# at link time (src/dongle_usb_count.c).
+if(CONFIG_DONGLE_SCREEN_FX AND CONFIG_ZMK_USB)
+  target_sources(app PRIVATE src/dongle_usb_count.c)
+  zephyr_ld_options(-Wl,--wrap=zmk_usb_hid_send_keyboard_report -Wl,--wrap=zmk_usb_hid_send_consumer_report)
+endif()
 target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE
   src/half_status_screen.c src/half_status_draw.c)
 # status_overlay.c uses fonts from the Prospector module, which builds them

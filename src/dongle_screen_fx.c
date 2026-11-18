@@ -56,7 +56,10 @@
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
+#include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/drivers/sensor.h>
+#include <dt-bindings/adc/nrf-saadc.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
@@ -84,8 +87,11 @@
 #include <zmk/usb.h>
 
 #include "dongle_backlight.h"
-#if IS_ENABLED(CONFIG_DONGLE_HALF_CHARGING)
-#include "dongle_half_charging.h"
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+#include "dongle_half_info.h"
+#endif
+#if IS_ENABLED(CONFIG_ZMK_USB)
+#include "dongle_usb_count.h"
 #endif
 #include "dongle_screen_fx.h"
 #include "screen_fx/fx.h"
@@ -266,7 +272,7 @@ static void read_status(void) {
         }
         status.battery[half] = level;
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
-#if IS_ENABLED(CONFIG_DONGLE_HALF_CHARGING)
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         status.charging[half] = dongle_half_charging(half);
 #endif
     }
@@ -346,6 +352,66 @@ void lvgl_heap_stats(struct sys_memory_stats *stats);
 
 static uint32_t reset_cause;
 
+/* The dongle's own supply and chip temperature, for the Debug screen. The
+ * supply is the XIAO's 3.3 V regulator, read by the SAADC on its VDD input
+ * (channel 6, which nothing else in this firmware sets up); the USB 5 V isn't wired to
+ * anything the chip can measure. */
+#if IS_ENABLED(CONFIG_ADC) && DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
+#define VDD_CHANNEL 6
+static uint16_t read_vdd_mv(void) {
+    static const struct device *const adc = DEVICE_DT_GET(DT_NODELABEL(adc));
+    static bool set_up;
+    if (!device_is_ready(adc)) {
+        return 0;
+    }
+    if (!set_up) {
+        const struct adc_channel_cfg cfg = {
+            .gain = ADC_GAIN_1_6,
+            .reference = ADC_REF_INTERNAL,
+            .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
+            .channel_id = VDD_CHANNEL,
+            .input_positive = NRF_SAADC_VDD,
+        };
+        if (adc_channel_setup(adc, &cfg) != 0) {
+            return 0;
+        }
+        set_up = true;
+    }
+    int16_t raw = 0;
+    const struct adc_sequence seq = {
+        .channels = BIT(VDD_CHANNEL),
+        .buffer = &raw,
+        .buffer_size = sizeof(raw),
+        .resolution = 12,
+    };
+    if (adc_read(adc, &seq) != 0) {
+        return 0;
+    }
+    int32_t mv = raw;
+    if (adc_raw_to_millivolts(adc_ref_internal(adc), ADC_GAIN_1_6, 12, &mv) != 0 || mv <= 0) {
+        return 0;
+    }
+    return (uint16_t)mv;
+}
+#else
+static uint16_t read_vdd_mv(void) { return 0; }
+#endif
+
+#if IS_ENABLED(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_NODELABEL(temp), okay)
+static bool read_temp(int8_t *celsius) {
+    static const struct device *const temp = DEVICE_DT_GET(DT_NODELABEL(temp));
+    struct sensor_value v;
+    if (!device_is_ready(temp) || sensor_sample_fetch(temp) != 0 ||
+        sensor_channel_get(temp, SENSOR_CHAN_DIE_TEMP, &v) != 0) {
+        return false;
+    }
+    *celsius = (int8_t)CLAMP(v.val1, INT8_MIN, INT8_MAX);
+    return true;
+}
+#else
+static bool read_temp(int8_t *celsius) { return false; }
+#endif
+
 static void read_debug(uint32_t now) {
     static uint32_t rssi_at;
 
@@ -406,6 +472,28 @@ static void read_debug(uint32_t now) {
     }
     if (rssi_due) {
         rssi_at = now;
+    }
+
+    /* USB reports; the supply and the temperatures, once a second too */
+#if IS_ENABLED(CONFIG_ZMK_USB)
+    d->usb_reports = dongle_usb_reports_sent();
+    d->usb_errors = (uint16_t)MIN(dongle_usb_reports_failed(), UINT16_MAX);
+#endif
+    static uint16_t vdd_mv;
+    static bool temp_known[3];
+    static int8_t temp_c[3];
+    if (rssi_due) {
+        vdd_mv = read_vdd_mv();
+        temp_known[1] = read_temp(&temp_c[1]);
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+        temp_known[0] = dongle_half_temperature(0, &temp_c[0]);
+        temp_known[2] = dongle_half_temperature(1, &temp_c[2]);
+#endif
+    }
+    d->vdd_mv = vdd_mv;
+    for (int i = 0; i < 3; i++) {
+        d->temp_known[i] = temp_known[i];
+        d->temp_c[i] = temp_c[i];
     }
 }
 

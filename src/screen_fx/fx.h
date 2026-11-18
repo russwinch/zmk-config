@@ -136,6 +136,11 @@ struct fx_debug {
     uint32_t presses;     /* key presses since power-up */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;
+    uint32_t usb_reports; /* keyboard and media reports sent over USB since power-up */
+    uint16_t usb_errors;  /* and those that failed (the computer not taking them) */
+    uint16_t vdd_mv;      /* the dongle's supply, from its 3.3 V regulator (0: not known) */
+    bool temp_known[3];   /* chip temperatures: left half, dongle, right half */
+    int8_t temp_c[3];
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
     uint8_t n_log;
 };
@@ -179,6 +184,13 @@ const uint8_t *fx_glyph_rows(char c);
  * whatever the charge. */
 #define FX_GLYPH_BOLT '\x7f'
 #define FX_BOLT "\x7f"
+
+/* Also in fx_glyph_rows: the Mac's modifier symbols, control, option,
+ * shift and command. */
+#define FX_GLYPH_CTRL '\x01'
+#define FX_GLYPH_ALT '\x02'
+#define FX_GLYPH_SHIFT '\x03'
+#define FX_GLYPH_GUI '\x04'
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text over it. */

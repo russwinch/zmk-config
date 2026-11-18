@@ -300,9 +300,22 @@ static const uint8_t font[][7] = {
 };
 
 static const uint8_t bolt[7] = {0x02, 0x06, 0x0c, 0x1f, 0x06, 0x0c, 0x08};
+/* ⌃ ⌥ ⇧ ⌘, as FX_GLYPH_CTRL to FX_GLYPH_GUI */
+static const uint8_t mod_glyphs[4][7] = {
+    {0x00, 0x00, 0x04, 0x0a, 0x11, 0x00, 0x00},
+    {0x00, 0x1b, 0x04, 0x04, 0x02, 0x03, 0x00},
+    {0x04, 0x0a, 0x11, 0x1b, 0x0a, 0x0e, 0x00},
+    {0x1b, 0x1f, 0x0a, 0x1f, 0x1b, 0x00, 0x00},
+};
 
 const uint8_t *fx_glyph_rows(char c) {
-    return c == FX_GLYPH_BOLT ? bolt : c < ' ' || c > '~' ? NULL : font[c - ' '];
+    if (c == FX_GLYPH_BOLT) {
+        return bolt;
+    }
+    if (c >= FX_GLYPH_CTRL && c <= FX_GLYPH_GUI) {
+        return mod_glyphs[c - FX_GLYPH_CTRL];
+    }
+    return c < ' ' || c > '~' ? NULL : font[c - ' '];
 }
 
 static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
@@ -1559,6 +1572,17 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
     }
 }
 
+/* A count in at most four figures: 1234, 12K, 999K, 12M. */
+static void count_text(char *buf, size_t size, uint32_t n) {
+    if (n < 10000) {
+        snprintf(buf, size, "%u", (unsigned)n);
+    } else if (n < 1000000) {
+        snprintf(buf, size, "%uK", (unsigned)(n / 1000));
+    } else {
+        snprintf(buf, size, "%uM", (unsigned)(n / 1000000 > 999 ? 999 : n / 1000000));
+    }
+}
+
 /* One row of the table: `level` is the battery, or the output for the computer. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
                        uint8_t level_color, int age_s) {
@@ -1707,18 +1731,44 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, -1);
     rule(fb, 56);
 
-    /* the profiles, then USB and the output */
+    /* the profiles, then USB: its state, the reports sent over it and those
+     * that failed (the output in use is in the H row) */
     profiles(fb, d, in->status, 6, 59);
     x = put(fb, 50, 59, "USB", DBG_LABEL) + 3;
-    x = put(fb, x, 59, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--", d->usb == 2 ? DBG_GOOD : DBG_TEXT) + 6;
-    x = put(fb, x, 59, "OUT", DBG_LABEL) + 3;
-    put(fb, x, 59, usb_out ? "USB" : "BLE", in->status && in->status->host_connected ? DBG_GOOD : DBG_BAD);
+    x = put(fb, x, 59, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--",
+            d->usb == 2 ? (usb_out && in->status->host_connected ? DBG_GOOD : DBG_TEXT) : DBG_TEXT) + 6;
+    x = put(fb, x, 59, "TX", DBG_LABEL);
+    count_text(buf, sizeof(buf), d->usb_reports);
+    x = put(fb, x, 59, buf, DBG_TEXT) + 4;
+    x = put(fb, x, 59, "E", DBG_LABEL);
+    snprintf(buf, sizeof(buf), "%u", d->usb_errors > 99 ? 99 : d->usb_errors);
+    put(fb, x, 59, buf, d->usb_errors ? DBG_WARN : DBG_TEXT);
 
-    /* layer (number, name, all that are on), typing speed */
+    /* layer (number, name, all that are on); the modifiers, lit while held
+     * (either side); typing speed */
+    snprintf(buf, sizeof(buf), "%uWPM", d->wpm);
+    const int wpm_x = FX_W - 4 - 5 * (int)strlen(buf);
+    put(fb, wpm_x, 68, buf, DBG_TEXT);
+    static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
+    static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
+    const int mods_x = wpm_x - 6 - 4 * 7;
+    for (int i = 0; i < 4; i++) {
+        const bool on = (d->mods & mod_bit[i]) != 0;
+        const int gx = mods_x + i * 7;
+        if (on) {
+            for (int dy = -1; dy <= 7; dy++) {
+                line(fb, gx - 1, 68 + dy, gx + 5, 68 + dy, DBG_TEXT);
+            }
+        }
+        const char g[2] = {mod_glyph[i], '\0'};
+        put(fb, gx, 68, g, on ? DBG_BG : DBG_LABEL);
+    }
     snprintf(buf, sizeof(buf), "L%u", d->layer);
     x = put(fb, 5, 68, buf, DBG_BRIGHT) + 3;
-    if (d->layer_name) {
-        snprintf(buf, sizeof(buf), "%.7s", d->layer_name);
+    /* the name gets what room the layer bits leave before the modifiers */
+    const int name_room = (mods_x - 4 - 4 * 5 - 3 - x) / 5;
+    if (d->layer_name && name_room > 0) {
+        snprintf(buf, sizeof(buf), "%.*s", name_room > 7 ? 7 : name_room, d->layer_name);
         for (char *c = buf; *c; c++) {
             *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c; /* the small letters are for typed text */
         }
@@ -1726,21 +1776,28 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
     snprintf(buf, sizeof(buf), "%04X", (unsigned)(d->layers & 0xffff));
     put(fb, x, 68, buf, DBG_LABEL);
-    snprintf(buf, sizeof(buf), "%uWPM", d->wpm);
-    put_right(fb, FX_W - 4, 68, buf, DBG_TEXT);
 
-    /* modifiers, lit while held (either side), and the presses counted */
-    static const char *const mods[] = {"CTL", "SFT", "ALT", "GUI"};
-    for (int i = 0; i < 4; i++) {
-        const bool on = (d->mods & (0x11 << i)) != 0;
-        if (on) {
-            for (int dy = -1; dy <= 7; dy++) {
-                line(fb, 4 + i * 20, 76 + dy, 4 + i * 20 + 16, 76 + dy, DBG_TEXT);
-            }
-        }
-        put(fb, 5 + i * 20, 76, mods[i], on ? DBG_BG : DBG_LABEL);
+    /* the dongle's supply; the chips' temperatures, left half, dongle,
+     * right half; key presses since the dongle started */
+    if (d->vdd_mv) {
+        snprintf(buf, sizeof(buf), "%u.%02uV", d->vdd_mv / 1000, d->vdd_mv % 1000 / 10);
+        x = put(fb, 5, 76, buf, DBG_TEXT) + 5;
+    } else {
+        x = put(fb, 5, 76, "-.--V", DBG_LABEL) + 5;
     }
-    snprintf(buf, sizeof(buf), "N%u", (unsigned)(d->presses % 1000000));
+    for (int i = 0; i < 3; i++) {
+        const char label[2] = {"LDR"[i], '\0'};
+        x = put(fb, x, 76, label, DBG_LABEL);
+        if (d->temp_known[i]) {
+            snprintf(buf, sizeof(buf), "%d", d->temp_c[i] < -9 ? -9 : d->temp_c[i] > 99 ? 99 : d->temp_c[i]);
+        } else {
+            strcpy(buf, "--");
+        }
+        x = put(fb, x, 76, buf, !d->temp_known[i] ? DBG_LABEL : d->temp_c[i] >= 60 ? DBG_WARN : DBG_TEXT) + 3;
+    }
+    put(fb, x - 3, 76, "C", DBG_LABEL);
+    count_text(buf + 1, sizeof(buf) - 1, d->presses);
+    buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);
     rule(fb, 85);
 

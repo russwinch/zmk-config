@@ -214,7 +214,8 @@ int main(int argc, char **argv) {
         .half = {{.up = true, .rssi_known = true, .rssi = -52, .interval = 6, .latency = 30, .drops = 2, .reason = 0x08},
                  {.up = true, .rssi_known = true, .rssi = -71, .interval = 6, .latency = 30}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .interval = 12, .drops = 1, .reason = 0x13},
-        .battery_age_s = {12, 340}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
+        .battery_age_s = {12, 340}, .usb_reports = 18342, .usb_errors = 0, .vdd_mv = 3312,
+        .temp_known = {true, true, true}, .temp_c = {27, 31, 26}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };
     const int8_t *encoders;
@@ -264,7 +265,7 @@ int main(int argc, char **argv) {
             debug.held = 1ull << in.keys[in.n_keys - 1] | debug.held_layer | debug.held_mod;
             debug.layer = debug.held_layer ? 3 : 0;
             debug.layer_name = debug.held_layer ? "Nav" : "Mac";
-            debug.mods = debug.presses % 7 == 0 ? 0x02 : 0;
+            debug.mods = debug.presses % 7 == 0 ? 0x0a : 0;
             in.chars[in.n_chars++] = typed[typed_at++ % (sizeof(typed) - 1)];
             energy += 0.03f;
         }

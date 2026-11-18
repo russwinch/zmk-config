@@ -7,7 +7,7 @@
  * It uses the Battery Level Status characteristic of Bluetooth's standard
  * battery service, which ZMK already runs on every half for its level: the
  * charge state "charging" on USB power, "discharging" off it. The dongle
- * reads it (src/dongle_half_charging.c). A half doesn't know when its charger
+ * reads it (src/dongle_half_info.c). A half doesn't know when its charger
  * has finished, so "charging" means only "plugged in".
  */
 
