@@ -598,16 +598,20 @@ static bool borrow_memory(void) {
 #define KEY_TRANSFORM DT_CHOSEN(zmk_matrix_transform)
 #endif
 #ifdef KEY_TRANSFORM
-static const uint16_t key_places[] = DT_PROP(KEY_TRANSFORM, map);
+static uint16_t key_places[] = DT_PROP(KEY_TRANSFORM, map);
 #endif
 
 /* Which key position pressing each encoder is, in the order of the dongle
  * overlay's &sensors (the halves' own order), so the Keys and Debug screens
  * draw those keys as knobs. -1 for an encoder with no push. */
 #if IS_ENABLED(CONFIG_SHIELD_WATERFOWL_DONGLE)
-/* left roller (inner), left dial (outer), right dial (outer), right roller (inner) */
-static const int8_t encoder_keys[] = {34, 30, 39, 35};
+/* left roller (inner), left dial (outer), right dial (outer), right roller
+ * (inner). The pushes are the other way round from the transform's bottom
+ * row (the left roller is 30, at its outer end), so their places swap
+ * (WATERFOWL_PUSH_PLACES) for each knob to be drawn where it is. */
+static const int8_t encoder_keys[] = {30, 34, 35, 39};
 #define HAS_ENCODER_KEYS
+#define WATERFOWL_PUSH_PLACES
 #elif IS_ENABLED(CONFIG_SHIELD_SPLITKB_AURORA_CORNE_DONGLE)
 /* left, right: in place of the outer thumb keys */
 static const int8_t encoder_keys[] = {36, 41};
@@ -626,6 +630,17 @@ static void begin_animation(void) {
     }
     uint16_t *const native = native_palette;
 #ifdef KEY_TRANSFORM
+#ifdef WATERFOWL_PUSH_PLACES
+    static bool swapped;
+    if (!swapped) {
+        const uint16_t outer_left = key_places[30], outer_right = key_places[39];
+        key_places[30] = key_places[34];
+        key_places[34] = outer_left;
+        key_places[39] = key_places[35];
+        key_places[35] = outer_right;
+        swapped = true;
+    }
+#endif
     fx_set_keys(key_places, ARRAY_SIZE(key_places));
 #endif
 #ifdef HAS_ENCODER_KEYS

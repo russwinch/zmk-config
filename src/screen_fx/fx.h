@@ -18,6 +18,15 @@
 #define FX_W 140
 #define FX_H 120
 
+/* The panel's corners are rounded off, about 43 of its pixels across (the
+ * radius Adafruit gives for the same 1.69" 280x240 glass), so 21.5 of ours:
+ * what is drawn there isn't seen. */
+#define FX_CORNER_R 21.5f
+
+/* How many columns in from either side rows `y0` to `y1` have to start to
+ * be wholly on the panel: 0 away from the corners. */
+int fx_corner_inset(int y0, int y1);
+
 /* Palette entries 0..251 belong to the animation; these are fixed. */
 #define FX_COLORS 252
 #define FX_BLACK 252
@@ -120,7 +129,9 @@ struct fx_debug {
     uint64_t held_mod;    /* those of them holding a modifier down */
     uint64_t held_layer;  /* and those holding a layer on */
     const char *keyboard; /* its name, or NULL */
-    int16_t turned[FX_MAX_ENCODERS]; /* each encoder's steps since power-up, by sensor (+ clockwise) */
+    int16_t turned[FX_MAX_ENCODERS]; /* each encoder's turn since power-up, by sensor (+ clockwise), in the
+                                      * whole degrees its events carry (ZMK's EC11: 360 / steps a pulse,
+                                      * 4 on the Waterfowl); wraps round */
     uint32_t presses;     /* key presses since power-up */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;

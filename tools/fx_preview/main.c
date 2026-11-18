@@ -50,9 +50,10 @@ static const uint16_t waterfowl_keys[] = {
     RC(0, 0), RC(0, 1), RC(0, 2), RC(0, 3), RC(0, 4), RC(0, 5), RC(0, 6), RC(0, 7), RC(0, 8), RC(0, 9),
     RC(1, 0), RC(1, 1), RC(1, 2), RC(1, 3), RC(1, 4), RC(1, 5), RC(1, 6), RC(1, 7), RC(1, 8), RC(1, 9),
     RC(2, 0), RC(2, 1), RC(2, 2), RC(2, 3), RC(2, 4), RC(2, 5), RC(2, 6), RC(2, 7), RC(2, 8), RC(2, 9),
-    RC(3, 0), RC(3, 1), RC(3, 2), RC(3, 3), RC(3, 4), RC(3, 5), RC(3, 6), RC(3, 7), RC(3, 8), RC(3, 9),
+    /* the encoder pushes' places swapped, as src/dongle_screen_fx.c does */
+    RC(3, 4), RC(3, 1), RC(3, 2), RC(3, 3), RC(3, 0), RC(3, 9), RC(3, 6), RC(3, 7), RC(3, 8), RC(3, 5),
 };
-static const int8_t waterfowl_encoders[] = {34, 30, 39, 35};
+static const int8_t waterfowl_encoders[] = {30, 34, 35, 39};
 static const uint16_t corne_keys[] = {
     RC(0, 0), RC(0, 1), RC(0, 2), RC(0, 3), RC(0, 4), RC(0, 5), RC(0, 6), RC(0, 7), RC(0, 8), RC(0, 9), RC(0, 10), RC(0, 11),
     RC(1, 0), RC(1, 1), RC(1, 2), RC(1, 3), RC(1, 4), RC(1, 5), RC(1, 6), RC(1, 7), RC(1, 8), RC(1, 9), RC(1, 10), RC(1, 11),
@@ -281,7 +282,9 @@ int main(int argc, char **argv) {
         for (int e = 0; e < n_encoders; e++) {
             const float from = 0.05f + e * 0.2f, t = (at - from) / 0.15f;
             if (t >= 0 && t < 1 && f % 3 == 0) {
-                const int step = t < 0.6f ? 1 : -1;
+                /* as ZMK's EC11 driver gives it: whole degrees, 4 a pulse on the
+                 * Waterfowl (80 steps a turn); here a click, 4 pulses, at a time */
+                const int step = t < 0.6f ? 16 : -16;
                 debug.turned[e] += step;
                 debug.log[0] = debug.log[1];
                 debug.log[1] = debug.log[2];

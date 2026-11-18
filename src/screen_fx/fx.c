@@ -40,6 +40,27 @@ static inline float rndf(void) { return (int32_t)(rnd() & 0xffff) / 32768.0f - 1
 
 static inline float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+int fx_corner_inset(int y0, int y1) {
+    int inset = 0;
+    for (int y = y0; y <= y1; y++) {
+        /* how far the middle of the row is into a corner's curve */
+        const float yc = y + 0.5f, top = FX_CORNER_R - yc, bottom = yc - (FX_H - FX_CORNER_R);
+        const float into = top > bottom ? top : bottom;
+        if (into <= 0) {
+            continue;
+        }
+        if (into >= FX_CORNER_R) {
+            return FX_W / 2;
+        }
+        /* the first pixel whose middle is on the panel, and one more for the
+         * radius being a measurement of another maker's glass */
+        const float edge = FX_CORNER_R - sqrtf(FX_CORNER_R * FX_CORNER_R - into * into);
+        const int need = (int)ceilf(edge - 0.5f) + 1;
+        inset = need > inset ? need : inset;
+    }
+    return inset;
+}
+
 static inline uint16_t rgb(int r, int g, int b) {
     return (uint16_t)(((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3));
 }
@@ -461,10 +482,10 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- terminal: what you type, in green, fading away ------------------------ */
 
-#define TERM_COLS 26
+#define TERM_COLS 25
 #define TERM_ROWS 10 /* down to just above the status text */
-#define TERM_X 5
-#define TERM_Y 4
+#define TERM_X 7     /* the top line clear of the corners' curve */
+#define TERM_Y 6
 #define TERM_PITCH 9 /* rows; characters are 5 apart */
 #define TERM_LIT 205 /* a character once its first flash is over */
 
@@ -717,6 +738,8 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
             break;
         }
         int base = 46 - 2 * (code_row - r); /* dimmer on the way up */
+        /* a letter the corners' curve would cut into isn't written there */
+        const int inset = fx_corner_inset(top + 1, top + 5);
         for (int c = 0; c < CODE_COLS; c++) {
             if (code_cell[r][c].glyph == 0) {
                 continue;
@@ -724,6 +747,9 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
             /* written white hot, cooling to its colour */
             int heat = code_cell[r][c].heat;
             code_cell[r][c].heat = heat > cool ? heat - cool : 0;
+            if (3 + c * 5 < inset || 3 + c * 5 + 3 >= FX_W - inset) {
+                continue;
+            }
             uint8_t color = code_cell[r][c].hue * CODE_LEVELS + (heat > base ? heat : base);
             uint32_t bits = code_glyphs[code_cell[r][c].glyph];
             for (int y = 0; y < 5; y++) {
@@ -735,11 +761,13 @@ static void code_frame(uint8_t *fb, const struct fx_input *in) {
             }
         }
     }
-    /* the cursor */
-    for (int y = 0; y < 6; y++) {
+    /* the cursor, unless it is in a corner's curve as the letters aren't */
+    const int cursor_x = 3 + (code_col < CODE_COLS ? code_col : CODE_COLS - 1) * 5;
+    const int cursor_y = CODE_BOTTOM - (CODE_ROWS - 1 - code_row) * CODE_PITCH + (int)code_scroll;
+    const int cursor_inset = fx_corner_inset(cursor_y, cursor_y + 5);
+    for (int y = 0; y < 6 && cursor_x >= cursor_inset && cursor_x + 3 < FX_W - cursor_inset; y++) {
         for (int x = 0; x < 4; x++) {
-            plot(fb, 3 + (code_col < CODE_COLS ? code_col : CODE_COLS - 1) * 5 + x,
-                 CODE_BOTTOM - (CODE_ROWS - 1 - code_row) * CODE_PITCH + (int)code_scroll + y, CODE_LEVELS - 1);
+            plot(fb, cursor_x + x, cursor_y + y, CODE_LEVELS - 1);
         }
     }
 }
@@ -1359,7 +1387,9 @@ enum {
 static uint8_t debug_heat[64]; /* how lately each key was pressed */
 static float debug_fade;
 static uint8_t knob_heat[FX_MAX_ENCODERS]; /* how lately each encoder was turned */
-static int16_t knob_seen[FX_MAX_ENCODERS];  /* its steps when last drawn */
+static int16_t knob_seen[FX_MAX_ENCODERS];  /* its `turned` when last drawn */
+static float knob_angle[FX_MAX_ENCODERS];   /* where its mark is to be, in degrees on the screen */
+static float knob_shown[FX_MAX_ENCODERS];   /* and where it is, catching up a frame at a time */
 static bool knob_known;                     /* knob_seen has been read */
 
 /* The theme's colours: the Keys screen's too. */
@@ -1383,6 +1413,8 @@ static void debug_start(uint16_t *palette) {
     (void)palette;
     memset(debug_heat, 0, sizeof(debug_heat));
     memset(knob_heat, 0, sizeof(knob_heat));
+    memset(knob_angle, 0, sizeof(knob_angle));
+    memset(knob_shown, 0, sizeof(knob_shown));
     knob_known = false;
 }
 
@@ -1423,19 +1455,23 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 #define DBG_COL_REASON 124
 #define DBG_COL_AGE 138
 
-#define KNOB_STEPS 8 /* an encoder step turns a knob's mark this much of the way round */
+/* A knob's mark turns this many times as far as the encoder does: one of the
+ * Waterfowl's 18 degree clicks moves it 45, an eighth of the way round. */
+#define KNOB_GAIN 2.5f
+/* Of the way still to go, how much the mark catches up in a 30th of a
+ * second: a click's turn is spread over the next few frames. */
+#define KNOB_EASE 0.3f
 
 /*
  * An encoder, as a knob filling the `wide` by `high` cell at (x, y): a disc
  * of `fill` inside a `ring`, with a `mark` on the rim (and, on a knob big
- * enough, a line in to the middle) that turns a KNOB_STEPS'th of the way
- * round, clockwise, for each step of `position`.
+ * enough, a line in to the middle) at `degrees` clockwise from the top.
  */
 static void knob(uint8_t *fb, int x, int y, int wide, int high, uint8_t fill, uint8_t ring, uint8_t mark,
-                 int position) {
+                 float degrees) {
     const float r = (wide < high ? wide : high) / 2.0f, cx = x + (wide - 1) / 2.0f, cy = y + (high - 1) / 2.0f;
-    const int step = ((position % KNOB_STEPS) + KNOB_STEPS) % KNOB_STEPS;
-    const float ux = sinf(step * TWO_PI / KNOB_STEPS), uy = -cosf(step * TWO_PI / KNOB_STEPS); /* 0: up */
+    const float a = degrees * (TWO_PI / 360);
+    const float ux = sinf(a), uy = -cosf(a); /* 0: up */
     for (int py = y; py < y + high; py++) {
         for (int px = x; px < x + wide; px++) {
             const float dx = px - cx, dy = py - cy, d2 = dx * dx + dy * dy;
@@ -1469,8 +1505,16 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
     for (int i = 0; i < encoder_count; i++) {
         if (knob_known && d->turned[i] != knob_seen[i]) {
             knob_heat[i] = 15;
+            knob_angle[i] += (int16_t)(d->turned[i] - knob_seen[i]) * KNOB_GAIN; /* wraps as `turned` does */
         }
         knob_seen[i] = d->turned[i];
+        const float ease = KNOB_EASE * in->step;
+        knob_shown[i] += (knob_angle[i] - knob_shown[i]) * (ease > 1 ? 1 : ease);
+        if (knob_shown[i] > 360 || knob_shown[i] < -360) { /* keep both small, the same way round */
+            const float whole = knob_shown[i] > 0 ? 360 : -360;
+            knob_shown[i] -= whole;
+            knob_angle[i] -= whole;
+        }
     }
     knob_known = true;
     for (int key = 0; key < key_count && key < (int)sizeof(debug_heat); key++) {
@@ -1487,7 +1531,7 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
             const int heat = knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
             knob(fb, kx, ky, pitch - gap, high, held || debug_heat[key] ? color : DBG_BG,
                  held ? color : heat ? DBG_HEAT + heat : DBG_DIM,
-                 held ? DBG_BG : knob_heat[encoder] ? DBG_BRIGHT : DBG_LABEL, d->turned[encoder]);
+                 held ? DBG_BG : knob_heat[encoder] ? DBG_BRIGHT : DBG_LABEL, knob_shown[encoder]);
             continue;
         }
         for (int y = 0; y < high; y++) {
@@ -1604,14 +1648,16 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     memset(fb, DBG_BG, PIXELS);
 
     /* the dongle: which build it is, up time, activity, this screen's speed; why it last
-     * restarted and how full LVGL's memory is */
-    int x = put(fb, 5, 4, d->firmware ? d->firmware : "DBG", DBG_BRIGHT) + 5;
+     * restarted and how full LVGL's memory is. The top line is in the
+     * corners' curve, so it starts further in and ends as far from the right */
+    const int top_inset = fx_corner_inset(5, 11);
+    int x = put(fb, top_inset, 5, d->firmware ? d->firmware : "DBG", DBG_BRIGHT) + 4;
     snprintf(buf, sizeof(buf), "%u:%02u:%02u", (unsigned)(d->uptime_s / 3600), (unsigned)(d->uptime_s / 60 % 60),
              (unsigned)(d->uptime_s % 60));
-    x = put(fb, x, 4, buf, DBG_TEXT) + 5;
-    x = put(fb, x, 4, d->activity == 0 ? "ACT" : d->activity == 1 ? "IDL" : "SLP", d->activity ? DBG_WARN : DBG_GOOD) + 5;
+    x = put(fb, x, 5, buf, DBG_TEXT) + 4;
+    put(fb, x, 5, d->activity == 0 ? "ACT" : d->activity == 1 ? "IDL" : "SLP", d->activity ? DBG_WARN : DBG_GOOD);
     snprintf(buf, sizeof(buf), "%uF %uMS", d->fps, d->frame_ms);
-    put(fb, x, 4, buf, DBG_TEXT);
+    put_right(fb, FX_W - top_inset, 5, buf, DBG_TEXT);
 
     x = put(fb, 7, 12, "RST", DBG_LABEL) + 3;
     const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
@@ -1694,12 +1740,16 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put(fb, 5, 88 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
     }
 
-    const int board_pitch = board_cols > 10 ? 4 : 5, board_left = 139 - board_cols * board_pitch;
+    /* the board, clear of the bottom right corner's curve */
+    const int board_pitch = board_cols > 10 ? 4 : 5;
+    const int board_left = FX_W - 1 - fx_corner_inset(88, 108) - board_cols * board_pitch;
     board(fb, in, board_left, 88, board_pitch, 4, 1, 1);
 
     /* the quickest a key has come back down after going up: a switch that
-     * bounces shows here as a few milliseconds */
-    x = put(fb, 14, 112, "BNC", DBG_LABEL) + 3;
+     * bounces shows here as a few milliseconds. This line is in the bottom
+     * corners' curve, so it keeps in from both sides */
+    const int bottom_inset = fx_corner_inset(112, 118);
+    x = put(fb, bottom_inset, 112, "BNC", DBG_LABEL) + 3;
     if (d->bounce_ms) {
         snprintf(buf, sizeof(buf), "%uMS P%02u", d->bounce_ms, d->bounce_key);
         x = put(fb, x, 112, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
@@ -1711,7 +1761,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
      * left as the bounce leaves room for. Too long for that, it loses words
      * from the front (AURORA CORNE: CORNE), and then letters from the end */
     if (d->keyboard) {
-        const int room = (FX_W - 4 - (x + 5)) / 5; /* letters, 5 apart */
+        const int right = FX_W - bottom_inset;
+        const int room = (right - (x + 5)) / 5; /* letters, 5 apart */
         const char *name = d->keyboard;
         while ((int)strlen(name) > room && strchr(name, ' ') != NULL) {
             name = strchr(name, ' ') + 1;
@@ -1723,7 +1774,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
         const int wide = 5 * (int)strlen(buf);
         int name_x = board_left + (FX_W - 1 - board_left - wide) / 2;
-        name_x = name_x + wide > FX_W - 4 ? FX_W - 4 - wide : name_x;
+        name_x = name_x + wide > right ? right - wide : name_x;
         name_x = name_x < x + 5 ? x + 5 : name_x;
         put(fb, name_x, 112, buf, DBG_LABEL);
     }
@@ -1758,11 +1809,11 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 #define SIGNAL_H 9
 #define SPEED_FULL 60 /* words a minute */
 #define KEYS_BOARD_TOP 39
-#define KEYS_BOARD_H 52
+#define KEYS_BOARD_H 50
 #define METER_COLS 16
 #define METER_STEPS 6     /* lights in a bar */
 #define METER_STEP_H 2    /* each this high, a row apart */
-#define METER_FOOT 114
+#define METER_FOOT 108 /* high enough that the outer bars clear the bottom corners' curve */
 #define METER_KEY 0.55f   /* what a key adds to its column's bar, of a full one */
 #define METER_SPILL 0.2f  /* and to the bars beside it */
 #define METER_FALL 0.5f   /* full bars a second */
@@ -1929,7 +1980,10 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
         rows = row > rows ? row : rows;
     }
-    const int split = 4, gap = 2, pitch = (FX_W - 6 - split) / board_cols;
+    /* in from the sides by as much as the meters' bottom lights need, at least 3 */
+    const int meter_top = METER_FOOT - (METER_STEPS - 1) * (METER_STEP_H + 1) - (METER_STEP_H - 1);
+    const int margin = fx_corner_inset(meter_top, METER_FOOT) > 3 ? fx_corner_inset(meter_top, METER_FOOT) : 3;
+    const int split = 4, gap = 2, pitch = (FX_W - 2 * margin - split) / board_cols;
     int high = pitch - gap;
     if (rows * (high + gap) - gap > KEYS_BOARD_H) {
         high = (KEYS_BOARD_H + gap) / rows - gap;

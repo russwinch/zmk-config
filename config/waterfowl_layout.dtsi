@@ -1,8 +1,11 @@
 /*
  * Waterfowl: 40 positions + 4 encoders. Layout glue shared by
  * waterfowl.keymap and waterfowl_dongle.keymap. Layers live in keymap.dtsi.
- * Bottom row per side: outer encoder push, two thumb keys, inner roller push.
- * The outer layer/space keys repeat the core thumb next to them.
+ * Bottom row per side: an encoder push at each end with three thumb keys
+ * between. The pushes are the other way round from ZMK's own picture of the
+ * board: 30 is the left roller (inner) and 34 the left dial (outer), 35 the
+ * right dial (outer) and 39 the right roller (inner). The outer layer/space
+ * keys repeat the core thumb next to them.
  *
  *    0  1  2  3  4             5  6  7  8  9
  *   10 11 12 13 14            15 16 17 18 19
@@ -18,7 +21,7 @@
     k00 k01 k02 k03 k04  k05 k06 k07 k08 k09 \
     k10 k11 k12 k13 k14  k15 k16 k17 k18 k19 \
     k20 k21 k22 k23 k24  k25 k26 k27 k28 k29 \
-    X_LO k30 k30 k31 X_LI  X_RI k32 k33 k33 X_RO
+    X_LI k30 k30 k31 X_LO  X_RO k32 k33 k33 X_RI
 #define KB_LAYOUT_BASE(...) WATERFOWL(&kp C_MUTE, &kp C_MUTE, XXX, &kp C_PP, __VA_ARGS__)
 #define KB_LAYOUT(...)      WATERFOWL(___, ___, ___, ___, __VA_ARGS__)
 

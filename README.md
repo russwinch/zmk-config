@@ -298,8 +298,10 @@ On the Keys and Debug screens, a key position that is an encoder's push is
 drawn as a round knob instead of a square: on the Waterfowl both rollers and
 both dials, on the Aurora Corne the outer thumb keys. Pushed, it fills like a
 key (white, then glowing for two seconds). Turned, its ring glows for two seconds and
-the mark on its rim steps an eighth of the way round per step, clockwise for a
-positive step (the `E0 +1` in the Debug log), so you can see it turn. Which
+the mark on its rim turns with it, two and a half times as far (a click of a
+Waterfowl encoder, 18 degrees, moves it an eighth of the way round), gliding there
+over a few frames; clockwise for a positive turn (the `E0 +4` in the Debug log,
+in degrees as ZMK's encoder driver gives them). Which
 position is which encoder is `encoder_keys` in `src/dongle_screen_fx.c`, in the
 order of the dongle overlay's `&sensors`; a board missing from it has no knobs.
 On the Debug screen the knobs are only 4 pixels across (3 on the Corne).
@@ -408,7 +410,10 @@ The drawing code (`src/screen_fx/fx.c`) has no firmware in it, so
 `tools/fx_preview.py` can run it on a computer and save each animation as a
 GIF in `fx_preview_out/` (needs gcc, git and Pillow): the quick way to try a
 change or a new animation. The status text is drawn as on the dongle; its
-fonts are fetched from the Prospector module the first time.
+fonts are fetched from the Prospector module the first time. The panel's
+corners are rounded off (about 43 of its pixels, `FX_CORNER_R` in
+`src/screen_fx/fx.h`, which `fx_corner_inset` keeps text clear of), and the
+GIFs black them out the same way; `--square` shows the whole picture.
 `--board waterfowl` (or `corne`) draws Keys and Debug on that board,
 encoders turning, instead of the Forager. `tools/fx_preview.py --saver thermal` saves each screensaver coming over that
 animation and going again, and `--power keys` the panel going off and

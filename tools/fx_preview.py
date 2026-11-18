@@ -17,6 +17,9 @@ The battery levels and the output are drawn over them as on the dongle
 are fetched once, at the commit config/west.yml pins, into fx_preview_out/;
 or point --prospector at a checkout of the module.
 
+The panel's rounded corners (fx.h's FX_CORNER_R) are blacked out, as the
+glass hides them; --square shows the whole picture.
+
 Needs gcc, git and Pillow (pip install pillow). Colours are the panel's
 16-bit ones; speed and tearing on the real screen will differ.
 """
@@ -28,7 +31,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 REPO = Path(__file__).resolve().parent.parent
 FX_DIR = REPO / "src" / "screen_fx"
@@ -36,6 +39,15 @@ TOOL_DIR = REPO / "tools" / "fx_preview"
 WIDTH, HEIGHT = 280, 240
 PROSPECTOR_URL = "https://github.com/carrefinho/prospector-zmk-module"
 ENV = dict(os.environ)  # for main.c: FX_PREVIEW_BOARD
+CORNERS = [True]  # black out the corners the panel's glass hides (--square: don't)
+
+
+def corner_mask() -> Image.Image:
+    """White where the panel shows, with its corners rounded as fx.h has them."""
+    radius = 2 * float(re.search(r"#define FX_CORNER_R ([\d.]+)f", (FX_DIR / "fx.h").read_text()).group(1))
+    mask = Image.new("L", (WIDTH, HEIGHT), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, WIDTH - 1, HEIGHT - 1], radius, fill=255)
+    return mask
 FONT_DIR = "boards/shields/prospector_adapter/src/fonts"
 
 
@@ -104,7 +116,11 @@ def save(images: list[Image.Image], path: Path, fps: float) -> None:
 def render(exe: Path, *arguments: object) -> list[Image.Image]:
     raw = subprocess.run([str(exe), *map(str, arguments)], check=True, capture_output=True, env=ENV).stdout
     size = WIDTH * HEIGHT * 3
-    return [Image.frombytes("RGB", (WIDTH, HEIGHT), raw[i:i + size]) for i in range(0, len(raw), size)]
+    images = [Image.frombytes("RGB", (WIDTH, HEIGHT), raw[i:i + size]) for i in range(0, len(raw), size)]
+    if CORNERS[0]:
+        mask, black = corner_mask(), Image.new("RGB", (WIDTH, HEIGHT))
+        images = [Image.composite(image, black, mask) for image in images]
+    return images
 
 
 def main() -> None:
@@ -122,8 +138,11 @@ def main() -> None:
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
     parser.add_argument("--board", choices=["forager", "waterfowl", "corne"], default="forager",
                         help="the keyboard the Keys and Debug screens draw (default forager)")
+    parser.add_argument("--square", action="store_true",
+                        help="show the corners too, which the panel's rounded glass hides")
     args = parser.parse_args()
     ENV["FX_PREVIEW_BOARD"] = args.board
+    CORNERS[0] = not args.square
 
     args.out.mkdir(parents=True, exist_ok=True)
     module = args.prospector or prospector(REPO / "fx_preview_out")
