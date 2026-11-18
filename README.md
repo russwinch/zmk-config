@@ -254,7 +254,7 @@ remembered as the screen and the theme are, after the same 30 seconds.
 Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
 Config layer's **Theme next** key (the O key) steps through, and round
 again (**Theme prev**, the I key, goes back). The screen showing changes colour as it is, and the theme's name
-and its place in the list (`PHOSPHOR 2/15`) show in the middle of the screen
+and its place in the list (`PHOSPHOR 2/18`) show in the middle of the screen
 for a second and a half, on any screen. Thermal and the screensavers keep
 their own colours: there the name is all that shows.
 The theme is remembered as the screen is, 30 seconds after it was last
@@ -277,12 +277,16 @@ changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 | 13 | CATPPUCCIN | the editor theme (Mocha) | mauve and blue pastels on black |
 | 14 | NORD | the editor theme | frost blues on black |
 | 15 | MONO | the white phosphor terminal | white and greys on black |
+| 16 | GITHUB LIGHT | GitHub's light theme | near-black on white, blue captions |
+| 17 | LATTE | Catppuccin's light theme | slate on pale grey, mauve captions |
+| 18 | GRUVBOX LIGHT | Gruvbox's light theme | dark grey on cream, orange captions |
 
 Every colour of the screens is in one file, `src/screen_fx/colors.h`. A
 theme is one line of eleven colours there (`schemes`): add, change or drop
-lines. They are all on pure black, in strong colours with their captions
-and dim parts in the same strong hue rather than greyed down: under a desk
-lamp, a dark or off-black theme looks flat on the backlit panel. Every
+lines. The dark ones are all on pure black, in strong colours with their
+captions and dim parts in the same strong hue rather than greyed down:
+under a desk lamp, a dark or off-black theme looks flat on the backlit
+panel. The last three are light. Every
 theme keeps green, amber and red for good, weak and lost (SITH's lost is
 magenta), and has its own colours for a key holding a modifier and one
 holding a layer. A light theme works too: its `bright` (a held key, the

@@ -95,6 +95,15 @@ static const struct scheme {
     /* the white phosphor terminal */
     {"MONO", {0, 0, 0}, {85, 85, 85}, {170, 170, 170}, {235, 235, 235}, {255, 255, 255}, {255, 255, 255},
      {70, 255, 120}, {255, 210, 0}, {255, 50, 40}, {255, 150, 30}, {120, 190, 255}},
+    /* GitHub's light theme: near-black on white, captioned in its blue */
+    {"GITHUB LIGHT", {255, 255, 255}, {182, 227, 255}, {9, 105, 218}, {31, 35, 40}, {0, 0, 0}, {9, 105, 218},
+     {26, 127, 55}, {154, 103, 0}, {207, 34, 46}, {188, 76, 0}, {130, 80, 223}},
+    /* Catppuccin's light theme: slate on pale grey, captioned in mauve */
+    {"LATTE", {239, 241, 245}, {213, 199, 245}, {136, 57, 239}, {76, 79, 105}, {17, 17, 27}, {30, 102, 245},
+     {64, 160, 43}, {223, 142, 29}, {210, 15, 57}, {254, 100, 11}, {23, 146, 153}},
+    /* Gruvbox's light theme: dark grey on cream, captioned in orange */
+    {"GRUVBOX LIGHT", {251, 241, 199}, {235, 200, 154}, {175, 58, 3}, {60, 56, 54}, {29, 32, 33}, {7, 102, 120},
+     {121, 116, 14}, {181, 118, 20}, {157, 0, 6}, {66, 123, 88}, {143, 63, 113}},
 };
 #define SCHEMES ((int)(sizeof(schemes) / sizeof(schemes[0])))
 
