@@ -1,6 +1,6 @@
 /*
- * Halves with a nice-view-gem screen (the Aurora Corne's, both halves,
- * without the dongle): while on USB power, show only the bolt after "BAT",
+ * The Aurora Corne's left half without the dongle, the one nice-view-gem
+ * screen: while on USB power, show only the bolt after "BAT",
  * not a percentage. The level read while charging is the charger's voltage,
  * near 100 whatever the charge, as on the dongle and the left half's screen
  * behind it.

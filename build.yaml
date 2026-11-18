@@ -24,11 +24,12 @@ include:
     cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
     artifact-name: urchin_left_peripheral_for_dongle
 
-  # --- splitkb Aurora Corne (nice!nano v2, nice!view gem, encoders) ---
+  # --- splitkb Aurora Corne (nice!nano v2, nice!view gem on the left, encoders) ---
   - board: nice_nano//zmk
     shield: splitkb_aurora_corne_left nice_view_adapter nice_view_gem
   - board: nice_nano//zmk
-    shield: splitkb_aurora_corne_right nice_view_adapter nice_view_gem
+    # no screen on the right half
+    shield: splitkb_aurora_corne_right
 
   # --- splitkb Aurora Corne via Prospector dongle ---
   - board: xiao_ble//zmk
