@@ -68,10 +68,11 @@ config WATERFOWL_HALF_STATUS_SCREEN
     select LV_FONT_MONTSERRAT_14
     select LV_FONT_MONTSERRAT_16
     select LV_FONT_MONTSERRAT_18
-    select LV_FONT_UNSCII_8
+    select LV_FONT_MONTSERRAT_28
+    select LV_FONT_MONTSERRAT_36
     help
-      Replaces ZMK's stock peripheral screen with both batteries and the
-      dongle's Bluetooth profile. Needs NICE_VIEW_WIDGET_STATUS=n (the stock
+      Replaces ZMK's stock peripheral screen with both batteries, big, and
+      the dongle's output (USB, or the active Bluetooth profile). Needs NICE_VIEW_WIDGET_STATUS=n (the stock
       screen) and the half_status behavior node (config/half_status.dtsi).
       Turned on for the dongle build of each left half with a nice!view
       (Waterfowl, Urchin, Aurora Corne) in build.yaml.

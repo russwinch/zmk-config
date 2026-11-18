@@ -7,18 +7,8 @@
  * half can't know itself comes from the dongle through the `half_status`
  * behavior (src/half_status.h, sent by src/dongle_half_status.c).
  *
- * Drawing follows ZMK's nice!view widgets (app/boards/shields/nice_view,
- * MIT): each 68x68 canvas is drawn upright, then rotated onto the display.
- *
- *   ┌───────────┐  top canvas
- *   │ L: [██] 85│  this half's battery (bolt when charging)
- *   │ R: [█ ] 60│  other half's battery, from the dongle (-- = unknown)
- *   │ ᛒ/USB   ✓ │  dongle output; link to the dongle (✕ = not connected)
- *   ├───────────┤  middle canvas
- *   │ (1)   (2) │  dongle's Bluetooth profiles: filled = active,
- *   │    (3)    │  ring = connected, dashed ring = paired
- *   │ (4)   (5) │
- *   └───────────┘  (bottom 24px left blank)
+ * The picture itself is drawn by src/half_status_draw.c (layout there;
+ * tools/half_status_preview.py renders it on a computer).
  */
 
 #define DT_DRV_COMPAT zmk_behavior_half_status
@@ -43,8 +33,11 @@
 #include <zmk/usb.h>
 
 #include "half_status.h"
+#include "half_status_draw.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+
+BUILD_ASSERT(HALF_STATUS_OTHER_BATTERY_UNKNOWN == HALF_STATUS_DRAW_UNKNOWN);
 
 /* ---------------------------------------------------------------------------
  * State from the dongle
@@ -167,175 +160,72 @@ ZMK_SUBSCRIPTION(half_status_local, zmk_usb_conn_state_changed);
 #endif
 
 /* ---------------------------------------------------------------------------
- * Drawing (display thread only)
+ * Drawing (display thread only). The picture is drawn upright on an offscreen
+ * canvas (src/half_status_draw.c), then rotated onto the one on the panel,
+ * as ZMK's nice!view widgets do. Only when something shown has changed: a
+ * redraw costs a rotate and a panel write, so repeats from the dongle, or
+ * events that change nothing on screen, leave the panel alone.
  */
 
-#define CANVAS_SIZE 68
 #define CANVAS_COLOR_FORMAT LV_COLOR_FORMAT_L8 // smallest format lv_draw_sw_rotate supports
 #define CANVAS_BUF_SIZE                                                                            \
-    LV_CANVAS_BUF_SIZE(CANVAS_SIZE, CANVAS_SIZE, LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT),     \
-                       LV_DRAW_BUF_STRIDE_ALIGN)
+    LV_CANVAS_BUF_SIZE(HALF_STATUS_DRAW_W, HALF_STATUS_DRAW_H,                                     \
+                       LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT), LV_DRAW_BUF_STRIDE_ALIGN)
 
 #define FG (IS_ENABLED(CONFIG_NICE_VIEW_WIDGET_INVERTED) ? lv_color_white() : lv_color_black())
 #define BG (IS_ENABLED(CONFIG_NICE_VIEW_WIDGET_INVERTED) ? lv_color_black() : lv_color_white())
 
-static uint8_t top_buf[CANVAS_BUF_SIZE];
-static uint8_t middle_buf[CANVAS_BUF_SIZE];
-static lv_obj_t *top_canvas;
-static lv_obj_t *middle_canvas;
+static uint8_t upright_buf[CANVAS_BUF_SIZE];
+static uint8_t panel_buf[CANVAS_BUF_SIZE];
+static lv_obj_t *upright_canvas; // hidden, drawn on
+static lv_obj_t *panel_canvas;   // shown, rotated copy
+static struct half_status_view shown;
+static bool drawn;
 
-static void rotate_canvas(lv_obj_t *canvas) {
-    static uint8_t copy[CANVAS_BUF_SIZE];
-    uint8_t *buf = lv_canvas_get_draw_buf(canvas)->data;
-    memcpy(copy, buf, sizeof(copy));
+static struct half_status_view current_view(void) {
+    struct remote_state r = get_remote();
+    struct half_status_view v;
+    memset(&v, 0, sizeof(v)); // padding too, for the memcmp in redraw()
 
-    const uint32_t stride = lv_draw_buf_width_to_stride(CANVAS_SIZE, CANVAS_COLOR_FORMAT);
-    lv_draw_sw_rotate(copy, buf, CANVAS_SIZE, CANVAS_SIZE, stride, stride,
-                      LV_DISPLAY_ROTATION_270, CANVAS_COLOR_FORMAT);
-}
-
-static void draw_rect(lv_obj_t *canvas, int32_t x, int32_t y, int32_t w, int32_t h,
-                      lv_color_t color) {
-    if (w <= 0 || h <= 0) {
-        return;
-    }
-    lv_draw_rect_dsc_t dsc;
-    lv_draw_rect_dsc_init(&dsc);
-    dsc.bg_color = color;
-
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-    lv_area_t coords = {x, y, x + w - 1, y + h - 1};
-    lv_draw_rect(&layer, &dsc, &coords);
-    lv_canvas_finish_layer(canvas, &layer);
-}
-
-static void draw_text(lv_obj_t *canvas, int32_t x, int32_t y, int32_t w, const lv_font_t *font,
-                      lv_text_align_t align, lv_color_t color, const char *text) {
-    lv_draw_label_dsc_t dsc;
-    lv_draw_label_dsc_init(&dsc);
-    dsc.color = color;
-    dsc.font = font;
-    dsc.align = align;
-    dsc.text = text;
-
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-    lv_area_t coords = {x, y, x + w - 1, y + CANVAS_SIZE};
-    lv_draw_label(&layer, &dsc, &coords);
-    lv_canvas_finish_layer(canvas, &layer);
-}
-
-static void draw_arc(lv_obj_t *canvas, int32_t x, int32_t y, int32_t r, int32_t start,
-                     int32_t end, int32_t width) {
-    lv_draw_arc_dsc_t dsc;
-    lv_draw_arc_dsc_init(&dsc);
-    dsc.color = FG;
-    dsc.width = width;
-    dsc.center.x = x;
-    dsc.center.y = y;
-    dsc.radius = r;
-    dsc.start_angle = start;
-    dsc.end_angle = end;
-
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-    lv_draw_arc(&layer, &dsc);
-    lv_canvas_finish_layer(canvas, &layer);
-}
-
-// One battery row, 18px tall: "L: [###] 85". level 0xFF = unknown.
-// 68px across: label 0-14, battery icon 15-42, number 44-67.
-static void draw_battery_row(lv_obj_t *canvas, int32_t y, const char *label, uint8_t level,
-                             bool charging) {
-    draw_text(canvas, 0, y, 15, &lv_font_montserrat_14, LV_TEXT_ALIGN_LEFT, FG, label);
-
-    // outline 25x12 at x=15, nub on the right, fill 0..21px
-    draw_rect(canvas, 15, y + 2, 25, 12, FG);
-    draw_rect(canvas, 16, y + 3, 23, 10, BG);
-    if (level != HALF_STATUS_OTHER_BATTERY_UNKNOWN) {
-        draw_rect(canvas, 17, y + 4, (MIN(level, 100) * 21 + 50) / 100, 8, FG);
-    }
-    draw_rect(canvas, 40, y + 5, 3, 6, FG);
-    draw_rect(canvas, 41, y + 6, 1, 4, BG);
-
-    if (charging) {
-        draw_text(canvas, 44, y, 24, &lv_font_montserrat_14, LV_TEXT_ALIGN_RIGHT, FG,
-                  LV_SYMBOL_CHARGE);
-        return;
-    }
-
-    char text[4] = "--";
-    if (level != HALF_STATUS_OTHER_BATTERY_UNKNOWN) {
-        snprintf(text, sizeof(text), "%u", (unsigned int)MIN(level, 100));
-    }
-    draw_text(canvas, 44, y + 4, 24, &lv_font_unscii_8, LV_TEXT_ALIGN_RIGHT, FG, text);
-}
-
-static void draw_top(const struct remote_state *r) {
-    lv_canvas_fill_bg(top_canvas, BG, LV_OPA_COVER);
-
-    bool charging = false;
+    v.own_battery = zmk_battery_state_of_charge();
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-    charging = zmk_usb_is_powered();
+    v.charging = zmk_usb_is_powered();
 #endif
-    draw_battery_row(top_canvas, 0, "L:", zmk_battery_state_of_charge(), charging);
-    draw_battery_row(top_canvas, 20, "R:",
-                     r->valid ? r->other_battery : HALF_STATUS_OTHER_BATTERY_UNKNOWN, false);
-
-    draw_rect(top_canvas, 0, 42, CANVAS_SIZE, 1, FG);
-
-    if (r->valid) {
-        draw_text(top_canvas, 0, 47, 34, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT, FG,
-                  r->usb ? LV_SYMBOL_USB : LV_SYMBOL_BLUETOOTH);
+    v.linked = zmk_split_bt_peripheral_is_connected();
+    v.valid = r.valid;
+    if (r.valid) {
+        v.other_battery = r.other_battery;
+        v.usb = r.usb;
+        v.profile = r.profile;
+        v.profile_connected = (r.connected & BIT(r.profile)) != 0;
+        v.profile_bonded = (r.bonded & BIT(r.profile)) != 0;
+    } else {
+        v.other_battery = HALF_STATUS_DRAW_UNKNOWN;
     }
-    draw_text(top_canvas, 34, 47, 34, &lv_font_montserrat_16, LV_TEXT_ALIGN_RIGHT, FG,
-              zmk_split_bt_peripheral_is_connected() ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
-
-    rotate_canvas(top_canvas);
-}
-
-// Same look as ZMK's central nice!view screen.
-static void draw_profiles(const struct remote_state *r) {
-    static const int32_t centres[HALF_STATUS_PROFILE_COUNT][2] = {
-        {13, 13}, {55, 13}, {34, 34}, {13, 55}, {55, 55},
-    };
-
-    lv_canvas_fill_bg(middle_canvas, BG, LV_OPA_COVER);
-
-    for (int i = 0; i < HALF_STATUS_PROFILE_COUNT; i++) {
-        const int32_t x = centres[i][0], y = centres[i][1];
-        bool selected = r->valid && i == r->profile;
-
-        if (r->valid && (r->connected & BIT(i))) {
-            draw_arc(middle_canvas, x, y, 13, 0, 360, 2);
-        } else if (r->valid && (r->bonded & BIT(i))) {
-            const int segments = 8, gap = 20;
-            for (int j = 0; j < segments; j++) {
-                draw_arc(middle_canvas, x, y, 13, 360 * j / segments + gap / 2,
-                         360 * (j + 1) / segments - gap / 2, 2);
-            }
-        }
-
-        if (selected) {
-            draw_arc(middle_canvas, x, y, 9, 0, 359, 9);
-        }
-
-        char label[2] = {'1' + i, '\0'};
-        draw_text(middle_canvas, x - 8, y - 10, 16, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER,
-                  selected ? BG : FG, label);
-    }
-
-    rotate_canvas(middle_canvas);
+    return v;
 }
 
 static void redraw(void) {
-    if (top_canvas == NULL) {
+    if (upright_canvas == NULL) {
         return; // screen not built yet
     }
-    struct remote_state r = get_remote();
-    draw_top(&r);
-    draw_profiles(&r);
+    struct half_status_view v = current_view();
+    if (drawn && memcmp(&v, &shown, sizeof(v)) == 0) {
+        return; // nothing on screen would change
+    }
+    shown = v;
+    drawn = true;
+
+    half_status_draw(upright_canvas, &v, FG, BG);
+    const uint32_t src_stride =
+        lv_draw_buf_width_to_stride(HALF_STATUS_DRAW_W, CANVAS_COLOR_FORMAT);
+    const uint32_t dst_stride =
+        lv_draw_buf_width_to_stride(HALF_STATUS_DRAW_H, CANVAS_COLOR_FORMAT);
+    lv_draw_sw_rotate(lv_canvas_get_draw_buf(upright_canvas)->data,
+                      lv_canvas_get_draw_buf(panel_canvas)->data, HALF_STATUS_DRAW_W,
+                      HALF_STATUS_DRAW_H, src_stride, dst_stride, LV_DISPLAY_ROTATION_270,
+                      CANVAS_COLOR_FORMAT);
+    lv_obj_invalidate(panel_canvas);
 }
 
 static void redraw_work_cb(struct k_work *work) { redraw(); }
@@ -343,22 +233,17 @@ static void redraw_work_cb(struct k_work *work) { redraw(); }
 // Called by ZMK's display code (on the display thread) to build the screen.
 lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
-    // the bottom 24px aren't drawn on, so give the screen our background
     lv_obj_set_style_bg_color(screen, BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
 
-    lv_obj_t *widget = lv_obj_create(screen);
-    lv_obj_remove_style_all(widget); // no theme border or padding
-    lv_obj_set_size(widget, 160, 68);
-    lv_obj_align(widget, LV_ALIGN_TOP_LEFT, 0, 0);
+    upright_canvas = lv_canvas_create(screen);
+    lv_canvas_set_buffer(upright_canvas, upright_buf, HALF_STATUS_DRAW_W, HALF_STATUS_DRAW_H,
+                         CANVAS_COLOR_FORMAT);
+    lv_obj_add_flag(upright_canvas, LV_OBJ_FLAG_HIDDEN);
 
-    top_canvas = lv_canvas_create(widget);
-    lv_obj_align(top_canvas, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_canvas_set_buffer(top_canvas, top_buf, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
-
-    middle_canvas = lv_canvas_create(widget);
-    lv_obj_align(middle_canvas, LV_ALIGN_TOP_LEFT, 24, 0);
-    lv_canvas_set_buffer(middle_canvas, middle_buf, CANVAS_SIZE, CANVAS_SIZE,
+    panel_canvas = lv_canvas_create(screen);
+    lv_obj_align(panel_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_canvas_set_buffer(panel_canvas, panel_buf, HALF_STATUS_DRAW_H, HALF_STATUS_DRAW_W,
                          CANVAS_COLOR_FORMAT);
 
     redraw();

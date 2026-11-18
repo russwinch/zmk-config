@@ -88,6 +88,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/west.yml` | ZMK version + modules. ZMK is pinned to a `main` commit (Zephyr 4.1), modules to commits that match it. |
 | `build.yaml` | Which firmware CI builds. |
 | `tools/fx_preview.py` | Renders the dongle's animated screens to GIFs on a computer (see With the Prospector dongle). |
+| `tools/half_status_preview.py` | Renders the left half's nice!view screen behind the dongle on a computer. |
 | `tools/flash.py` | Flashes a keyboard's devices in order, optionally with a settings reset (see Flashing). |
 | `keymap-drawer/` | Settings and script that draw `keymap.svg` (run by `.github/workflows/draw.yml`). |
 
@@ -176,13 +177,15 @@ of ZMK's stock picture or nice-view-gem's, read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
-| `L:` / `R:` rows | each half's battery icon and % (`L:` is this half, a bolt when charging; `R:` comes from the dongle, `--` until it has heard from the right half) |
-| Bottom-left icon | the dongle's output: Bluetooth or USB |
-| Bottom-right icon | this half's link to the dongle (✕ when not connected) |
-| Five circles | the dongle's Bluetooth profiles: filled is active, ring is connected, dashed ring is paired |
+| Top: `L` | this half's battery, as a big number and a bar (a bolt in the bar when charging) |
+| Middle: `R` | the right half's battery, from the dongle (`--` until it has heard from the right half) |
+| Bottom | the dongle's output: the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
 The dongle sends this when the profile, output or a battery changes, and again
-every minute (`src/dongle_half_status.c`, `src/half_status_screen.c`). It uses
+every minute (`src/dongle_half_status.c`, `src/half_status_screen.c`). The
+half only redraws its screen when something on it has changed.
+`tools/half_status_preview.py` draws the screen (`src/half_status_draw.c`) on a
+computer for a few made-up states. It uses
 ZMK's existing "run a behavior on a half" message: a `hstatus` behavior in
 `config/half_status.dtsi` that no key is bound to. The `R` battery is the
 dongle's last reading, so it can be out of date while the right half sleeps.
