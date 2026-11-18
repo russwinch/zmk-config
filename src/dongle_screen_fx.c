@@ -59,7 +59,7 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/sensor.h>
-#include <dt-bindings/adc/nrf-saadc.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>

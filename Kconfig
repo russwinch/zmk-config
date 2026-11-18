@@ -95,22 +95,33 @@ config HALF_TEMPERATURE
     depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && DT_HAS_NORDIC_NRF_TEMP_ENABLED
     select SENSOR
     help
-      As the Environmental Sensing Service's Temperature, measured only when
-      read. The dongle's Debug screen shows it.
+      As the Environmental Sensing Service's Temperature: measured every
+      HALF_TEMPERATURE_EVERY_S, sent only when it has moved by a degree. The
+      dongle's Debug screen shows it.
+
+config HALF_TEMPERATURE_EVERY_S
+    int "Seconds between measurements"
+    default 300
+    depends on HALF_TEMPERATURE
 
 config DONGLE_HALF_INFO
-    bool "Read whether each half is on USB power, and its temperature"
+    bool "Hear whether each half is on USB power, and its temperature"
     default y
     depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
+    depends on BT_GATT_AUTO_DISCOVER_CCC
     help
-      The dongle's screens then show a bolt for a charging half instead of
-      its battery level, which reads near 100 while it charges, and the
-      Debug screen its temperature.
+      Read once when a half connects, then subscribed to (the half sends
+      only changes). The dongle's screens then show a bolt for a charging
+      half instead of its battery level, which reads near 100 while it
+      charges, and the Debug screen its temperature.
 
-config DONGLE_HALF_INFO_POLL_S
-    int "Seconds between reads of the charging state (the temperature: every third)"
-    default 10
-    depends on DONGLE_HALF_INFO
+config BATTERY_REFRESH_ON_UNPLUG
+    bool "Read the battery again a few seconds after USB power goes"
+    default y
+    depends on ZMK_BATTERY_REPORTING && USB_DEVICE_STACK
+    help
+      Every board with a battery (src/battery_refresh.c): otherwise the
+      charger's near-100 reading stays up to ZMK_BATTERY_REPORT_INTERVAL.
 
 # --- Animated screens on the dongle (src/dongle_screen_fx.c) ---
 

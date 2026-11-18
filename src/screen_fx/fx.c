@@ -1469,7 +1469,7 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 /* Column right edges of the links table. */
 #define DBG_COL_LEVEL 39
 #define DBG_COL_RSSI 59
-#define DBG_COL_INTERVAL 81
+#define DBG_COL_TEMP 81
 #define DBG_COL_LATENCY 96
 #define DBG_COL_DROPS 111
 #define DBG_COL_REASON 124
@@ -1585,7 +1585,7 @@ static void count_text(char *buf, size_t size, uint32_t n) {
 
 /* One row of the table: `level` is the battery, or the output for the computer. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
-                       uint8_t level_color, int age_s) {
+                       uint8_t level_color, int age_s, bool temp_known, int temp_c) {
     char buf[12];
     const char label[2] = {name, '\0'};
     put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
@@ -1597,18 +1597,17 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
             put_right(fb, DBG_COL_RSSI, y, buf,
                       link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : DBG_BAD);
         }
-        /* 1.25 ms units, to a tenth of a millisecond when that isn't .0 */
-        const int tenths = link->interval * 25 / 2;
-        if (tenths % 10 == 0 || tenths >= 1000) {
-            snprintf(buf, sizeof(buf), "%d", tenths / 10);
-        } else {
-            snprintf(buf, sizeof(buf), "%d.%d", tenths / 10, tenths % 10);
-        }
-        put_right(fb, DBG_COL_INTERVAL, y, buf, DBG_TEXT);
         snprintf(buf, sizeof(buf), "%d", link->latency > 99 ? 99 : link->latency);
         put_right(fb, DBG_COL_LATENCY, y, buf, DBG_TEXT);
     } else {
         put_right(fb, DBG_COL_RSSI, y, "--", DBG_BAD);
+    }
+    /* the chip's temperature: that half's, or for the H row the dongle's own */
+    if (temp_known) {
+        snprintf(buf, sizeof(buf), "%d", temp_c < -9 ? -9 : temp_c > 99 ? 99 : temp_c);
+        put_right(fb, DBG_COL_TEMP, y, buf, temp_c >= 60 ? DBG_WARN : DBG_TEXT);
+    } else {
+        put_right(fb, DBG_COL_TEMP, y, "--", DBG_LABEL);
     }
     snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
     put_right(fb, DBG_COL_DROPS, y, buf, link->drops ? DBG_WARN : DBG_LABEL);
@@ -1707,7 +1706,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     /* the links */
     put_right(fb, DBG_COL_LEVEL, 23, "BAT", DBG_LABEL);
     put_right(fb, DBG_COL_RSSI, 23, "DBM", DBG_LABEL);
-    put_right(fb, DBG_COL_INTERVAL, 23, "MS", DBG_LABEL);
+    put_right(fb, DBG_COL_TEMP, 23, "C", DBG_LABEL);
     put_right(fb, DBG_COL_LATENCY, 23, "LT", DBG_LABEL);
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
@@ -1724,11 +1723,12 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
                    charging ? DBG_TEXT : level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT,
-                   level ? d->battery_age_s[half] : -1);
+                   level ? d->battery_age_s[half] : -1, d->temp_known[half * 2], d->temp_c[half * 2]);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, -1);
+    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, -1, d->temp_known[1],
+               d->temp_c[1]);
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those
@@ -1777,25 +1777,13 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%04X", (unsigned)(d->layers & 0xffff));
     put(fb, x, 68, buf, DBG_LABEL);
 
-    /* the dongle's supply; the chips' temperatures, left half, dongle,
-     * right half; key presses since the dongle started */
+    /* the dongle's supply; key presses since the dongle started */
     if (d->vdd_mv) {
         snprintf(buf, sizeof(buf), "%u.%02uV", d->vdd_mv / 1000, d->vdd_mv % 1000 / 10);
-        x = put(fb, 5, 76, buf, DBG_TEXT) + 5;
+        put(fb, 5, 76, buf, DBG_TEXT);
     } else {
-        x = put(fb, 5, 76, "-.--V", DBG_LABEL) + 5;
+        put(fb, 5, 76, "-.--V", DBG_LABEL);
     }
-    for (int i = 0; i < 3; i++) {
-        const char label[2] = {"LDR"[i], '\0'};
-        x = put(fb, x, 76, label, DBG_LABEL);
-        if (d->temp_known[i]) {
-            snprintf(buf, sizeof(buf), "%d", d->temp_c[i] < -9 ? -9 : d->temp_c[i] > 99 ? 99 : d->temp_c[i]);
-        } else {
-            strcpy(buf, "--");
-        }
-        x = put(fb, x, 76, buf, !d->temp_known[i] ? DBG_LABEL : d->temp_c[i] >= 60 ? DBG_WARN : DBG_TEXT) + 3;
-    }
-    put(fb, x - 3, 76, "C", DBG_LABEL);
     count_text(buf + 1, sizeof(buf) - 1, d->presses);
     buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);

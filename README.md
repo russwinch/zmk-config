@@ -381,11 +381,16 @@ A half on USB power shows a bolt instead of its level, on every screen
 (Tracker's gauge for it goes empty): while it charges, its reading is the
 charger's voltage, near 100 whatever the charge. Each half says so through
 the Battery Level Status of Bluetooth's standard battery service
-(`src/half_charging.c`), which the dongle reads every 10 seconds
-(`src/dongle_half_info.c`; every third time it also reads the half's chip
-temperature, offered as a standard Environmental Sensing Service by
-`src/half_temperature.c`, for the Debug screen). It means plugged in, not still charging: a
-half can't tell when its charger has finished. A half on older firmware just
+(`src/half_charging.c`). The dongle reads it once when a half connects and
+then subscribes (`src/dongle_half_info.c`), so a half only sends it when it
+changes, in a connection event it wakes for anyway: nothing is polled. The
+half's chip temperature, for the Debug screen, comes the same way, as a
+standard Environmental Sensing Service (`src/half_temperature.c`), measured
+every 5 minutes and sent only when it moves by a degree. The bolt means
+plugged in, not still charging: a half can't tell when its charger has
+finished. A few seconds after it is unplugged (5, then 30), every half reads
+its battery again (`src/battery_refresh.c`), rather than at ZMK's next
+once-a-minute reading. A half on older firmware just
 never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on
@@ -416,7 +421,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
 | profile circles, `USB`, `TX`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
 | `L3 NAV 0009  ⌃⌥⇧⌘  51WPM` | the highest active layer and its name (shortened to fit), a bit for every active layer (hex); the modifiers as the Mac's symbols, lit while held (either side); typing speed |
-| `3.31V L27 D31 R26C   N29` | the dongle's supply: its own 3.3 V regulator's output (the USB 5 V isn't wired to anything the chip can measure); the chips' temperatures in °C, left half, dongle, right half (`--` until read: the halves are asked every 30 seconds; amber from 60); key presses since the dongle started |
+| `3.31V   N29` | the dongle's supply: its own 3.3 V regulator's output (the USB 5 V isn't wired to anything the chip can measure); key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
@@ -429,7 +434,7 @@ The link rows' columns:
 | bars | signal strength, from `DBM` |
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
 | `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -65, amber to -80, red below. Bluetooth keeps working to about -90, so amber is still a solid link; red is where drops start. Every device transmits at 0 dBm, the default (`config/default.conf`) |
-| `MS` | connection interval, how often the two ends talk |
+| `C` | chip temperature in °C: the half's (measured every 5 minutes, `--` until it has said), and on the `H` row the dongle's own; amber from 60 |
 | `LT` | how many of those the other end may skip to save power |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
