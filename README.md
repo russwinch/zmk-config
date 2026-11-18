@@ -388,9 +388,11 @@ half's chip temperature, for the Debug screen, comes the same way, as a
 standard Environmental Sensing Service (`src/half_temperature.c`), measured
 every 5 minutes and sent only when it moves by a degree. The bolt means
 plugged in, not still charging: a half can't tell when its charger has
-finished. A few seconds after it is unplugged (5, then 30), every half reads
+finished. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
-once-a-minute reading. A half on older firmware just
+once-a-minute reading. Without the dongle, the Urchin's and Aurora Corne's
+nice-view-gem screens likewise show just the bolt, no percentage, while on USB
+power (`src/gem_battery_charging.c`). A half on older firmware just
 never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on
