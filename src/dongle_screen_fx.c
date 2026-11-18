@@ -84,6 +84,9 @@
 #include <zmk/usb.h>
 
 #include "dongle_backlight.h"
+#if IS_ENABLED(CONFIG_DONGLE_HALF_CHARGING)
+#include "dongle_half_charging.h"
+#endif
 #include "dongle_screen_fx.h"
 #include "screen_fx/fx.h"
 
@@ -263,6 +266,9 @@ static void read_status(void) {
         }
         status.battery[half] = level;
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
+#if IS_ENABLED(CONFIG_DONGLE_HALF_CHARGING)
+        status.charging[half] = dongle_half_charging(half);
+#endif
     }
 
     status.usb = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;

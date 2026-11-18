@@ -77,6 +77,31 @@ config WATERFOWL_HALF_STATUS_SCREEN
       Turned on for the dongle build of each left half with a nice!view
       (Waterfowl, Urchin, Aurora Corne) in build.yaml.
 
+# --- Charging halves (src/half_charging.c, src/dongle_half_charging.c) ---
+
+config HALF_CHARGING_STATUS
+    bool "Tell the dongle when this half is on USB power"
+    default y
+    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && USB_DEVICE_STACK && BT_BAS
+    select BT_BAS_BLS
+    help
+      Every half that is a peripheral (so also each right half without a
+      dongle, where nothing reads it). Sets the battery service's Battery
+      Level Status to charging while on USB power, for the dongle's screens.
+
+config DONGLE_HALF_CHARGING
+    bool "Read whether each half is on USB power"
+    default y
+    depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
+    help
+      The dongle's screens then show a bolt for a charging half instead of
+      its battery level, which reads near 100 while it charges.
+
+config DONGLE_HALF_CHARGING_POLL_S
+    int "Seconds between reads"
+    default 10
+    depends on DONGLE_HALF_CHARGING
+
 # --- Animated screens on the dongle (src/dongle_screen_fx.c) ---
 
 config DONGLE_SCREEN_FX

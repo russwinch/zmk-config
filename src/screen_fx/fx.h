@@ -55,6 +55,7 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
+    bool charging[2];       /* left, right: on USB power, its level not worth showing */
     bool host_connected;    /* the computer */
     bool usb;               /* typing over USB, not Bluetooth */
     bool host_open;         /* Bluetooth: nothing paired on this profile */
@@ -172,6 +173,12 @@ const struct fx_theme *fx_theme(int fx);
 /* The 7 rows of a character in the animations' letters (top first, left dot
  * in bit 4), or NULL if there is none. */
 const uint8_t *fx_glyph_rows(char c);
+
+/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown for a
+ * half on USB power in place of its battery level, which then reads near 100
+ * whatever the charge. */
+#define FX_GLYPH_BOLT '\x7f'
+#define FX_BOLT "\x7f"
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text over it. */

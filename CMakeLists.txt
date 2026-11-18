@@ -4,6 +4,8 @@
 
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_IDLE_BACKLIGHT app PRIVATE src/dongle_idle_backlight.c)
 target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_half_status.c)
+target_sources_ifdef(CONFIG_HALF_CHARGING_STATUS app PRIVATE src/half_charging.c)
+target_sources_ifdef(CONFIG_DONGLE_HALF_CHARGING app PRIVATE src/dongle_half_charging.c)
 target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE
   src/half_status_screen.c src/half_status_draw.c)
 # status_overlay.c uses fonts from the Prospector module, which builds them

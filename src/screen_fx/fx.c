@@ -299,13 +299,17 @@ static const uint8_t font[][7] = {
     {0x0a, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ~ */
 };
 
-const uint8_t *fx_glyph_rows(char c) { return c < ' ' || c > '~' ? NULL : font[c - ' ']; }
+static const uint8_t bolt[7] = {0x02, 0x06, 0x0c, 0x1f, 0x06, 0x0c, 0x08};
+
+const uint8_t *fx_glyph_rows(char c) {
+    return c == FX_GLYPH_BOLT ? bolt : c < ' ' || c > '~' ? NULL : font[c - ' '];
+}
 
 static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
-    if (c < ' ' || c > '~') {
+    const uint8_t *rows = fx_glyph_rows(c);
+    if (rows == NULL) {
         return;
     }
-    const uint8_t *rows = font[c - ' '];
     for (int row = 0; row < 7; row++) {
         for (int col = 0; col < 5; col++) {
             if (rows[row] & (0x10 >> col)) {
@@ -1260,9 +1264,11 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
     glyph(fb, FX_W - 18, 13, 'm', TRACK_TEXT);
 
     if (in->status) {
-        side_battery(fb, 5, in->status->battery[0], in->status->half_connected[0], TRACK_LINE, TRACK_TEXT, 0);
-        side_battery(fb, FX_W - 10, in->status->battery[1], in->status->half_connected[1], TRACK_LINE, TRACK_TEXT,
-                     0);
+        /* empty while charging: the level then isn't the battery's */
+        side_battery(fb, 5, in->status->charging[0] ? 0 : in->status->battery[0], in->status->half_connected[0],
+                     TRACK_LINE, TRACK_TEXT, 0);
+        side_battery(fb, FX_W - 10, in->status->charging[1] ? 0 : in->status->battery[1],
+                     in->status->half_connected[1], TRACK_LINE, TRACK_TEXT, 0);
     }
 }
 
@@ -1684,13 +1690,16 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, DBG_COL_AGE, 23, "S", DBG_LABEL);
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
-        if (level) {
+        const bool charging = in->status && in->status->charging[half];
+        if (charging) {
+            strcpy(buf, FX_BOLT);
+        } else if (level) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
             strcpy(buf, "--");
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT,
+                   charging ? DBG_TEXT : level == 0 ? DBG_LABEL : level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT,
                    level ? d->battery_age_s[half] : -1);
     }
     const bool usb_out = in->status && in->status->usb;
@@ -1933,12 +1942,18 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     /* the halves: a battery and its level, in the middle of the block as
      * everything in the three is */
     for (int half = 0; half < 2; half++) {
-        const uint8_t level = in->status ? in->status->battery[half] : 0;
-        const uint8_t color = level == 0                 ? DBG_LABEL
+        const bool charging = in->status && in->status->charging[half];
+        /* while charging: an empty battery and a bolt, the level then
+         * being the charger's voltage */
+        const uint8_t level = in->status && !charging ? in->status->battery[half] : 0;
+        const uint8_t color = charging                   ? DBG_TEXT
+                              : level == 0               ? DBG_LABEL
                               : level <= FX_LOW_BATTERY  ? DBG_BAD
                               : level <= FX_WARN_BATTERY ? DBG_WARN
                                                          : DBG_TEXT;
-        if (level == 0) {
+        if (charging) {
+            strcpy(buf, FX_BOLT);
+        } else if (level == 0) {
             strcpy(buf, "--");
         } else {
             snprintf(buf, sizeof(buf), "%u%%", level);
@@ -2034,7 +2049,10 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- the list --------------------------------------------------------------- */
 
-#define TRACK_DROP 12 /* under the line at TRACK_CY */
+/* How far down the status text sits: in the bottom corners, clear of their
+ * rounding, as on Tracker, where it is under the line at TRACK_CY. Keys and
+ * Debug draw their own. */
+#define CORNER_DROP 12
 
 static const struct {
     const char *name;
@@ -2051,12 +2069,12 @@ static const struct {
 } effects[] = {
     {"KEYS", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
     {"DEBUG", debug_start, debug_frame, debug_colors, NULL, {0}, .debug = true},
-    {"THERMAL", thermal_start, thermal_frame, NULL, &thermal_text, {.font = FX_FONT_PIXEL}},
-    {"TRACKER", tracker_start, tracker_frame, tracker_colors, NULL, {.font = FX_FONT_PIXEL, .drop = TRACK_DROP}},
-    {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL}},
-    {"WARP", warp_start, warp_frame, NULL, &warp_text, {.dots = true}, .saver = FX_TR_HYPERSPACE},
-    {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true}, .saver = FX_TR_MELT},
-    {"LIFE", life_start, life_frame, NULL, &life_text, {.dots = true}, .saver = FX_TR_INFECT},
+    {"THERMAL", thermal_start, thermal_frame, NULL, &thermal_text, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
+    {"TRACKER", tracker_start, tracker_frame, tracker_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
+    {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
+    {"WARP", warp_start, warp_frame, NULL, &warp_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_HYPERSPACE},
+    {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true, .drop = CORNER_DROP}, .saver = FX_TR_MELT},
+    {"LIFE", life_start, life_frame, NULL, &life_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_INFECT},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 

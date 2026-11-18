@@ -373,8 +373,18 @@ The text's colours are set per animation in `src/screen_fx/colors.h`
 The list at the end of `src/screen_fx/fx.c` (its `theme`) says which letters the numbers are in
 and how low they sit: Terminal, Code, Thermal and Tracker have them in the
 animations' own small pixel letters, a size down from the Field font; on
-Tracker it sits under the line across the bottom; and Tracker
-adds a gauge for each battery up the sides. The screensavers show none of
+all of them, the screensavers too, they sit low in the bottom corners, clear
+of the panel's rounding (on Tracker, under the line across the bottom); and Tracker
+adds a gauge for each battery up the sides.
+
+A half on USB power shows a bolt instead of its level, on every screen
+(Tracker's gauge for it goes empty): while it charges, its reading is the
+charger's voltage, near 100 whatever the charge. Each half says so through
+the Battery Level Status of Bluetooth's standard battery service
+(`src/half_charging.c`), which the dongle reads every 10 seconds
+(`src/dongle_half_charging.c`). It means plugged in, not still charging: a
+half can't tell when its charger has finished. A half on older firmware just
+never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
