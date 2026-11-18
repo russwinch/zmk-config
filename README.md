@@ -418,7 +418,7 @@ everything on it that the dongle can get at. Top to bottom:
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
-| `WATERFOWL` | under the key map: the keyboard the dongle is built for (dropping words from the front if the bounce reading leaves no room: `CORNE`) |
+| `WATERFOWL` | under the key map, lined up with it on the left: the keyboard the dongle is built for (moving left, then dropping words from the front, if the bounce reading leaves no room: `CORNE`) |
 
 The link rows' columns:
 

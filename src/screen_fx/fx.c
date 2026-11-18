@@ -1750,11 +1750,6 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put(fb, 5, 87 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
     }
 
-    /* the board, clear of the bottom right corner's curve */
-    const int board_pitch = board_cols > 10 ? 4 : 5;
-    const int board_left = FX_W - 1 - fx_corner_inset(88, 108) - board_cols * board_pitch;
-    board(fb, in, board_left, 88, board_pitch, 4, 1, 1);
-
     /* the quickest a key has come back down after going up: a switch that
      * bounces shows here as a few milliseconds. This line is in the bottom
      * corners' curve, so it keeps in from both sides: up out of it as far as the log leaves room */
@@ -1767,12 +1762,22 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         x = put(fb, x, 110, "--", DBG_LABEL);
     }
 
-    /* the keyboard's name under the board: in the middle of it, or as far
-     * left as the bounce leaves room for. Too long for that, it loses words
-     * from the front (AURORA CORNE: CORNE), and then letters from the end */
+    /* The board and the keyboard's name under it start in the same column:
+     * just right of the events (15 letters at most) and the bounce reading,
+     * or as far left as the bottom right corner's curve lets the board be.
+     * A name too long for the room moves left, then loses words from the
+     * front (AURORA CORNE: CORNE), and then letters from the end. */
+    const int right = FX_W - bottom_inset;
+    const int board_pitch = board_cols > 10 ? 4 : 5;
+    const int board_max = FX_W - 1 - fx_corner_inset(88, 108) - board_cols * board_pitch;
+    int column = 5 + 15 * 5 + 3;
+    column = column < x + 5 ? x + 5 : column;
+    const int board_left = column < board_max ? column : board_max;
+    board(fb, in, board_left, 88, board_pitch, 4, 1, 1);
     if (d->keyboard) {
-        const int right = FX_W - bottom_inset;
-        const int room = (right - (x + 5)) / 5; /* letters, 5 apart */
+        /* a name that doesn't fit there moves left first, as far as the bounce lets it */
+        const int least = x + 5;
+        const int room = (right - least + 2) / 5; /* letters, 5 apart, the last 4 wide */
         const char *name = d->keyboard;
         while ((int)strlen(name) > room && strchr(name, ' ') != NULL) {
             name = strchr(name, ' ') + 1;
@@ -1782,11 +1787,10 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         for (char *c = buf; *c; c++) {
             *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c;
         }
-        const int wide = 5 * (int)strlen(buf);
-        int name_x = board_left + (FX_W - 1 - board_left - wide) / 2;
-        name_x = name_x + wide > right ? right - wide : name_x;
-        name_x = name_x < x + 5 ? x + 5 : name_x;
-        put(fb, name_x, 110, buf, DBG_LABEL);
+        const int wide = 5 * (int)strlen(buf) - 1;
+        int left = board_left > least ? board_left : least;
+        left = left + wide > right ? right - wide : left;
+        put(fb, left < least ? least : left, 110, buf, DBG_LABEL);
     }
 }
 
