@@ -28,8 +28,10 @@ include:
   - board: nice_nano//zmk
     shield: splitkb_aurora_corne_left nice_view_adapter nice_view_gem
   - board: nice_nano//zmk
-    # no screen on the right half
-    shield: splitkb_aurora_corne_right
+    # no screen on the right half: nice_view_adapter only for its SPI bus,
+    # which the keymap points at the left half's screen (no display driver
+    # without nice_view_gem, so nothing is drawn)
+    shield: splitkb_aurora_corne_right nice_view_adapter
 
   # --- splitkb Aurora Corne via Prospector dongle ---
   - board: xiao_ble//zmk
