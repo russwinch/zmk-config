@@ -6,4 +6,3 @@
 #include "leds_nice_nano_rgb.dtsi"
 #include "urchin_layout.dtsi"
 #include "keymap.dtsi"
-#include "half_status.dtsi"

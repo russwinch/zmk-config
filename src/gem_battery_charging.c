@@ -1,5 +1,5 @@
 /*
- * Halves with a nice-view-gem screen (Urchin, Aurora Corne, both halves,
+ * Halves with a nice-view-gem screen (the Aurora Corne's, both halves,
  * without the dongle): while on USB power, show only the bolt after "BAT",
  * not a percentage. The level read while charging is the charger's voltage,
  * near 100 whatever the charge, as on the dongle and the left half's screen

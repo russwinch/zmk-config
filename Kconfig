@@ -48,10 +48,10 @@ endif
 config WATERFOWL_DONGLE_HALF_STATUS
     bool "Send the Bluetooth profile and battery levels to the halves"
     default y
-    depends on SHIELD_WATERFOWL_DONGLE || SHIELD_URCHIN_DONGLE || SHIELD_SPLITKB_AURORA_CORNE_DONGLE
+    depends on SHIELD_WATERFOWL_DONGLE || SHIELD_SPLITKB_AURORA_CORNE_DONGLE
     depends on ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     help
-      Not the Forager dongle: its halves have no display. The dongle tells each half the active profile (and which profiles are
+      Not the Forager's or Urchin's dongles: their halves have no display. The dongle tells each half the active profile (and which profiles are
       connected/paired), whether it is typing over USB, and the other half's
       battery. Used by WATERFOWL_HALF_STATUS_SCREEN on the left half.
 
@@ -75,7 +75,7 @@ config WATERFOWL_HALF_STATUS_SCREEN
       the dongle's output (USB, or the active Bluetooth profile). Needs NICE_VIEW_WIDGET_STATUS=n (the stock
       screen) and the half_status behavior node (config/half_status.dtsi).
       Turned on for the dongle build of each left half with a nice!view
-      (Waterfowl, Urchin, Aurora Corne) in build.yaml.
+      (Waterfowl, Aurora Corne) in build.yaml.
 
 # --- Charging and temperature of the halves (src/half_charging.c, src/half_temperature.c, src/dongle_half_info.c) ---
 

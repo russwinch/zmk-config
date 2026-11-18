@@ -1,6 +1,6 @@
 /*
- * Status the Prospector dongle sends to the halves (Waterfowl, Urchin,
- * Aurora Corne), so the left
+ * Status the Prospector dongle sends to the halves (Waterfowl, Aurora
+ * Corne), so the left
  * half's nice!view can show the dongle's Bluetooth profile and the other
  * half's battery.
  *

@@ -7,11 +7,11 @@
 # `cmake-args: -DCONFIG_...=...` on its entry here (that beats every file).
 ---
 include:
-  # --- Urchin (nice!nano v2, nice!view gem) ---
+  # --- Urchin (nice!nano v2, no screens, RGB LED widget) ---
   - board: nice_nano//zmk
-    shield: urchin_left nice_view_adapter nice_view_gem
+    shield: urchin_left
   - board: nice_nano//zmk
-    shield: urchin_right nice_view_adapter nice_view_gem
+    shield: urchin_right
 
   # --- Urchin via Prospector dongle ---
   # Same arrangement as the Waterfowl dongle below; the right half's normal
@@ -20,11 +20,8 @@ include:
     shield: urchin_dongle prospector_adapter
     cmake-args: -DCONFIG_ZMK_SLEEP=n
   - board: nice_nano//zmk
-    # peripheral, with the plain nice_view shield instead of nice_view_gem: it
-    # shows the half status screen (see the Waterfowl's below), and so
-    # needs the display turned on here (nice_view_gem.conf isn't read)
-    shield: urchin_left nice_view_adapter nice_view
-    cmake-args: -DCONFIG_ZMK_DISPLAY=y -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n -DCONFIG_NICE_VIEW_WIDGET_STATUS=n -DCONFIG_WATERFOWL_HALF_STATUS_SCREEN=y
+    shield: urchin_left
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
     artifact-name: urchin_left_peripheral_for_dongle
 
   # --- splitkb Aurora Corne (nice!nano v2, nice!view gem, encoders) ---

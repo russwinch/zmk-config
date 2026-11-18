@@ -1,5 +1,5 @@
 /*
- * Left half behind the Prospector dongle (Waterfowl, Urchin, Aurora Corne):
+ * Left half behind the Prospector dongle (Waterfowl, Aurora Corne):
  * nice!view screen
  * showing both halves' batteries and the dongle's Bluetooth profile.
  *
