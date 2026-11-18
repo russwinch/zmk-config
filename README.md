@@ -254,7 +254,7 @@ remembered as the screen and the theme are, after the same 30 seconds.
 Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
 Config layer's **Theme next** key (the O key) steps through, and round
 again (**Theme prev**, the I key, goes back). The screen showing changes colour as it is, and the theme's name
-and its place in the list (`PHOSPHOR 2/11`) show in the middle of the screen
+and its place in the list (`PHOSPHOR 2/15`) show in the middle of the screen
 for a second and a half, on any screen. Thermal and the screensavers keep
 their own colours: there the name is all that shows.
 The theme is remembered as the screen is, 30 seconds after it was last
@@ -271,8 +271,12 @@ changed (`CONFIG_DONGLE_SCREEN_FX_SAVE_DELAY_MS`, for both).
 | 7 | DRACULA | the editor theme | lilac and pink on black |
 | 8 | CYBERPUNK | Cyberpunk 2077 | yellow on black, cyan glow |
 | 9 | LCARS | Star Trek | orange, lilac captions, on black |
-| 10 | MOLOKAI | the Vim theme (Monokai) | white on black, hot pink captions |
-| 11 | MONO | the white phosphor terminal | white and greys on black |
+| 10 | MONOKAI | TextMate's theme | white on black, hot pink captions |
+| 11 | GRUVBOX | the editor theme | yellow and orange on black, aqua glow |
+| 12 | TOKYO NIGHT | the editor theme | blue and magenta on black |
+| 13 | CATPPUCCIN | the editor theme (Mocha) | mauve and blue pastels on black |
+| 14 | NORD | the editor theme | frost blues on black |
+| 15 | MONO | the white phosphor terminal | white and greys on black |
 
 Every colour of the screens is in one file, `src/screen_fx/colors.h`. A
 theme is one line of eleven colours there (`schemes`): add, change or drop
