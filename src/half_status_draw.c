@@ -3,7 +3,7 @@
  *
  *   ┌──────────┐
  *   │    85    │  this half's battery, big
- *   │ L [████ ]│  and as a bar (bolt in it when charging)
+ *   │ L [████ ]│  and as a bar; just a big bolt on USB power
  *   │    60    │  other half's battery, from the dongle (-- = unknown)
  *   │ R [███  ]│
  *   ├──────────┤
@@ -94,14 +94,22 @@ static void battery(lv_obj_t *canvas, int32_t y, const char *label, uint8_t leve
         level = 100;
     }
 
+    const int32_t bar_y = y + BAR_Y;
+    text(canvas, 0, bar_y - 2, 14, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT, fg, label);
+
+    if (charging) {
+        // On USB power the reading is the charger's voltage, not the battery's
+        // (near 100 whatever the charge), so it isn't shown: a big bolt instead,
+        // down across the bar's row.
+        text(canvas, 14, y + 10, W - 14, NUMBER_FONT, LV_TEXT_ALIGN_CENTER, fg, LV_SYMBOL_CHARGE);
+        return;
+    }
+
     char number[4] = "--";
     if (known) {
         snprintf(number, sizeof(number), "%u", (unsigned int)level);
     }
     text(canvas, 0, y, W, NUMBER_FONT, LV_TEXT_ALIGN_CENTER, fg, number);
-
-    const int32_t bar_y = y + BAR_Y;
-    text(canvas, 0, bar_y - 2, 14, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT, fg, label);
 
     // outline 50x14 at x=14, nub on the right, fill up to 46px
     const int32_t bx = 14, bw = 50, bh = 14;
@@ -110,14 +118,6 @@ static void battery(lv_obj_t *canvas, int32_t y, const char *label, uint8_t leve
     rect(canvas, bx + bw, bar_y + 4, 3, bh - 8, fg);
     if (known) {
         rect(canvas, bx + 2, bar_y + 2, (level * (bw - 4) + 50) / 100, bh - 4, fg);
-    }
-
-    if (charging) {
-        // bolt in a gap in the middle of the bar
-        const int32_t gap = 14, gx = bx + (bw - gap) / 2;
-        rect(canvas, gx, bar_y + 1, gap, bh - 2, bg);
-        text(canvas, gx, bar_y - 1, gap, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER, fg,
-             LV_SYMBOL_CHARGE);
     }
 }
 

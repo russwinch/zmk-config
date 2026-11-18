@@ -177,7 +177,7 @@ of ZMK's stock picture or nice-view-gem's, read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
-| Top: `L` | this half's battery, as a big number and a bar (a bolt in the bar when charging) |
+| Top: `L` | this half's battery, as a big number and a bar. On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
 | Middle: `R` | the right half's battery, from the dongle (`--` until it has heard from the right half) |
 | Bottom | the dongle's output: the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
@@ -416,7 +416,7 @@ The link rows' columns:
 | --- | --- |
 | bars | signal strength, from `DBM` |
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
-| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, below -80 is marginal |
+| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -65, amber to -80, red below. Bluetooth keeps working to about -90, so amber is still a solid link; red is where drops start. Every device transmits at 0 dBm, the default (`config/default.conf`) |
 | `MS` | connection interval, how often the two ends talk |
 | `LT` | how many of those the other end may skip to save power |
 | `DR` | times the link has dropped since the dongle started |
