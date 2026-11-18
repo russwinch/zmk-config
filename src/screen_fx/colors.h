@@ -32,6 +32,10 @@ struct color {
  *
  *   bg      the background: black on a dark theme (anything lighter looks
  *           washed out on the backlit panel), or the light one's own
+ *
+ * tools/fx_preview.py --contrast checks each colour can be read on bg
+ * (WCAG contrast ratios); the light ones are their themes' colours made
+ * darker or lighter, never another hue, until they pass at 6 or more.
  *   dim     rules, keys that aren't pressed, the unlit part of a meter
  *   label   captions, and readings that aren't known
  *   text    the readings
@@ -96,14 +100,35 @@ static const struct scheme {
     {"MONO", {0, 0, 0}, {85, 85, 85}, {170, 170, 170}, {235, 235, 235}, {255, 255, 255}, {255, 255, 255},
      {70, 255, 120}, {255, 210, 0}, {255, 50, 40}, {255, 150, 30}, {120, 190, 255}},
     /* GitHub's light theme: near-black on white, captioned in its blue */
-    {"GITHUB LIGHT", {255, 255, 255}, {182, 227, 255}, {9, 105, 218}, {31, 35, 40}, {0, 0, 0}, {9, 105, 218},
-     {26, 127, 55}, {154, 103, 0}, {207, 34, 46}, {188, 76, 0}, {130, 80, 223}},
+    {"GITHUB LIGHT", {255, 255, 255}, {165, 209, 237}, {6, 95, 200}, {31, 35, 40}, {0, 0, 0}, {6, 95, 200},
+     {0, 115, 43}, {134, 90, 8}, {196, 15, 37}, {167, 67, 2}, {117, 65, 208}},
     /* Catppuccin's light theme: slate on pale grey, captioned in mauve */
-    {"LATTE", {239, 241, 245}, {213, 199, 245}, {136, 57, 239}, {76, 79, 105}, {17, 17, 27}, {30, 102, 245},
-     {64, 160, 43}, {223, 142, 29}, {210, 15, 57}, {254, 100, 11}, {23, 146, 153}},
-    /* Gruvbox's light theme: dark grey on cream, captioned in orange */
-    {"GRUVBOX LIGHT", {251, 241, 199}, {235, 200, 154}, {175, 58, 3}, {60, 56, 54}, {29, 32, 33}, {7, 102, 120},
-     {121, 116, 14}, {181, 118, 20}, {157, 0, 6}, {66, 123, 88}, {143, 63, 113}},
+    {"LATTE", {239, 241, 245}, {198, 185, 230}, {121, 32, 220}, {54, 56, 81}, {17, 17, 27}, {0, 77, 219},
+     {25, 105, 1}, {129, 79, 1}, {183, 5, 47}, {156, 59, 5}, {7, 101, 106}},
+    /* Gruvbox's light theme (hard): dark grey on cream, captioned in orange */
+    {"GRUVBOX LIGHT", {249, 245, 215}, {223, 189, 143}, {166, 54, 0}, {60, 56, 54}, {29, 32, 33}, {4, 101, 119},
+     {98, 94, 3}, {130, 82, 2}, {157, 0, 6}, {45, 103, 69}, {143, 63, 113}},
+    /* Atom's One Light: dark grey on white, captioned in its cyan */
+    {"ONE LIGHT", {250, 250, 250}, {199, 199, 203}, {8, 101, 144}, {56, 58, 66}, {16, 17, 20}, {34, 87, 206},
+     {24, 111, 28}, {130, 88, 5}, {182, 40, 33}, {130, 88, 3}, {164, 36, 162}},
+    /* the PaperColor theme: grey ink on paper, blue captions, pink glow */
+    {"PAPERCOLOR", {238, 238, 238}, {190, 190, 190}, {0, 95, 135}, {56, 56, 56}, {0, 0, 0}, {172, 10, 108},
+     {77, 96, 2}, {149, 63, 0}, {175, 0, 0}, {135, 0, 175}, {1, 96, 126}},
+    /* Solarized Light: its cream, ink and blue, darkened to read */
+    {"SOLARIZED", {253, 246, 227}, {204, 196, 170}, {2, 98, 156}, {44, 64, 71}, {0, 43, 54}, {7, 105, 98},
+     {86, 100, 7}, {118, 89, 6}, {191, 0, 18}, {166, 57, 7}, {82, 85, 165}},
+    /* the original Game Boy's green screen, its four greens */
+    {"GAME BOY", {155, 188, 15}, {119, 147, 15}, {1, 56, 6}, {0, 0, 0}, {0, 0, 0}, {1, 56, 6},
+     {0, 57, 4}, {64, 44, 2}, {103, 3, 2}, {45, 30, 121}, {0, 50, 81}},
+    /* Norton Commander: the PC's text-mode blue, cyan and yellow */
+    {"NORTON", {0, 0, 170}, {0, 49, 233}, {85, 255, 255}, {255, 255, 255}, {255, 255, 85}, {255, 255, 85},
+     {85, 255, 85}, {255, 204, 85}, {254, 143, 136}, {255, 123, 253}, {255, 170, 85}},
+    /* the Amiga's Workbench: blue, white and orange */
+    {"AMIGA", {0, 85, 170}, {0, 42, 102}, {254, 190, 144}, {255, 255, 255}, {255, 255, 255}, {214, 237, 255},
+     {162, 255, 176}, {255, 235, 143}, {255, 228, 226}, {255, 230, 206}, {254, 225, 254}},
+    /* Wes Bos's Cobalt2: white and yellow on deep blue */
+    {"COBALT2", {25, 53, 73}, {46, 85, 114}, {255, 157, 0}, {225, 239, 255}, {255, 255, 255}, {158, 255, 255},
+     {58, 217, 0}, {255, 198, 0}, {254, 148, 170}, {251, 148, 255}, {124, 183, 254}},
 };
 #define SCHEMES ((int)(sizeof(schemes) / sizeof(schemes[0])))
 

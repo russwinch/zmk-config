@@ -10,6 +10,7 @@ draw, without flashing anything:
     tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
     tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
     tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
+    tools/fx_preview.py --contrast   # every theme's contrast ratios, the low ones flagged
     tools/fx_preview.py --board waterfowl  # on the Waterfowl's keys and encoders (or corne)
 
 The battery levels and the output are drawn over them as on the dongle
@@ -101,6 +102,48 @@ def themes() -> list[str]:
     return re.findall(r'\{"([\w ]+)"', table)
 
 
+# --contrast: each theme colour's WCAG 2 contrast ratio against what it is
+# drawn on (1 the same, 21 black on white), and the least each should have.
+# 4.5 is the usual bar for text, 7 the strict one; dim only has to show.
+SLOTS = "bg dim label text bright glow good warn bad mod layer".split()
+LEAST = {"dim": 1.4, "label": 4.5, "text": 7, "bright": 7, "glow": 4.5,
+         "good": 4.5, "warn": 4.5, "bad": 4.5, "mod": 4.5, "layer": 4.5}
+
+
+def scheme_colors() -> dict[str, dict[str, tuple[int, int, int]]]:
+    text = (FX_DIR / "colors.h").read_text()
+    table = text[text.index("} schemes[] = {"):text.index("#define SCHEMES")]
+    return {name: dict(zip(SLOTS, [tuple(map(int, c)) for c in re.findall(r"\{(\d+), (\d+), (\d+)\}", body)]))
+            for name, body in re.findall(r'\{"([\w ]+)",(.*?\}\})', table, re.S)}
+
+
+def contrast(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
+    def luminance(c):
+        lin = [v / 255 / 12.92 if v <= 10 else ((v / 255 + 0.055) / 1.055) ** 2.4 for v in c]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    la, lb = sorted((luminance(a), luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def contrast_table() -> bool:
+    """Print every theme's contrast ratios; False if any is under its LEAST."""
+    ok = True
+    print(f"{'':15} " + " ".join(f"{s:>6}" for s in SLOTS[1:]) + "  held key on dim")
+    for name, c in scheme_colors().items():
+        cells = []
+        for slot in SLOTS[1:]:
+            ratio = contrast(c[slot], c["bg"])
+            low = ratio < LEAST[slot]
+            ok &= not low
+            cells.append(f"{ratio:5.1f}{'!' if low else ' '}")
+        held = contrast(c["bright"], c["dim"])
+        ok &= held >= 4.5
+        print(f"{name:15} " + " ".join(cells) + f"  {held:5.1f}{'!' if held < 4.5 else ''}")
+    print(f"against the background (! under {', '.join(f'{k} {v}' for k, v in LEAST.items())};"
+          " a held key on an unpressed one 4.5)")
+    return ok
+
+
 def themed() -> list[str]:
     # the animations drawn in the theme's colours: the table gives them a colours function
     text = (FX_DIR / "fx.c").read_text()
@@ -132,6 +175,8 @@ def main() -> None:
                         help="instead: each screensaver coming over this animation and going again")
     parser.add_argument("--power", metavar="ANIMATION",
                         help="instead: the panel going off and coming back on, with this animation showing")
+    parser.add_argument("--contrast", action="store_true",
+                        help="instead: print each theme's contrast ratios and flag the low ones (no build)")
     parser.add_argument("--themes", action="store_true",
                         help="instead: one picture of every colour theme, on each screen drawn in them")
     parser.add_argument("--prospector", type=Path,
@@ -141,6 +186,8 @@ def main() -> None:
     parser.add_argument("--square", action="store_true",
                         help="show the corners too, which the panel's rounded glass hides")
     args = parser.parse_args()
+    if args.contrast:
+        raise SystemExit(0 if contrast_table() else 1)
     ENV["FX_PREVIEW_BOARD"] = args.board
     CORNERS[0] = not args.square
 
