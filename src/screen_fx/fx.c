@@ -1738,7 +1738,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     /* the last raw events, the newest at the bottom and brightest */
     for (int i = 0; i < d->n_log && i < FX_DEBUG_LOG; i++) {
         event_text(buf, sizeof(buf), &d->log[i]);
-        put(fb, 5, 88 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
+        put(fb, 5, 87 + i * 8, buf, i == d->n_log - 1 ? DBG_BRIGHT : DBG_TEXT);
     }
 
     /* the board, clear of the bottom right corner's curve */
@@ -1748,14 +1748,14 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     /* the quickest a key has come back down after going up: a switch that
      * bounces shows here as a few milliseconds. This line is in the bottom
-     * corners' curve, so it keeps in from both sides */
-    const int bottom_inset = fx_corner_inset(112, 118);
-    x = put(fb, bottom_inset, 112, "BNC", DBG_LABEL) + 3;
+     * corners' curve, so it keeps in from both sides: up out of it as far as the log leaves room */
+    const int bottom_inset = fx_corner_inset(110, 116);
+    x = put(fb, bottom_inset, 110, "BNC", DBG_LABEL) + 3;
     if (d->bounce_ms) {
         snprintf(buf, sizeof(buf), "%uMS P%02u", d->bounce_ms, d->bounce_key);
-        x = put(fb, x, 112, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
+        x = put(fb, x, 110, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
     } else {
-        x = put(fb, x, 112, "--", DBG_LABEL);
+        x = put(fb, x, 110, "--", DBG_LABEL);
     }
 
     /* the keyboard's name under the board: in the middle of it, or as far
@@ -1777,7 +1777,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         int name_x = board_left + (FX_W - 1 - board_left - wide) / 2;
         name_x = name_x + wide > right ? right - wide : name_x;
         name_x = name_x < x + 5 ? x + 5 : name_x;
-        put(fb, name_x, 112, buf, DBG_LABEL);
+        put(fb, name_x, 110, buf, DBG_LABEL);
     }
 }
 
