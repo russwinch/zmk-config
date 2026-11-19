@@ -458,9 +458,81 @@ static bool read_temp(int8_t *celsius) {
 static bool read_temp(int8_t *celsius) { return false; }
 #endif
 
-static void read_debug(uint32_t now) {
-    static uint32_t rssi_at;
+/*
+ * The readings that ask something else and wait for the answer: each link's
+ * signal strength (a command to the radio), the dongle's temperature (the
+ * TEMP sensor) and what the halves have said. Taken once a second on a
+ * thread of their own, only while the Debug or Keys screen is showing, so a
+ * slow or stuck answer can't hold up a frame on the display queue (a frame
+ * drawn after a stuck one would never come, leaving the screen blank).
+ */
+#define READINGS_EVERY_MS 1000
+#define READINGS_STACK 1536
 
+static struct {
+    struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
+    bool temp_known[3], tx_known[3];
+    int8_t temp_c[3], tx_dbm[3];
+} readings; /* under debug_lock */
+static atomic_t readings_until; /* uptime ms: wanted until then */
+
+static K_THREAD_STACK_DEFINE(readings_stack, READINGS_STACK);
+static struct k_work_q readings_q;
+static void readings_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(readings_work, readings_cb);
+
+static void readings_cb(struct k_work *work) {
+    struct fx_link link[3] = {0};
+    struct link_reading reading = {.link = {&link[0], &link[1], &link[2]}};
+    bt_conn_foreach(BT_CONN_TYPE_LE, read_link, &reading);
+    for (int i = 0; i < 3; i++) {
+#if IS_ENABLED(CONFIG_BT_CTLR_CONN_RSSI)
+        if (link[i].up && reading.found[i]) {
+            link[i].rssi_known = read_rssi(reading.handle[i], &link[i].rssi);
+        }
+#endif
+    }
+    bool temp_known[3] = {false}, tx_known[3] = {false};
+    int8_t temp_c[3] = {0}, tx_dbm[3] = {0};
+    temp_known[1] = read_temp(&temp_c[1]);
+#ifdef CONFIG_BT_CTLR_TX_PWR_DBM
+    tx_known[1] = true; /* the dongle's own, as built */
+    tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
+#endif
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+    temp_known[0] = dongle_half_temperature(0, &temp_c[0]);
+    temp_known[2] = dongle_half_temperature(1, &temp_c[2]);
+    tx_known[0] = dongle_half_tx_power(0, &tx_dbm[0]);
+    tx_known[2] = dongle_half_tx_power(1, &tx_dbm[2]);
+#endif
+    K_SPINLOCK(&debug_lock) {
+        memcpy(readings.link, link, sizeof(link));
+        memcpy(readings.temp_known, temp_known, sizeof(temp_known));
+        memcpy(readings.temp_c, temp_c, sizeof(temp_c));
+        memcpy(readings.tx_known, tx_known, sizeof(tx_known));
+        memcpy(readings.tx_dbm, tx_dbm, sizeof(tx_dbm));
+    }
+    /* again while a screen still wants them */
+    if ((int32_t)((uint32_t)atomic_get(&readings_until) - k_uptime_get_32()) > 0) {
+        k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
+    }
+}
+
+/* Each Debug or Keys frame: keep the readings coming for a while yet. */
+static void readings_wanted(void) {
+    atomic_set(&readings_until, (atomic_val_t)(k_uptime_get_32() + 2 * READINGS_EVERY_MS));
+    k_work_schedule_for_queue(&readings_q, &readings_work, K_NO_WAIT); /* no change if already due */
+}
+
+/* A link as read, over what the Debug screen keeps of it (its drops and their reason). */
+static struct fx_link mix_link(struct fx_link kept, struct fx_link read) {
+    kept.up = read.up;
+    kept.rssi_known = read.rssi_known;
+    kept.rssi = read.rssi;
+    return kept;
+}
+
+static void read_debug(void) {
     K_SPINLOCK(&debug_lock) {
         debug_shown = debug;
         for (int half = 0; half < 2; half++) {
@@ -492,58 +564,22 @@ static void read_debug(uint32_t now) {
     }
 #endif
 
-    /* the links as they are now; their signal strength once a second */
-    static struct fx_link now_link[3];
-    struct link_reading reading = {.link = {&now_link[0], &now_link[1], &now_link[2]}};
-    for (int i = 0; i < 3; i++) {
-        now_link[i].up = false;
+    /* the links, signal strengths, temperatures and transmit powers: from the
+     * readings thread, as last read */
+    K_SPINLOCK(&debug_lock) {
+        d->half[0] = mix_link(d->half[0], readings.link[0]);
+        d->half[1] = mix_link(d->half[1], readings.link[1]);
+        d->host = mix_link(d->host, readings.link[2]);
+        memcpy(d->temp_known, readings.temp_known, sizeof(d->temp_known));
+        memcpy(d->temp_c, readings.temp_c, sizeof(d->temp_c));
+        memcpy(d->tx_known, readings.tx_known, sizeof(d->tx_known));
+        memcpy(d->tx_dbm, readings.tx_dbm, sizeof(d->tx_dbm));
     }
-    bt_conn_foreach(BT_CONN_TYPE_LE, read_link, &reading);
-    const bool rssi_due = now - rssi_at >= 1000;
-    for (int i = 0; i < 3; i++) {
-        if (!now_link[i].up) {
-            now_link[i].rssi_known = false;
-        }
-#if IS_ENABLED(CONFIG_BT_CTLR_CONN_RSSI)
-        else if (rssi_due && reading.found[i]) {
-            now_link[i].rssi_known = read_rssi(reading.handle[i], &now_link[i].rssi);
-        }
-#endif
-        struct fx_link *out = i < 2 ? &d->half[i] : &d->host;
-        out->up = now_link[i].up;
-        out->rssi_known = now_link[i].rssi_known;
-        out->rssi = now_link[i].rssi;
-    }
-    if (rssi_due) {
-        rssi_at = now;
-    }
-
-    /* USB reports; the temperatures and transmit powers, once a second too */
+    readings_wanted();
 #if IS_ENABLED(CONFIG_ZMK_USB)
     d->usb_reports = dongle_usb_reports_sent();
     d->usb_errors = (uint16_t)MIN(dongle_usb_reports_failed(), UINT16_MAX);
 #endif
-    static bool temp_known[3], tx_known[3];
-    static int8_t temp_c[3], tx_dbm[3];
-    if (rssi_due) {
-        temp_known[1] = read_temp(&temp_c[1]);
-#ifdef CONFIG_BT_CTLR_TX_PWR_DBM
-        tx_known[1] = true; /* the dongle's own, as built */
-        tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
-#endif
-#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
-        temp_known[0] = dongle_half_temperature(0, &temp_c[0]);
-        temp_known[2] = dongle_half_temperature(1, &temp_c[2]);
-        tx_known[0] = dongle_half_tx_power(0, &tx_dbm[0]);
-        tx_known[2] = dongle_half_tx_power(1, &tx_dbm[2]);
-#endif
-    }
-    for (int i = 0; i < 3; i++) {
-        d->temp_known[i] = temp_known[i];
-        d->temp_c[i] = temp_c[i];
-        d->tx_known[i] = tx_known[i];
-        d->tx_dbm[i] = tx_dbm[i];
-    }
 }
 
 /* Send what changed in the frame (or all of it) to the panel. */
@@ -954,7 +990,7 @@ static void frame_cb(struct k_work *work) {
             frames_since = 0;
         }
         const uint8_t frame_ms = debug_shown.frame_ms;
-        read_debug(now);
+        read_debug();
         debug_shown.fps = fps;
         debug_shown.frame_ms = frame_ms;
         in.debug = &debug_shown;
@@ -1689,6 +1725,8 @@ static void start_cb(struct k_work *work) {
 }
 
 static int screen_fx_init(void) {
+    k_work_queue_start(&readings_q, readings_stack, K_THREAD_STACK_SIZEOF(readings_stack),
+                       K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_read"});
     /* after the module's screen has drawn itself once, and ZMK has loaded
      * the settings (the saved screen among them) */
     k_work_schedule(&start_work, K_MSEC(1500));
