@@ -2,9 +2,9 @@
  * The left half's nice!view behind the dongle, drawn upright (68x160):
  *
  *   ┌──────────┐
- *   │    85    │  this half's battery, big
+ *   │    85%   │  this half's battery, big (the % half the size)
  *   │ L [████ ]│  and as a bar; just a big bolt on USB power
- *   │    60    │  other half's battery, from the dongle (-- = unknown)
+ *   │    60%   │  other half's battery, from the dongle (-- = unknown)
  *   │ R [███  ]│
  *   ├──────────┤
  *   │  ᛒ (2)   │  dongle's output: Bluetooth and its active profile
@@ -25,6 +25,9 @@
 #define BATTERY_H 58     // each battery block
 #define DIVIDER_Y 119    // line above the output
 #define NUMBER_FONT &lv_font_montserrat_36
+#define PERCENT_FONT &lv_font_montserrat_18 // half the number's size
+#define NUMBER_FONT_100 &lv_font_montserrat_28 // "100%" is too wide at full size
+#define PERCENT_FONT_100 &lv_font_montserrat_16
 #define BAR_Y 40         // bar row, within a battery block
 #define OUTPUT_FONT &lv_font_montserrat_28
 
@@ -105,11 +108,26 @@ static void battery(lv_obj_t *canvas, int32_t y, const char *label, uint8_t leve
         return;
     }
 
-    char number[4] = "--";
-    if (known) {
+    if (!known) {
+        text(canvas, 0, y, W, NUMBER_FONT, LV_TEXT_ALIGN_CENTER, fg, "--");
+    } else {
+        // the number, and a % half its size on its baseline, centred together;
+        // "100%" doesn't fit at full size, so 100 is a size smaller
+        char number[4];
         snprintf(number, sizeof(number), "%u", (unsigned int)level);
+        const bool full = level >= 100;
+        const lv_font_t *const number_font = full ? NUMBER_FONT_100 : NUMBER_FONT;
+        const lv_font_t *const percent_font = full ? PERCENT_FONT_100 : PERCENT_FONT;
+        const int32_t number_w = text_width(number_font, number), percent_w = text_width(percent_font, "%");
+        const int32_t gap = 1;
+        const int32_t x = (W - (number_w + gap + percent_w)) / 2;
+        // full size or not, on the same baseline as the full-size number
+        const int32_t baseline = y + lv_font_get_line_height(NUMBER_FONT) - (NUMBER_FONT)->base_line;
+        text(canvas, x, baseline - (lv_font_get_line_height(number_font) - number_font->base_line), number_w + 1,
+             number_font, LV_TEXT_ALIGN_LEFT, fg, number);
+        const int32_t percent_y = baseline - (lv_font_get_line_height(percent_font) - percent_font->base_line);
+        text(canvas, x + number_w + gap, percent_y, percent_w + 1, percent_font, LV_TEXT_ALIGN_LEFT, fg, "%");
     }
-    text(canvas, 0, y, W, NUMBER_FONT, LV_TEXT_ALIGN_CENTER, fg, number);
 
     // outline 50x14 at x=14, nub on the right, fill up to 46px
     const int32_t bx = 14, bw = 50, bh = 14;

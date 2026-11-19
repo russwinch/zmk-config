@@ -178,7 +178,7 @@ of ZMK's stock picture or nice-view-gem's, read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
-| Top: `L` | this half's battery, as a big number and a bar. On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
+| Top: `L` | this half's battery, as a big number with a small `%` and a bar (100 a size smaller, to fit). On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
 | Middle: `R` | the right half's battery, from the dongle (`--` until it has heard from the right half) |
 | Bottom | the dongle's output: the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
