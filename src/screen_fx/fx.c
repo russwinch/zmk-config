@@ -1453,11 +1453,25 @@ static void put_right(uint8_t *fb, int right, int y, const char *s, uint8_t colo
 
 static void rule(uint8_t *fb, int y) { line(fb, 4, y, FX_W - 5, y, DBG_DIM); }
 
-/* Signal strength as four bars, 7 wide and 7 high. */
+/*
+ * How a link's signal is coloured, on the Debug and Keys screens. The
+ * nRF52840 still hears a packet at about -95 dBm (1M PHY), so green is
+ * anything with 20 dB or more in hand, plenty for a hand or a body passing
+ * through the path; amber still works but has less to spare; red is within
+ * 10 dB, where a dip loses packets (sent again, so later) and then the link.
+ */
+#define SIGNAL_GOOD_DBM -75 /* above it: green */
+#define SIGNAL_WARN_DBM -85 /* above it: amber; red at and below */
+
+static uint8_t signal_color(const struct fx_link *link) {
+    return link->rssi > SIGNAL_GOOD_DBM ? DBG_GOOD : link->rssi > SIGNAL_WARN_DBM ? DBG_WARN : DBG_BAD;
+}
+
+/* Signal strength as four bars, 7 wide and 7 high: a bar every 10 dB from -90. */
 static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
     const int rssi = link->rssi;
-    const int lit = !link->up || !link->rssi_known ? 0 : rssi > -55 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : rssi > -85 ? 1 : 0;
-    const uint8_t color = lit >= 3 ? DBG_GOOD : lit == 2 ? DBG_WARN : DBG_BAD;
+    const int lit = !link->up || !link->rssi_known ? 0 : rssi > -60 ? 4 : rssi > -70 ? 3 : rssi > -80 ? 2 : rssi > -90 ? 1 : 0;
+    const uint8_t color = signal_color(link);
     for (int bar = 0; bar < 4; bar++) {
         const int high = 1 + bar * 2;
         for (int dy = 0; dy < high; dy++) {
@@ -1649,8 +1663,7 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     if (link->up) {
         if (link->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", link->rssi < -99 ? -99 : link->rssi);
-            put_right(fb, DBG_COL_RSSI, y, buf,
-                      link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : DBG_BAD);
+            put_right(fb, DBG_COL_RSSI, y, buf, signal_color(link));
         }
     } else {
         put_right(fb, DBG_COL_RSSI, y, "--", DBG_BAD);
@@ -1987,10 +2000,6 @@ static void history_add(uint8_t *values, int count, uint8_t value) {
 
 static int keys_block_x(int place) {
     return (FX_W - SIGNAL_W) / 2 + (place - 1) * (SIGNAL_W + 2);
-}
-
-static uint8_t signal_color(const struct fx_link *link) {
-    return link->rssi > -65 ? DBG_GOOD : link->rssi > -80 ? DBG_WARN : DBG_BAD;
 }
 
 /* A battery, 10 by 6 with its cap on the right: as full as `level` percent,
