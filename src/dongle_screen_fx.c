@@ -162,6 +162,45 @@ static uint32_t battery_at[2];            /* 0: no report yet */
 static const struct bt_conn *half_conn[2]; /* only ever compared, never used */
 
 /*
+ * The halves' battery levels every FX_BATTERY_EVERY_MIN minutes, into
+ * debug.battery_history for the Debug screen's sparklines: from the first
+ * report from either half, whatever screen is showing, until the dongle
+ * restarts.
+ */
+static atomic_t battery_history_started;
+static void battery_history_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(battery_history_work, battery_history_cb);
+
+static void battery_history_cb(struct k_work *work) {
+    uint8_t point[2];
+    for (int half = 0; half < 2; half++) {
+        uint8_t level = 0;
+        if (half < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT) {
+            zmk_split_central_get_peripheral_battery_level(half, &level);
+        }
+        point[half] = MIN(level, 100);
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+        if (level && dongle_half_charging(half)) {
+            point[half] |= FX_BATTERY_CHARGING;
+        }
+#endif
+    }
+    K_SPINLOCK(&debug_lock) {
+        if (debug.n_battery_history == FX_BATTERY_HISTORY) {
+            for (int half = 0; half < 2; half++) {
+                memmove(&debug.battery_history[half][0], &debug.battery_history[half][1], FX_BATTERY_HISTORY - 1);
+            }
+            debug.n_battery_history--;
+        }
+        for (int half = 0; half < 2; half++) {
+            debug.battery_history[half][debug.n_battery_history] = point[half];
+        }
+        debug.n_battery_history++;
+    }
+    k_work_schedule(&battery_history_work, K_MINUTES(FX_BATTERY_EVERY_MIN));
+}
+
+/*
  * What a held key is holding, for the Keys and Debug screens to colour it
  * by. Worked out from the keymap when the key goes down (key_pressed): a
  * modifier (&kp LSHIFT, or the hold side of a hold-tap such as a home row
@@ -333,7 +372,6 @@ static void read_link(struct bt_conn *conn, void *data) {
     struct fx_link *link = reading->link[which];
     link->up = true;
     link->interval = info.le.interval;
-    link->latency = info.le.latency;
     reading->found[which] = bt_hci_get_conn_handle(conn, &reading->handle[which]) == 0;
 }
 
@@ -466,7 +504,6 @@ static void read_debug(uint32_t now) {
         struct fx_link *out = i < 2 ? &d->half[i] : &d->host;
         out->up = now_link[i].up;
         out->interval = now_link[i].interval;
-        out->latency = now_link[i].latency;
         out->rssi_known = now_link[i].rssi_known;
         out->rssi = now_link[i].rssi;
     }
@@ -1552,6 +1589,10 @@ static int screen_fx_listener(const zmk_event_t *eh) {
         if (battery->source < 2) {
             K_SPINLOCK(&debug_lock) {
                 battery_at[battery->source] = k_uptime_get_32() | 1;
+            }
+            if (atomic_cas(&battery_history_started, 0, 1)) {
+                /* the first reading: a moment from now, when the level is in */
+                k_work_schedule(&battery_history_work, K_SECONDS(2));
             }
         }
         return ZMK_EV_EVENT_BUBBLE;

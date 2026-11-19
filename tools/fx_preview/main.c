@@ -211,8 +211,8 @@ int main(int argc, char **argv) {
     static struct fx_debug debug = {
         .firmware = "B149", .uptime_s = 4365, .reset_cause = 2, .fps = 15, .frame_ms = 38, .heap_known = true, .heap_used = 62,
         .heap_peak = 71,
-        .half = {{.up = true, .rssi_known = true, .rssi = -52, .interval = 6, .latency = 30, .drops = 2, .reason = 0x08},
-                 {.up = true, .rssi_known = true, .rssi = -71, .interval = 6, .latency = 30}},
+        .half = {{.up = true, .rssi_known = true, .rssi = -52, .interval = 6, .drops = 2, .reason = 0x08},
+                 {.up = true, .rssi_known = true, .rssi = -71, .interval = 6}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .interval = 12, .drops = 1, .reason = 0x13},
         .battery_age_s = {12, 340}, .usb_reports = 18342, .usb_errors = 0, .vdd_mv = 3312,
         .temp_known = {true, true, true}, .temp_c = {27, 31, 26}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
@@ -221,6 +221,13 @@ int main(int argc, char **argv) {
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);
+    /* an hour and a half of battery: the left half charged at the start, the right running down, a
+     * reading lost where it was out of reach */
+    debug.n_battery_history = 18;
+    for (int i = 0; i < debug.n_battery_history; i++) {
+        debug.battery_history[0][i] = i < 3 ? 100 | FX_BATTERY_CHARGING : (uint8_t)(100 - (i - 3) / 3);
+        debug.battery_history[1][i] = i == 9 ? 0 : (uint8_t)(10 - i / 3);
+    }
     fx_set_encoders(encoders, n_encoders);
 
     fx_set_canvas(canvas);

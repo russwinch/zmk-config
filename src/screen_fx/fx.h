@@ -88,13 +88,18 @@ struct fx_theme {
 #define FX_DEBUG_PROFILES 5
 #define FX_MAX_ENCODERS 4
 
+/* The halves' battery history: a level every FX_BATTERY_EVERY_MIN minutes,
+ * FX_BATTERY_HISTORY of them (two hours). */
+#define FX_BATTERY_HISTORY 24
+#define FX_BATTERY_EVERY_MIN 5
+#define FX_BATTERY_CHARGING 0x80 /* or'd into a level taken while that half was charging */
+
 /* A Bluetooth link: to a half, or to the computer. */
 struct fx_link {
     bool up;
     bool rssi_known;
     int8_t rssi;       /* dBm, as the dongle hears the other end */
     uint16_t interval; /* connection interval, in units of 1.25 ms */
-    uint16_t latency;  /* intervals the other end may skip */
     uint16_t drops;    /* times it has been lost since power-up */
     uint8_t reason;    /* Bluetooth's reason for the last loss (0: none yet) */
 };
@@ -118,6 +123,10 @@ struct fx_debug {
     uint8_t heap_used, heap_peak; /* LVGL's memory, percent */
     struct fx_link half[2], host;
     uint16_t battery_age_s[2]; /* since each half last reported its level */
+    /* each half's level, oldest first, the newest last: 0 not known (no
+     * report, or not connected), | FX_BATTERY_CHARGING while charging */
+    uint8_t battery_history[2][FX_BATTERY_HISTORY];
+    uint8_t n_battery_history;
     uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */
     bool usb_asleep;      /* the computer has suspended the port: it is asleep */

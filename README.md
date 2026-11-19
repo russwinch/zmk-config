@@ -436,9 +436,9 @@ The link rows' columns:
 | --- | --- |
 | bars | signal strength, from `DBM` |
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
+| `-2H` | each half's battery over the last two hours, a reading every 5 minutes, the newest on the right (filling in from there after the dongle starts; the dotted part is still to come). Scaled to the readings shown, but never to less than 6 percent top to bottom, so a level that hasn't moved is a flat line and a pixel is at most a percent; coloured as `BAT` is. A green dot along the top is a reading taken while that half was charging, and a gap one with no level (the half out of reach) |
 | `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -65, amber to -80, red below. Bluetooth keeps working to about -90, so amber is still a solid link; red is where drops start. Every device transmits at 0 dBm, the default (`config/default.conf`) |
 | `C` | chip temperature in °C: the half's (measured every 5 minutes, `--` until it has said), and on the `H` row the dongle's own; amber from 60 |
-| `LT` | how many of those the other end may skip to save power |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
 | `S` | seconds since that half last reported its battery |
@@ -446,7 +446,7 @@ The link rows' columns:
 The halves don't report their battery voltage to the dongle, only the percent,
 so there is no voltage here. Key timings are taken when an event reaches the
 dongle, and a half sends at most once per connection interval, so a bounce
-shorter than that (7.5 ms) can't be seen from here. The counts start again
+shorter than that (7.5 ms) can't be seen from here. The counts and the battery history start again
 when the dongle restarts.
 
 Only the dongle needs flashing to change these (the keymap and the screen
