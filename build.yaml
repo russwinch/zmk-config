@@ -38,9 +38,9 @@ include:
     shield: splitkb_aurora_corne_dongle prospector_adapter
     cmake-args: -DCONFIG_ZMK_SLEEP=n
   - board: nice_nano//zmk
-    # peripheral; nice!view shows the half status screen, as the Waterfowl's below
+    # peripheral; the dongle sends its nice!view the output and the other battery
     shield: splitkb_aurora_corne_left nice_view_adapter nice_view
-    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n -DCONFIG_NICE_VIEW_WIDGET_STATUS=n -DCONFIG_WATERFOWL_HALF_STATUS_SCREEN=y
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
     artifact-name: splitkb_aurora_corne_left_peripheral_for_dongle
 
   # --- Waterfowl (nice!nano v2, nice!view on left, encoders) ---
@@ -58,9 +58,8 @@ include:
     cmake-args: -DCONFIG_ZMK_SLEEP=n
   - board: nice_nano//zmk
     shield: waterfowl_left nice_view_adapter nice_view
-    # peripheral; nice!view shows both batteries and the dongle's Bluetooth
-    # profile instead of ZMK's stock picture (src/half_status_screen.c)
-    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n -DCONFIG_NICE_VIEW_WIDGET_STATUS=n -DCONFIG_WATERFOWL_HALF_STATUS_SCREEN=y
+    # peripheral; the dongle sends its nice!view the output and the other battery
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
     artifact-name: waterfowl_left_peripheral_for_dongle
 
   # --- Forager (Seeed XIAO nRF52840, onboard RGB LED, no display) ---

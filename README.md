@@ -172,17 +172,18 @@ on and each half blinks its own battery level.
 
 The right halves have no screens (and the Forager's and Urchin's none at
 all): they keep their RGB LED. Every left half
-with a nice!view (Waterfowl, Aurora Corne; in
-`<keyboard>_left_peripheral_for_dongle`) shows a small status screen in place
-of ZMK's stock picture, read with the screen vertical:
+with a nice!view (Waterfowl, Aurora Corne), on its own or behind the dongle,
+shows a small status screen in place of ZMK's stock picture
+(`config/nice_view.conf`), read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
 | Top: `L` | this half's battery, as a big number with a small `%` and a bar (100 a size smaller, to fit). On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
-| Middle: `R` | the right half's battery, from the dongle (`--` until it has heard from the right half) |
-| Bottom | the dongle's output: the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
+| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it |
+| Bottom | the output (the keyboard's own, or the dongle's): the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
-The dongle sends this when the profile, output or a battery changes, and again
+On its own the left half is the central and knows all of this itself. Behind
+the dongle, the dongle sends it when the profile, output or a battery changes, and again
 every minute (`src/dongle_half_status.c`, `src/half_status_screen.c`). The
 half only redraws its screen when something on it has changed.
 `tools/half_status_preview.py` draws the screen (`src/half_status_draw.c`) on a

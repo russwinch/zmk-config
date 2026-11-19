@@ -1,11 +1,13 @@
 /*
- * Left half behind the Prospector dongle (Waterfowl, Aurora Corne):
- * nice!view screen
- * showing both halves' batteries and the dongle's Bluetooth profile.
+ * Every left half with a nice!view (Waterfowl, Aurora Corne): a screen
+ * showing both halves' batteries and the keyboard's output (USB, or the
+ * active Bluetooth profile), in place of ZMK's stock picture.
  *
- * Replaces ZMK's stock peripheral screen (picture + own battery). The data the
- * half can't know itself comes from the dongle through the `half_status`
- * behavior (src/half_status.h, sent by src/dongle_half_status.c).
+ * On its own the left half is the central and knows all of it: its own
+ * battery, the right half's (which it fetches) and its own output. Behind
+ * the Prospector dongle it is a peripheral, and what it can't know itself
+ * comes from the dongle through the `half_status` behavior
+ * (src/half_status.h, sent by src/dongle_half_status.c).
  *
  * The picture itself is drawn by src/half_status_draw.c (layout there;
  * tools/half_status_preview.py renders it on a computer).
@@ -27,10 +29,18 @@
 #include <zmk/display.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
-#include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/split/bluetooth/peripheral.h>
 #include <zmk/usb.h>
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+#include <zmk/ble.h>
+#include <zmk/endpoints.h>
+#include <zmk/events/ble_active_profile_changed.h>
+#include <zmk/events/endpoint_changed.h>
+#include <zmk/split/central.h>
+#else
+#include <zmk/events/split_peripheral_status_changed.h>
+#include <zmk/split/bluetooth/peripheral.h>
+#endif
 
 #include "half_status.h"
 #include "half_status_draw.h"
@@ -75,12 +85,14 @@ static void set_remote(const struct remote_state *next) {
     }
 }
 
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) // on its own the half knows it all itself
 static struct remote_state get_remote(void) {
     k_mutex_lock(&remote_mutex, K_FOREVER);
     struct remote_state copy = remote;
     k_mutex_unlock(&remote_mutex);
     return copy;
 }
+#endif
 
 /* ---------------------------------------------------------------------------
  * The `half_status` behavior: the dongle "presses" it with the status packed
@@ -135,10 +147,12 @@ DT_INST_FOREACH_STATUS_OKAY(HALF_STATUS_INST)
 #endif
 
 /* ---------------------------------------------------------------------------
- * Local events: own battery, USB power, link to the dongle
+ * Local events: own battery, USB power; behind the dongle the link to it, on
+ * its own the right half's battery and the output
  */
 
 static int half_status_local_listener(const zmk_event_t *eh) {
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     const struct zmk_split_peripheral_status_changed *link =
         as_zmk_split_peripheral_status_changed(eh);
     if (link != NULL && !link->connected) {
@@ -147,6 +161,7 @@ static int half_status_local_listener(const zmk_event_t *eh) {
         memset(&cleared, 0, sizeof(cleared));
         set_remote(&cleared);
     }
+#endif
 
     request_redraw();
     return ZMK_EV_EVENT_BUBBLE;
@@ -154,7 +169,13 @@ static int half_status_local_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(half_status_local, half_status_local_listener);
 ZMK_SUBSCRIPTION(half_status_local, zmk_battery_state_changed);
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+ZMK_SUBSCRIPTION(half_status_local, zmk_peripheral_battery_state_changed);
+ZMK_SUBSCRIPTION(half_status_local, zmk_ble_active_profile_changed);
+ZMK_SUBSCRIPTION(half_status_local, zmk_endpoint_changed);
+#else
 ZMK_SUBSCRIPTION(half_status_local, zmk_split_peripheral_status_changed);
+#endif
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
 ZMK_SUBSCRIPTION(half_status_local, zmk_usb_conn_state_changed);
 #endif
@@ -183,7 +204,6 @@ static struct half_status_view shown;
 static bool drawn;
 
 static struct half_status_view current_view(void) {
-    struct remote_state r = get_remote();
     struct half_status_view v;
     memset(&v, 0, sizeof(v)); // padding too, for the memcmp in redraw()
 
@@ -191,6 +211,21 @@ static struct half_status_view current_view(void) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     v.charging = zmk_usb_is_powered();
 #endif
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    // on its own: everything is here
+    v.linked = v.valid = true;
+    uint8_t level = 0;
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+    zmk_split_central_get_peripheral_battery_level(0, &level);
+#endif
+    v.other_battery = level > 0 ? level : HALF_STATUS_DRAW_UNKNOWN; // 0: not heard from yet
+    v.usb = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
+    v.profile = zmk_ble_active_profile_index();
+    v.profile_connected = zmk_ble_active_profile_is_connected();
+    v.profile_bonded = !zmk_ble_active_profile_is_open();
+    return v;
+#else
+    struct remote_state r = get_remote();
     v.linked = zmk_split_bt_peripheral_is_connected();
     v.valid = r.valid;
     if (r.valid) {
@@ -203,6 +238,7 @@ static struct half_status_view current_view(void) {
         v.other_battery = HALF_STATUS_DRAW_UNKNOWN;
     }
     return v;
+#endif
 }
 
 static void redraw(void) {

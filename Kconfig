@@ -61,9 +61,10 @@ config WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S
     depends on WATERFOWL_DONGLE_HALF_STATUS
 
 config WATERFOWL_HALF_STATUS_SCREEN
-    bool "nice!view screen for a left half behind the dongle"
-    depends on SHIELD_NICE_VIEW && ZMK_DISPLAY && ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL
+    bool "nice!view screen for a left half: both batteries and the output"
+    depends on SHIELD_NICE_VIEW && ZMK_DISPLAY && ZMK_SPLIT
     depends on !NICE_VIEW_WIDGET_STATUS
+    imply ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING if ZMK_SPLIT_ROLE_CENTRAL
     select LV_USE_CANVAS
     select LV_FONT_MONTSERRAT_14
     select LV_FONT_MONTSERRAT_16
@@ -71,11 +72,13 @@ config WATERFOWL_HALF_STATUS_SCREEN
     select LV_FONT_MONTSERRAT_28
     select LV_FONT_MONTSERRAT_36
     help
-      Replaces ZMK's stock peripheral screen with both batteries, big, and
-      the dongle's output (USB, or the active Bluetooth profile). Needs NICE_VIEW_WIDGET_STATUS=n (the stock
-      screen) and the half_status behavior node (config/half_status.dtsi).
-      Turned on for the dongle build of each left half with a nice!view
-      (Waterfowl, Aurora Corne) in build.yaml.
+      Replaces ZMK's stock nice!view screen with both batteries, big, and
+      the output (USB, or the active Bluetooth profile). On its own the
+      left half (the central) knows all of it; behind the dongle the dongle
+      sends what the half can't know, to the half_status behavior node
+      (config/half_status.dtsi). Needs NICE_VIEW_WIDGET_STATUS=n (the stock
+      screen). Turned on for every left half with a nice!view in
+      config/nice_view.conf.
 
 # --- Charging, temperature and transmit power of the halves (src/half_charging.c, src/half_temperature.c,
 #     src/half_tx_power.c, src/dongle_half_info.c) ---
