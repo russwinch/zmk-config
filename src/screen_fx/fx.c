@@ -1494,7 +1494,7 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 
 /* Column right edges of the links table. */
 #define DBG_COL_LEVEL 39
-#define DBG_COL_HISTORY 41 /* the battery sparkline's left edge: it is FX_BATTERY_HISTORY wide */
+#define DBG_COL_VOLTS 64
 #define DBG_COL_RSSI 84
 #define DBG_COL_TEMP 98
 #define DBG_COL_DROPS 111
@@ -1609,59 +1609,21 @@ static void count_text(char *buf, size_t size, uint32_t n) {
     }
 }
 
+/* A supply in the V column: volts to two places, "-.--" when not known. */
+static void debug_volts(uint8_t *fb, int y, uint16_t mv, bool dim) {
+    char buf[8];
+    if (mv == 0) {
+        put_right(fb, DBG_COL_VOLTS, y, "-.--", DBG_LABEL);
+        return;
+    }
+    mv = (uint16_t)(mv + 5 > 9999 ? 9999 : mv + 5); /* to the nearest hundredth */
+    snprintf(buf, sizeof(buf), "%u.%02u", mv / 1000, mv % 1000 / 10);
+    put_right(fb, DBG_COL_VOLTS, y, buf, dim ? DBG_LABEL : DBG_TEXT);
+}
+
 /* The colour of a battery level, as the BAT column has it. */
 static uint8_t battery_color(int level) {
     return level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT;
-}
-
-/*
- * A half's battery over the last two hours, 7 high at (x, y): a column for
- * each reading (fx_debug's battery_history), the newest at the right, filling
- * from there as they come. Scaled to the readings shown, but never to less
- * than 6 percent, so a pixel is a percent at most and a level that hasn't
- * moved is a flat line in the middle. A reading taken while charging is a
- * green dot along the top (its level is the charger's, not the battery's);
- * one not known is a gap. Columns with no reading yet are a dotted line.
- */
-static void battery_sparkline(uint8_t *fb, int x, int y, const uint8_t *history, int n) {
-    const int high = 7, min_span = 6;
-    int lo = 101, hi = -1;
-    for (int i = 0; i < n; i++) {
-        const int level = history[i];
-        if (level && !(level & FX_BATTERY_CHARGING)) {
-            lo = level < lo ? level : lo;
-            hi = level > hi ? level : hi;
-        }
-    }
-    if (hi - lo < min_span) { /* no readings at all leaves these unused */
-        const int mid = (lo + hi) / 2;
-        lo = mid - min_span / 2;
-        hi = lo + min_span;
-    }
-    const int first = x + FX_BATTERY_HISTORY - n;
-    for (int px = x; px < first; px += 2) {
-        plot(fb, px, y + high - 1, DBG_DIM);
-    }
-    int last_y = -1;
-    for (int i = 0; i < n; i++) {
-        const int level = history[i], px = first + i;
-        if (level & FX_BATTERY_CHARGING) {
-            plot(fb, px, y, DBG_GOOD);
-            last_y = -1;
-            continue;
-        }
-        if (!level) {
-            last_y = -1;
-            continue;
-        }
-        const int py = y + (high - 1) - (level - lo) * (high - 1) / (hi - lo);
-        /* joined to the reading before by a line up or down this column */
-        const int from = last_y < 0 ? py : last_y;
-        for (int dy = from < py ? from : py; dy <= (from < py ? py : from); dy++) {
-            plot(fb, px, dy, battery_color(level));
-        }
-        last_y = py;
-    }
 }
 
 /* One row of the table: `level` is the battery, or the output for the computer. */
@@ -1810,8 +1772,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, DBG_COL_LEVEL, 23, "BAT", DBG_LABEL);
     put_right(fb, DBG_COL_RSSI, 23, "DBM", DBG_LABEL);
     put_right(fb, DBG_COL_TEMP, 23, "C", DBG_LABEL);
-    snprintf(buf, sizeof(buf), "-%dH", FX_BATTERY_HISTORY * FX_BATTERY_EVERY_MIN / 60);
-    put(fb, DBG_COL_HISTORY + (FX_BATTERY_HISTORY + 1 - 5 * (int)strlen(buf)) / 2, 23, buf, DBG_LABEL);
+    put_right(fb, DBG_COL_VOLTS, 23, "V", DBG_LABEL);
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
     put_right(fb, DBG_COL_TX, 23, "TX", DBG_LABEL);
@@ -1831,13 +1792,14 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
                    charging || spin ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
                    d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2]);
-        battery_sparkline(fb, DBG_COL_HISTORY, 31 + half * 8, d->battery_history[half],
-                          d->n_battery_history < FX_BATTERY_HISTORY ? d->n_battery_history : FX_BATTERY_HISTORY);
+        /* dim while charging: it is the charger's then */
+        debug_volts(fb, 31 + half * 8, d->mv[half * 2], charging);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
     debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, d->temp_known[1],
                d->temp_c[1], d->tx_known[1], d->tx_dbm[1]);
+    debug_volts(fb, 47, d->mv[1], false);
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those
@@ -1902,12 +1864,6 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         x = put(fb, x, 76, buf, tenths == FX_DRAIN_UNKNOWN ? DBG_LABEL : DBG_TEXT) + 4;
     }
     put(fb, x - 2, 76, "%/H", DBG_LABEL);
-    if (d->vdd_mv) {
-        snprintf(buf, sizeof(buf), "%u.%02uV", d->vdd_mv / 1000, d->vdd_mv % 1000 / 10);
-        put(fb, mods_x, 76, buf, DBG_TEXT);
-    } else {
-        put(fb, mods_x, 76, "-.--V", DBG_LABEL);
-    }
     count_text(buf + 1, sizeof(buf) - 1, d->presses);
     buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);

@@ -8,6 +8,8 @@
  *                  by src/half_temperature.c): the Debug screen shows it
  *   transmit power the Tx Power Service's Tx Power Level (offered by
  *                  src/half_tx_power.c): the Debug screen shows it
+ *   battery volts  the Voltage characteristic (offered by
+ *                  src/half_voltage.c): the Debug screen shows it
  *
  * Each is read once a half is set up, and then subscribed to: the half sends
  * it again only when it changes, in a connection event it wakes for anyway.
@@ -68,7 +70,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define RETRIES 5
 #define SETTLE_MS 3000 // after unplugging, a fresh battery reading within this
 
-enum { BLS, TEMP, TX_POWER, KINDS };
+enum { BLS, TEMP, TX_POWER, VOLTS, KINDS };
 
 // One characteristic on one half: read once, then subscribed to.
 struct watch {
@@ -83,6 +85,7 @@ static atomic_t temp_known; // bit per half
 static atomic_t temp_c[2];
 static atomic_t tx_known; // bit per half
 static atomic_t tx_dbm[2];
+static atomic_t millivolts[2]; // 0: not known
 static atomic_t settling; // bit per half: unplugged, no battery reading since
 static atomic_t unplugged_at[2];
 
@@ -103,6 +106,10 @@ bool dongle_half_temperature(int half, int8_t *celsius) {
     return true;
 }
 
+uint16_t dongle_half_millivolts(int half) {
+    return half >= 0 && half < 2 ? (uint16_t)atomic_get(&millivolts[half]) : 0;
+}
+
 bool dongle_half_tx_power(int half, int8_t *dbm) {
     if (half < 0 || half >= 2 || !atomic_test_bit(&tx_known, half)) {
         return false;
@@ -112,8 +119,10 @@ bool dongle_half_tx_power(int half, int8_t *dbm) {
 }
 
 static const struct bt_uuid *uuid_of(int kind) {
-    return kind == BLS ? BT_UUID_BAS_BATTERY_LEVEL_STATUS : kind == TEMP ? BT_UUID_TEMPERATURE
-                                                                         : BT_UUID_TPS_TX_POWER_LEVEL;
+    return kind == BLS        ? BT_UUID_BAS_BATTERY_LEVEL_STATUS
+           : kind == TEMP     ? BT_UUID_TEMPERATURE
+           : kind == TX_POWER ? BT_UUID_TPS_TX_POWER_LEVEL
+                              : BT_UUID_GATT_V;
 }
 
 // Which half a connection is: the slot ZMK keeps its address in.
@@ -186,6 +195,10 @@ static void take(int half, int kind, const void *data, uint16_t length) {
         } else if (on) {
             atomic_clear_bit(&settling, half);
         }
+    } else if (kind == VOLTS) {
+        // in 1/64 V, as the characteristic has it
+        const uint16_t sixty_fourths = data != NULL && length >= 2 ? sys_get_le16(data) : 0;
+        atomic_set(&millivolts[half], (atomic_val_t)MIN((uint32_t)sixty_fourths * 1000 / 64, UINT16_MAX));
     } else if (kind == TX_POWER) {
         if (data != NULL && length >= 1) {
             atomic_set(&tx_dbm[half], *(const int8_t *)data);
@@ -394,6 +407,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     atomic_clear_bit(&settling, half);
     atomic_clear_bit(&temp_known, half);
     atomic_clear_bit(&tx_known, half);
+    atomic_clear(&millivolts[half]);
     // a request out to it won't be answered: let the other half's go
     for (int kind = 0; kind < KINDS; kind++) {
         atomic_cas(&inflight, half * KINDS + kind, IDLE);

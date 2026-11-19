@@ -164,45 +164,6 @@ static uint32_t released_at[BOUNCE_KEYS]; /* 0: not yet */
 static const struct bt_conn *half_conn[2]; /* only ever compared, never used */
 
 /*
- * The halves' battery levels every FX_BATTERY_EVERY_MIN minutes, into
- * debug.battery_history for the Debug screen's sparklines: from the first
- * report from either half, whatever screen is showing, until the dongle
- * restarts.
- */
-static atomic_t battery_history_started;
-static void battery_history_cb(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(battery_history_work, battery_history_cb);
-
-static void battery_history_cb(struct k_work *work) {
-    uint8_t point[2];
-    for (int half = 0; half < 2; half++) {
-        uint8_t level = 0;
-        if (half < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT) {
-            zmk_split_central_get_peripheral_battery_level(half, &level);
-        }
-        point[half] = MIN(level, 100);
-#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
-        if (level && dongle_half_charging(half)) {
-            point[half] |= FX_BATTERY_CHARGING;
-        }
-#endif
-    }
-    K_SPINLOCK(&debug_lock) {
-        if (debug.n_battery_history == FX_BATTERY_HISTORY) {
-            for (int half = 0; half < 2; half++) {
-                memmove(&debug.battery_history[half][0], &debug.battery_history[half][1], FX_BATTERY_HISTORY - 1);
-            }
-            debug.n_battery_history--;
-        }
-        for (int half = 0; half < 2; half++) {
-            debug.battery_history[half][debug.n_battery_history] = point[half];
-        }
-        debug.n_battery_history++;
-    }
-    k_work_schedule(&battery_history_work, K_MINUTES(FX_BATTERY_EVERY_MIN));
-}
-
-/*
  * Each half's average draw, in percent an hour, for the Debug screen: from
  * the half's battery reports, which come when its level moves a whole
  * percent. The clock starts at the first reading (`from`) and each drop
@@ -626,7 +587,7 @@ static struct {
     struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
     bool temp_known[3], tx_known[3];
     int8_t temp_c[3], tx_dbm[3];
-    uint16_t vdd_mv;
+    uint16_t mv[3];
 } readings; /* under debug_lock */
 static atomic_t readings_until; /* uptime ms: wanted until then */
 
@@ -650,7 +611,7 @@ static void readings_cb(struct k_work *work) {
     bool temp_known[3] = {false}, tx_known[3] = {false};
     int8_t temp_c[3] = {0}, tx_dbm[3] = {0};
     temp_known[1] = read_temp(&temp_c[1]);
-    const uint16_t vdd_mv = read_vdd_mv();
+    uint16_t mv[3] = {0, read_vdd_mv(), 0};
 #ifdef CONFIG_BT_CTLR_TX_PWR_DBM
     tx_known[1] = true; /* the dongle's own, as built */
     tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
@@ -660,6 +621,8 @@ static void readings_cb(struct k_work *work) {
     temp_known[2] = dongle_half_temperature(1, &temp_c[2]);
     tx_known[0] = dongle_half_tx_power(0, &tx_dbm[0]);
     tx_known[2] = dongle_half_tx_power(1, &tx_dbm[2]);
+    mv[0] = dongle_half_millivolts(0);
+    mv[2] = dongle_half_millivolts(1);
 #endif
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
@@ -667,7 +630,7 @@ static void readings_cb(struct k_work *work) {
         memcpy(readings.temp_c, temp_c, sizeof(temp_c));
         memcpy(readings.tx_known, tx_known, sizeof(tx_known));
         memcpy(readings.tx_dbm, tx_dbm, sizeof(tx_dbm));
-        readings.vdd_mv = vdd_mv;
+        memcpy(readings.mv, mv, sizeof(mv));
     }
     /* again while a screen still wants them */
     if ((int32_t)((uint32_t)atomic_get(&readings_until) - k_uptime_get_32()) > 0) {
@@ -734,7 +697,7 @@ static void read_debug(void) {
         memcpy(d->temp_c, readings.temp_c, sizeof(d->temp_c));
         memcpy(d->tx_known, readings.tx_known, sizeof(d->tx_known));
         memcpy(d->tx_dbm, readings.tx_dbm, sizeof(d->tx_dbm));
-        d->vdd_mv = readings.vdd_mv;
+        memcpy(d->mv, readings.mv, sizeof(d->mv));
     }
     readings_wanted();
 #if IS_ENABLED(CONFIG_ZMK_USB)
@@ -1807,10 +1770,6 @@ static int screen_fx_listener(const zmk_event_t *eh) {
                               false,
 #endif
                               k_uptime_get_32());
-            }
-            if (atomic_cas(&battery_history_started, 0, 1)) {
-                /* the first reading: a moment from now, when the level is in */
-                k_work_schedule(&battery_history_work, K_SECONDS(2));
             }
         }
         return ZMK_EV_EVENT_BUBBLE;

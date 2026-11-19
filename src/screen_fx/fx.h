@@ -90,11 +90,6 @@ struct fx_theme {
 #define FX_DEBUG_PROFILES 5
 #define FX_MAX_ENCODERS 4
 
-/* The halves' battery history: a level every FX_BATTERY_EVERY_MIN minutes,
- * FX_BATTERY_HISTORY of them (two hours). */
-#define FX_BATTERY_HISTORY 24
-#define FX_BATTERY_EVERY_MIN 5
-#define FX_BATTERY_CHARGING 0x80 /* or'd into a level taken while that half was charging */
 #define FX_DRAIN_UNKNOWN 0xffff
 
 #define FX_CRASH_HANG 1
@@ -135,10 +130,6 @@ struct fx_debug {
     bool heap_known;
     uint8_t heap_used, heap_peak; /* LVGL's memory, percent */
     struct fx_link half[2], host;
-    /* each half's level, oldest first, the newest last: 0 not known (no
-     * report, or not connected), | FX_BATTERY_CHARGING while charging */
-    uint8_t battery_history[2][FX_BATTERY_HISTORY];
-    uint8_t n_battery_history;
     /* how the dongle's last run ended, beyond reset_cause: 0, FX_CRASH_HANG
      * (no picture within 15 s of power-up, or of waking, so it restarted
      * itself: crash_code FX_HANG_AT_START or FX_HANG_AFTER_WAKE) or
@@ -165,7 +156,8 @@ struct fx_debug {
     uint8_t bounce_key;
     uint32_t usb_reports; /* keyboard and media reports sent over USB since power-up */
     uint16_t usb_errors;  /* and those that failed (the computer not taking them) */
-    uint16_t vdd_mv;      /* the dongle's supply, from its 3.3 V regulator (0: not known) */
+    uint16_t mv[3];       /* supplies, millivolts (0: not known): the left half's battery, the
+                           * dongle's 3.3 V regulator, the right half's battery */
     bool temp_known[3];   /* chip temperatures: left half, dongle, right half */
     int8_t temp_c[3];
     bool tx_known[3];     /* radio transmit power, as built, dBm: the same three */

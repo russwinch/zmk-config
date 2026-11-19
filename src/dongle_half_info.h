@@ -15,6 +15,10 @@ bool dongle_half_settling(int half);
 // The half's chip temperature in whole degrees C; false when not known.
 bool dongle_half_temperature(int half, int8_t *celsius);
 
+// The half's battery voltage in millivolts, as it last said (about once a
+// minute, when it has moved); 0 when not known.
+uint16_t dongle_half_millivolts(int half);
+
 // The power the half's radio transmits at, in dBm, as its firmware was built;
 // false when not known.
 bool dongle_half_tx_power(int half, int8_t *dbm);

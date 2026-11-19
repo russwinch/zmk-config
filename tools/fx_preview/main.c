@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
         .half = {{.up = true, .rssi_known = true, .rssi = -52, .drops = 2, .reason = 0x08},
                  {.up = true, .rssi_known = true, .rssi = -71}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .drops = 1, .reason = 0x13},
-        .usb_reports = 18342, .usb_errors = 0, .drain_tenths = {6, 13}, .vdd_mv = 3312,
+        .usb_reports = 18342, .usb_errors = 0, .drain_tenths = {6, 13}, .mv = {3921, 3312, 3604},
         .tx_known = {true, true, false}, .tx_dbm = {8, 0},
         .temp_known = {true, true, true}, .temp_c = {27, 31, 26}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
@@ -222,13 +222,6 @@ int main(int argc, char **argv) {
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);
-    /* an hour and a half of battery: the left half charged at the start, the right running down, a
-     * reading lost where it was out of reach */
-    debug.n_battery_history = 18;
-    for (int i = 0; i < debug.n_battery_history; i++) {
-        debug.battery_history[0][i] = i < 3 ? 100 | FX_BATTERY_CHARGING : (uint8_t)(100 - (i - 3) / 3);
-        debug.battery_history[1][i] = i == 9 ? 0 : (uint8_t)(10 - i / 3);
-    }
     fx_set_encoders(encoders, n_encoders);
 
     fx_set_canvas(canvas);

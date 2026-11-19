@@ -117,8 +117,19 @@ config HALF_TX_POWER
       the dongle's Debug screen shows it, so a board with more than the
       default 0 dBm stands out.
 
+config HALF_VOLTAGE
+    bool "Offer this half's battery voltage to the dongle"
+    default y
+    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && ZMK_BATTERY_REPORTING
+    depends on $(dt_chosen_enabled,zmk,battery)
+    help
+      As the Voltage characteristic of an Environmental Sensing Service:
+      the last of ZMK's own battery readings (nothing extra is measured),
+      sent when it has moved by about 30 mV. The dongle's Debug screen
+      shows it.
+
 config DONGLE_HALF_INFO
-    bool "Hear whether each half is on USB power, its temperature and transmit power"
+    bool "Hear whether each half is on USB power, its temperature, transmit power and battery volts"
     default y
     depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
     depends on BT_GATT_AUTO_DISCOVER_CCC && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING

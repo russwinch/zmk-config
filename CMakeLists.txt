@@ -7,6 +7,7 @@ target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_
 target_sources_ifdef(CONFIG_HALF_CHARGING_STATUS app PRIVATE src/half_charging.c)
 target_sources_ifdef(CONFIG_HALF_TEMPERATURE app PRIVATE src/half_temperature.c)
 target_sources_ifdef(CONFIG_HALF_TX_POWER app PRIVATE src/half_tx_power.c)
+target_sources_ifdef(CONFIG_HALF_VOLTAGE app PRIVATE src/half_voltage.c)
 target_sources_ifdef(CONFIG_BATTERY_REFRESH_ON_UNPLUG app PRIVATE src/battery_refresh.c)
 target_sources_ifdef(CONFIG_DONGLE_HALF_INFO app PRIVATE src/dongle_half_info.c)
 # The Debug screen's USB report counts: ZMK's two send functions are wrapped
