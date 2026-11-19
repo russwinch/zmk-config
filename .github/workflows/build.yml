@@ -33,7 +33,7 @@ jobs:
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # a re-run
           if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then kind=--latest; else kind=--prerelease; fi
           gh release create "$tag" firmware.zip assets/*.uf2 --target "$GITHUB_SHA" $kind \
-            --title "$GITHUB_REF_NAME · $subject" --notes "Built from $GITHUB_SHA."
+            --title "$GITHUB_RUN_NUMBER · $GITHUB_REF_NAME · $subject" --notes "Built from $GITHUB_SHA."
 
       - name: Keep the newest 30
         run: |
