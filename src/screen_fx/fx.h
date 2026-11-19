@@ -99,6 +99,9 @@ struct fx_theme {
 
 #define FX_CRASH_HANG 1
 #define FX_CRASH_FAULT 2
+/* crash_code for FX_CRASH_HANG: when no picture came */
+#define FX_HANG_AT_START 1
+#define FX_HANG_AFTER_WAKE 2
 
 /* fx_link.rssi_err beyond an error number */
 #define FX_RSSI_ERR_HANDLE 254
@@ -137,7 +140,8 @@ struct fx_debug {
     uint8_t battery_history[2][FX_BATTERY_HISTORY];
     uint8_t n_battery_history;
     /* how the dongle's last run ended, beyond reset_cause: 0, FX_CRASH_HANG
-     * (no picture within 15 s of power-up, so it restarted itself) or
+     * (no picture within 15 s of power-up, or of waking, so it restarted
+     * itself: crash_code FX_HANG_AT_START or FX_HANG_AFTER_WAKE) or
      * FX_CRASH_FAULT (crashed, with Zephyr's reason in crash_code) */
     uint8_t crash, crash_code;
     uint16_t drain_tenths[2]; /* each half's average draw, tenths of a percent an hour (FX_DRAIN_UNKNOWN) */

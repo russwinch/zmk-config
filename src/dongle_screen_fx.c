@@ -513,12 +513,27 @@ static void picture_watch_cb(struct k_work *work) {
         return;
     }
     boot_note.crash = FX_CRASH_HANG;
-    boot_note.code = 0;
+    boot_note.code = FX_HANG_AT_START;
     boot_note.troubled++;
     sys_reboot(SYS_REBOOT_WARM);
 }
 
 static K_WORK_DELAYABLE_DEFINE(picture_watch_work, picture_watch_cb);
+
+/*
+ * The same after waking: the panel has been off while the keyboard was idle,
+ * and the first key after brings it back, its backlight fading up and the
+ * frames starting again, all on the display queue. Once (after a lunch
+ * break) it stayed black and dark. So if no frame has begun within
+ * FIRST_PICTURE_BY_MS of waking, while still awake and on one of these
+ * screens, the dongle restarts (HANG 2 on the Debug screen), and starts
+ * on the first animation once.
+ */
+static atomic_t frames_begun; /* frame_cb runs that got past the panel being off */
+static atomic_t frames_at_wake;
+
+static void wake_watch_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(wake_watch_work, wake_watch_cb);
 
 /* In place of Zephyr's, which halts: note it and restart. Any context. */
 void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) {
@@ -1063,6 +1078,7 @@ static void frame_cb(struct k_work *work) {
     if (screen == 0 || atomic_get(&paused)) {
         return;
     }
+    atomic_inc(&frames_begun);
 
     if (start_pending) {
         if (!borrow_memory()) {
@@ -1831,6 +1847,8 @@ static int screen_fx_listener(const zmk_event_t *eh) {
         } else if (atomic_set(&sleep_wanted, 0)) {
             atomic_set(&paused, 0);
             request_apply();
+            atomic_set(&frames_at_wake, atomic_get(&frames_begun));
+            k_work_reschedule(&wake_watch_work, K_MSEC(FIRST_PICTURE_BY_MS));
         }
     }
     return ZMK_EV_EVENT_BUBBLE;
@@ -1880,6 +1898,17 @@ static void start_cb(struct k_work *work) {
     }
     atomic_set(&wanted_screen, saved >= 0 ? saved : start);
     request_apply();
+}
+
+static void wake_watch_cb(struct k_work *work) {
+    if (atomic_get(&sleep_wanted) || atomic_get(&wanted_screen) == 0 ||
+        atomic_get(&frames_begun) != atomic_get(&frames_at_wake)) {
+        return; /* idle again, on the module's screen, or drawing */
+    }
+    boot_note.crash = FX_CRASH_HANG;
+    boot_note.code = FX_HANG_AFTER_WAKE;
+    boot_note.troubled = 1; /* the first animation next time, once */
+    sys_reboot(SYS_REBOOT_WARM);
 }
 
 static int screen_fx_init(void) {

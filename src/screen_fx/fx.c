@@ -1783,8 +1783,10 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     x = put(fb, 7, 12, "RST", DBG_LABEL) + 3;
     if (d->crash == FX_CRASH_HANG) {
-        /* no picture came after power-up: it restarted itself */
-        put(fb, x, 12, "HANG", DBG_BAD);
+        /* no picture came after power-up (1) or waking (2): it restarted itself */
+        x = put(fb, x, 12, "HANG", DBG_BAD) + 3;
+        snprintf(buf, sizeof(buf), "%u", (unsigned)d->crash_code);
+        put(fb, x, 12, buf, DBG_LABEL);
     } else if (d->crash == FX_CRASH_FAULT) {
         x = put(fb, x, 12, "CRASH", DBG_BAD) + 3;
         snprintf(buf, sizeof(buf), "%02X", (unsigned)d->crash_code);
