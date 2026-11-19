@@ -30,8 +30,11 @@ include:
   - board: nice_nano//zmk
     # no screen on the right half: nice_view_adapter only for its SPI bus,
     # which the keymap points at the left half's screen (no display driver
-    # without the nice_view shield, so nothing is drawn)
+    # without the nice_view shield, so nothing is drawn). ZMK also reads
+    # config/nice_view.conf for nice_view_adapter (it tries the shield name's
+    # shorter prefixes), so the display it turns on is turned off again here
     shield: splitkb_aurora_corne_right nice_view_adapter
+    cmake-args: -DCONFIG_ZMK_DISPLAY=n
 
   # --- splitkb Aurora Corne via Prospector dongle ---
   - board: xiao_ble//zmk
