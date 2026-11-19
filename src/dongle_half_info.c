@@ -167,14 +167,28 @@ static void subscribe(struct bt_conn *conn, int half, int kind, uint16_t value_h
     }
 }
 
+// A read that failed for some other reason than the half not having it
+// (busy, or the link still being set up) is tried again a few times.
+#define RETRY_S 5
+#define RETRIES 5
+static atomic_t retry_kinds[2]; // bit per kind
+static uint8_t tries[2];        // system work queue only
+static void retry_later(int half, int kind);
+
 // Called once per read: with the value (and its handle in by_uuid), or with
-// no data after an error, most likely no such characteristic (older
-// firmware). Zephyr only calls again after a value if asked to go on.
+// no data after an error: no such characteristic (older firmware), or a
+// failure worth trying again. Zephyr only calls again after a value if asked
+// to go on.
 static uint8_t read_cb(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params,
                        const void *data, uint16_t length) {
     int half, kind;
     find(params, &half, &kind);
     if (half < 0) {
+        return BT_GATT_ITER_STOP;
+    }
+    if (err && err != BT_ATT_ERR_ATTRIBUTE_NOT_FOUND) {
+        LOG_DBG("half %d: reading %d failed (0x%02x)", half, kind, err);
+        retry_later(half, kind);
         return BT_GATT_ITER_STOP;
     }
     const bool found = !err && data != NULL;
@@ -185,8 +199,11 @@ static uint8_t read_cb(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_pa
     return BT_GATT_ITER_STOP;
 }
 
-static void start(struct bt_conn *conn, int half) {
+static void start(struct bt_conn *conn, int half, atomic_val_t kinds) {
     for (int kind = 0; kind < KINDS; kind++) {
+        if (!(kinds & BIT(kind))) {
+            continue;
+        }
         struct bt_gatt_read_params *p = &watches[half][kind].read;
         memset(p, 0, sizeof(*p));
         p->func = read_cb;
@@ -197,6 +214,7 @@ static void start(struct bt_conn *conn, int half) {
         // queued one after the other by Zephyr's ATT
         if (bt_gatt_read(conn, p) != 0) {
             LOG_DBG("half %d: couldn't read %d", half, kind);
+            retry_later(half, kind);
         }
     }
 }
@@ -212,12 +230,27 @@ static void start_one(struct bt_conn *conn, void *data) {
         return;
     }
     const int half = half_of(conn);
-    if (half >= 0 && atomic_test_and_clear_bit(&pending, half)) {
-        start(conn, half);
+    if (half < 0) {
+        return;
+    }
+    if (atomic_test_and_clear_bit(&pending, half)) {
+        tries[half] = 0;
+        atomic_clear(&retry_kinds[half]);
+        start(conn, half, BIT_MASK(KINDS));
+    } else {
+        const atomic_val_t kinds = atomic_clear(&retry_kinds[half]);
+        if (kinds && tries[half]++ < RETRIES) {
+            start(conn, half, kinds);
+        }
     }
 }
 
 static void start_cb(struct k_work *work) { bt_conn_foreach(BT_CONN_TYPE_LE, start_one, NULL); }
+
+static void retry_later(int half, int kind) {
+    atomic_set_bit(&retry_kinds[half], kind);
+    k_work_schedule(&start_work, K_SECONDS(RETRY_S)); // no sooner than one already set
+}
 
 static void connected(struct bt_conn *conn, uint8_t err) {
     const int half = err ? -1 : half_of(conn);
@@ -231,6 +264,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     const int half = half_of(conn);
     if (half >= 0) {
         atomic_clear_bit(&pending, half);
+        atomic_clear(&retry_kinds[half]);
         atomic_clear_bit(&charging, half);
         atomic_clear_bit(&temp_known, half);
         atomic_clear_bit(&tx_known, half);

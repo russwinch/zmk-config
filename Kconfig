@@ -108,7 +108,7 @@ config HALF_TEMPERATURE_EVERY_S
 config HALF_TX_POWER
     bool "Offer this half's radio transmit power to the dongle"
     default y
-    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && BT_CTLR
+    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && HAS_BT_CTLR
     help
       As the Tx Power Service's Tx Power Level, BT_CTLR_TX_PWR_DBM as built:
       the dongle's Debug screen shows it, so a board with more than the
