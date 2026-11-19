@@ -34,9 +34,8 @@
 The user flashes with their Keyboard Writer app (russwinch/keyboard-writer,
 see README "Flashing"): it lists this repo's releases, one per build, and
 flashes the devices in order. So when firmware is ready to try, don't spell
-out `flash.py` commands. Say which release to pick in the app (it lists them
-as `<run number> · <branch> · <commit subject>`; say whether it is a branch
-build), and only once that release exists, which devices
+out `flash.py` commands. Say which release to pick in the app (`build-<run
+number>`, and that it is a prerelease if it is a branch build), which devices
 need it (a keymap or dongle-screen change only needs the central: the dongle,
 or the left half without one) and whether a settings reset is needed.
 
