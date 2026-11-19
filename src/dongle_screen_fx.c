@@ -358,6 +358,8 @@ static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
 static void saver_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(saver_work, saver_cb);
 
+#define SPIN_FRAME_MS 150
+
 static void read_status(void) {
     for (int half = 0; half < 2; half++) {
         uint8_t level = 0;
@@ -368,6 +370,9 @@ static void read_status(void) {
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         status.charging[half] = dongle_half_charging(half);
+        /* a spinner frame every SPIN_FRAME_MS while just unplugged */
+        status.settling[half] =
+            dongle_half_settling(half) ? (uint8_t)(1 + k_uptime_get_32() / SPIN_FRAME_MS % FX_SPIN_FRAMES) : 0;
 #endif
     }
 
@@ -381,23 +386,31 @@ static void read_status(void) {
 /* --- the Debug screen's readings ---------------------------------------------- */
 
 #if IS_ENABLED(CONFIG_BT_CTLR_CONN_RSSI)
-/* How strongly the dongle hears the other end of a link, from the radio. */
-static bool read_rssi(uint16_t handle, int8_t *rssi) {
+/* How strongly the dongle hears the other end of a link, from the radio:
+ * 0, or why not, for the Debug screen (fx_link.rssi_err). */
+static uint8_t read_rssi(uint16_t handle, int8_t *rssi) {
     struct net_buf *buf = bt_hci_cmd_create(BT_HCI_OP_READ_RSSI, sizeof(struct bt_hci_cp_read_rssi));
     struct net_buf *rsp = NULL;
     if (buf == NULL) {
-        return false;
+        return FX_RSSI_ERR_BUFFER;
     }
     struct bt_hci_cp_read_rssi *cp = net_buf_add(buf, sizeof(*cp));
     cp->handle = sys_cpu_to_le16(handle);
-    if (bt_hci_cmd_send_sync(BT_HCI_OP_READ_RSSI, buf, &rsp) != 0) {
-        return false;
+    const int err = bt_hci_cmd_send_sync(BT_HCI_OP_READ_RSSI, buf, &rsp);
+    if (err != 0) {
+        return (uint8_t)CLAMP(-err, 1, 99); /* -EIO etc.: the radio refused it */
+    }
+    if (rsp == NULL || rsp->len < sizeof(struct bt_hci_rp_read_rssi)) {
+        if (rsp != NULL) {
+            net_buf_unref(rsp);
+        }
+        return FX_RSSI_ERR_BUFFER;
     }
     const struct bt_hci_rp_read_rssi *rp = (const void *)rsp->data;
-    const bool ok = rp->status == 0;
+    const uint8_t status = rp->status;
     *rssi = rp->rssi;
     net_buf_unref(rsp);
-    return ok;
+    return status;
 }
 #endif
 
@@ -514,7 +527,7 @@ static bool read_temp(int8_t *celsius) { return false; }
  * drawn after a stuck one would never come, leaving the screen blank).
  */
 #define READINGS_EVERY_MS 1000
-#define READINGS_STACK 1536
+#define READINGS_STACK 2048
 
 static struct {
     struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
@@ -535,8 +548,9 @@ static void readings_cb(struct k_work *work) {
     bt_conn_foreach(BT_CONN_TYPE_LE, read_link, &reading);
     for (int i = 0; i < 3; i++) {
 #if IS_ENABLED(CONFIG_BT_CTLR_CONN_RSSI)
-        if (link[i].up && reading.found[i]) {
-            link[i].rssi_known = read_rssi(reading.handle[i], &link[i].rssi);
+        if (link[i].up) {
+            link[i].rssi_err = reading.found[i] ? read_rssi(reading.handle[i], &link[i].rssi) : FX_RSSI_ERR_HANDLE;
+            link[i].rssi_known = link[i].rssi_err == 0;
         }
 #endif
     }
@@ -579,6 +593,7 @@ static struct fx_link mix_link(struct fx_link kept, struct fx_link read) {
     kept.up = read.up;
     kept.rssi_known = read.rssi_known;
     kept.rssi = read.rssi;
+    kept.rssi_err = read.rssi_err;
     return kept;
 }
 

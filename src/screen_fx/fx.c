@@ -308,9 +308,20 @@ static const uint8_t mod_glyphs[4][7] = {
     {0x1b, 0x1f, 0x0a, 0x1f, 0x1b, 0x00, 0x00},
 };
 
+/* | / - \ as FX_GLYPH_SPIN on: the spinner turning */
+static const uint8_t spin_glyphs[FX_SPIN_FRAMES][7] = {
+    {0x00, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00},
+    {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x00},
+    {0x00, 0x00, 0x00, 0x1f, 0x00, 0x00, 0x00},
+    {0x00, 0x10, 0x08, 0x04, 0x02, 0x01, 0x00},
+};
+
 const uint8_t *fx_glyph_rows(char c) {
     if (c == FX_GLYPH_BOLT) {
         return bolt;
+    }
+    if (c >= FX_GLYPH_SPIN && c < FX_GLYPH_SPIN + FX_SPIN_FRAMES) {
+        return spin_glyphs[c - FX_GLYPH_SPIN];
     }
     if (c >= FX_GLYPH_CTRL && c <= FX_GLYPH_GUI) {
         return mod_glyphs[c - FX_GLYPH_CTRL];
@@ -1277,11 +1288,12 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
     glyph(fb, FX_W - 18, 13, 'm', TRACK_TEXT);
 
     if (in->status) {
-        /* empty while charging: the level then isn't the battery's */
-        side_battery(fb, 5, in->status->charging[0] ? 0 : in->status->battery[0], in->status->half_connected[0],
+        /* empty while charging, or just unplugged: the level then isn't the battery's */
+        const struct fx_status *s = in->status;
+        side_battery(fb, 5, s->charging[0] || s->settling[0] ? 0 : s->battery[0], s->half_connected[0],
                      TRACK_LINE, TRACK_TEXT, 0);
-        side_battery(fb, FX_W - 10, in->status->charging[1] ? 0 : in->status->battery[1],
-                     in->status->half_connected[1], TRACK_LINE, TRACK_TEXT, 0);
+        side_battery(fb, FX_W - 10, s->charging[1] || s->settling[1] ? 0 : s->battery[1], s->half_connected[1],
+                     TRACK_LINE, TRACK_TEXT, 0);
     }
 }
 
@@ -1664,6 +1676,17 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
         if (link->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", link->rssi < -99 ? -99 : link->rssi);
             put_right(fb, DBG_COL_RSSI, y, buf, signal_color(link));
+        } else if (link->rssi_err) {
+            /* why it couldn't be read, to track down: EH no handle for the
+             * link, EB no command buffer, E1-E99 the radio's or Zephyr's error */
+            if (link->rssi_err == FX_RSSI_ERR_HANDLE) {
+                strcpy(buf, "EH");
+            } else if (link->rssi_err == FX_RSSI_ERR_BUFFER) {
+                strcpy(buf, "EB");
+            } else {
+                snprintf(buf, sizeof(buf), "E%u", link->rssi_err > 99 ? 99 : link->rssi_err);
+            }
+            put_right(fb, DBG_COL_RSSI, y, buf, DBG_BAD);
         }
     } else {
         put_right(fb, DBG_COL_RSSI, y, "--", DBG_BAD);
@@ -1784,15 +1807,18 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const bool charging = in->status && in->status->charging[half];
+        const uint8_t spin = in->status && !charging ? in->status->settling[half] : 0;
         if (charging) {
             strcpy(buf, FX_BOLT);
+        } else if (spin) {
+            fx_spin_text(buf, spin);
         } else if (level) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
             strcpy(buf, "--");
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   charging ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
+                   charging || spin ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
                    d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2]);
         battery_sparkline(fb, DBG_COL_HISTORY, 31 + half * 8, d->battery_history[half],
                           d->n_battery_history < FX_BATTERY_HISTORY ? d->n_battery_history : FX_BATTERY_HISTORY);
@@ -2075,16 +2101,20 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
      * everything in the three is */
     for (int half = 0; half < 2; half++) {
         const bool charging = in->status && in->status->charging[half];
+        const uint8_t spin = in->status && !charging ? in->status->settling[half] : 0;
         /* while charging: an empty battery and a bolt, the level then
-         * being the charger's voltage */
-        const uint8_t level = in->status && !charging ? in->status->battery[half] : 0;
-        const uint8_t color = charging                   ? DBG_TEXT
+         * being the charger's voltage; just unplugged, a spinner until the
+         * battery is read again */
+        const uint8_t level = in->status && !charging && !spin ? in->status->battery[half] : 0;
+        const uint8_t color = charging || spin           ? DBG_TEXT
                               : level == 0               ? DBG_LABEL
                               : level <= FX_LOW_BATTERY  ? DBG_BAD
                               : level <= FX_WARN_BATTERY ? DBG_WARN
                                                          : DBG_TEXT;
         if (charging) {
             strcpy(buf, FX_BOLT);
+        } else if (spin) {
+            fx_spin_text(buf, spin);
         } else if (level == 0) {
             strcpy(buf, "--");
         } else {

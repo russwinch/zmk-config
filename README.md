@@ -383,9 +383,12 @@ A half on USB power shows a bolt instead of its level, on every screen
 (Tracker's gauge for it goes empty): while it charges, its reading is the
 charger's voltage, near 100 whatever the charge. Each half says so through
 the Battery Level Status of Bluetooth's standard battery service
-(`src/half_charging.c`). The dongle reads it once when a half connects and
-then subscribes (`src/dongle_half_info.c`), so a half only sends it when it
-changes, in a connection event it wakes for anyway: nothing is polled. The
+(`src/half_charging.c`). The dongle reads it once a half has connected and
+ZMK has finished setting the link up, then subscribes (`src/dongle_half_info.c`),
+so a half only sends it when it changes, in a connection event it wakes for
+anyway: nothing is polled. Those reads go one at a time and wait for ZMK, as
+ZMK can't wait for a free request while it subscribes to a half's keys: when
+it couldn't, that half connected and showed its battery but typed nothing. The
 half's chip temperature, for the Debug screen, comes the same way, as a
 standard Environmental Sensing Service (`src/half_temperature.c`), measured
 every 5 minutes and sent only when it moves by a degree, and so does the
@@ -394,7 +397,8 @@ power its radio transmits at, as the standard Tx Power Service
 plugged in, not still charging: a half can't tell when its charger has
 finished. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
-once-a-minute reading. A half on older firmware just
+once-a-minute reading; until that reading reaches the dongle (3 seconds at
+most) a spinner stands in for the level, which is still the charger's. A half on older firmware just
 never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on
@@ -438,7 +442,7 @@ The link rows' columns:
 | bars | signal strength, from `DBM` |
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
 | `-2H` | each half's battery over the last two hours, a reading every 5 minutes, the newest on the right (filling in from there after the dongle starts; the dotted part is still to come). Scaled to the readings shown, but never to less than 6 percent top to bottom, so a level that hasn't moved is a flat line and a pixel is at most a percent; coloured as `BAT` is. A green dot along the top is a reading taken while that half was charging, and a gap one with no level (the half out of reach) |
-| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. The bars are a bar for every 10 dB above -90, in the same colour. How strongly each end transmits is `TX` |
+| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. The bars are a bar for every 10 dB above -90, in the same colour. How strongly each end transmits is `TX`. Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
 | `C` | chip temperature in °C: the half's (measured every 5 minutes, `--` until it has said), and on the `H` row the dongle's own; amber from 60 |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |

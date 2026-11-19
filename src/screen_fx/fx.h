@@ -56,6 +56,8 @@ struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
     bool charging[2];       /* left, right: on USB power, its level not worth showing */
+    uint8_t settling[2];    /* left, right: just unplugged, its level still the charger's:
+                             * a spinner frame (FX_SPIN_FRAMES), 0 when not */
     bool host_connected;    /* the computer */
     bool usb;               /* typing over USB, not Bluetooth */
     bool host_open;         /* Bluetooth: nothing paired on this profile */
@@ -95,11 +97,16 @@ struct fx_theme {
 #define FX_BATTERY_CHARGING 0x80 /* or'd into a level taken while that half was charging */
 #define FX_DRAIN_UNKNOWN 0xffff
 
+/* fx_link.rssi_err beyond an error number */
+#define FX_RSSI_ERR_HANDLE 254
+#define FX_RSSI_ERR_BUFFER 255
+
 /* A Bluetooth link: to a half, or to the computer. */
 struct fx_link {
     bool up;
     bool rssi_known;
     int8_t rssi;       /* dBm, as the dongle hears the other end */
+    uint8_t rssi_err;  /* up, but its signal couldn't be read: why (fx.c's debug_link), else 0 */
     uint16_t drops;    /* times it has been lost since power-up */
     uint8_t reason;    /* Bluetooth's reason for the last loss (0: none yet) */
 };
@@ -202,6 +209,23 @@ const uint8_t *fx_glyph_rows(char c);
 #define FX_GLYPH_ALT '\x02'
 #define FX_GLYPH_SHIFT '\x03'
 #define FX_GLYPH_GUI '\x04'
+
+/* Also in fx_glyph_rows: a spinner's frames (| / - \\), shown for a half
+ * just unplugged until its battery is read again (fx_status.settling counts
+ * 1 to FX_SPIN_FRAMES). */
+#define FX_GLYPH_SPIN '\x05'
+#define FX_SPIN_FRAMES 4
+
+/* A battery level's text for fx_status.settling's frame (1 on). */
+static inline void fx_spin_text(char *p, uint8_t frame) {
+    p[0] = (char)(FX_GLYPH_SPIN + (frame - 1) % FX_SPIN_FRAMES);
+    p[1] = '\0';
+}
+
+/* A character only the pixel letters have: the bolt, the spinner. */
+static inline bool fx_glyph_is_symbol(char c) {
+    return c == FX_GLYPH_BOLT || (c >= FX_GLYPH_SPIN && c < FX_GLYPH_SPIN + FX_SPIN_FRAMES);
+}
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text over it. */

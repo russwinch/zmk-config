@@ -246,10 +246,14 @@ static void draw_battery(const struct area *area, int x, int y, uint8_t percent,
 }
 
 /* A battery level, "-" when its half isn't connected or hasn't said, a bolt
- * when it is on USB power. */
-static uint8_t level_text(char *p, uint8_t percent, bool connected, bool charging) {
+ * when it is on USB power, a spinner when just unplugged. */
+static uint8_t level_text(char *p, uint8_t percent, bool connected, bool charging, uint8_t settling) {
     if (connected && charging) {
         strcpy(p, FX_BOLT); /* the level is the charger's voltage then */
+        return INK;
+    }
+    if (connected && settling) {
+        fx_spin_text(p, settling); /* still the charger's, until read again */
         return INK;
     }
     if (!connected || percent == 0) {
@@ -283,7 +287,8 @@ static void render(const struct fx_status *status) {
     for (int half = 0; half < 2; half++) {
         const struct area *area = half ? &right : &left;
         const uint8_t color =
-            level_text(level, status->battery[half], status->half_connected[half], status->charging[half]);
+            level_text(level, status->battery[half], status->half_connected[half], status->charging[half],
+                       status->settling[half]);
         if (dots) {
             /* where the level's outer digit would be, at half its height */
             if (color != INK) {
@@ -294,7 +299,7 @@ static void render(const struct fx_status *status) {
             continue;
         }
         /* the bolt is only in the pixel letters: a size up for the Field font */
-        const bool pixels = pixel_font || level[0] == FX_GLYPH_BOLT;
+        const bool pixels = pixel_font || fx_glyph_is_symbol(level[0]);
         const int scale = pixel_font ? PIXEL_SCALE : PIXEL_SCALE + 1;
         const int wide = pixels ? draw_pixel_text(area, level, 0, 0, scale, 0, false)
                                 : draw_text(area, font, level, 0, 0, -1, 0, false);
@@ -351,6 +356,8 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
         drawn.half_connected[1] = status->half_connected[1];
         drawn.charging[0] = status->charging[0];
         drawn.charging[1] = status->charging[1];
+        drawn.settling[0] = status->settling[0];
+        drawn.settling[1] = status->settling[1];
         drawn.host_connected = status->host_connected;
         drawn.usb = status->usb;
         drawn.host_open = status->host_open;
@@ -371,7 +378,7 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
     uint8_t now[OVERLAY_AREAS];
     for (int half = 0; half < 2; half++) {
         /* a low battery flashes, a flat one fast */
-        const bool off = drawn.half_connected[half] && !drawn.charging[half] &&
+        const bool off = drawn.half_connected[half] && !drawn.charging[half] && !drawn.settling[half] &&
                          fx_battery_flash_off(drawn.battery[half], ms);
         now[half ? OVERLAY_RIGHT : OVERLAY_LEFT] = off ? 0 : FULL;
     }
