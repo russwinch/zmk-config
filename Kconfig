@@ -145,6 +145,7 @@ config DONGLE_SCREEN_FX
     select HWINFO
     select SYS_HEAP_RUNTIME_STATS
     imply BT_CTLR_CONN_RSSI
+    imply ADC
     imply SENSOR
     help
       The &scr_next key steps through the animations in

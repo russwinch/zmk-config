@@ -426,7 +426,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
 | profile circles, `USB`, `RPT`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
 | `L3 NAV 0009  ⌃⌥⇧⌘  51WPM` | the highest active layer and its name (shortened to fit), a bit for every active layer (hex); the modifiers as the Mac's symbols, lit while held (either side); typing speed |
-| `DRAW L0.6 R1.3%/H   N29` | each half's average battery draw in percent an hour (below); key presses since the dongle started |
+| `L0.6 R1.3%/H  3.31V  N29` | each half's average battery draw in percent an hour (below); under the modifiers, the dongle's supply: its own 3.3 V regulator's output (the USB 5 V is only detected, `USB PWR`: nothing on the board can measure it); key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
@@ -445,7 +445,7 @@ The link rows' columns:
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
 | `TX` | the power that end's radio transmits at, in dBm, as its firmware was built: the half's own, and on the `H` row the dongle's. `0` is the default (`config/default.conf`); green above it, so a board built with `CONFIG_BT_CTLR_TX_PWR_PLUS_8` shows `+8`. `--` for a half with firmware from before this |
 
-`DRAW` is each half's average draw since the dongle started or the half was
+The `%/H` figures are each half's average draw since the dongle started or the half was
 last charged, to compare boards and settings. A half reports its level when it
 moves a whole percent, so it is `--` until the level has dropped once (twice
 after a charge, as the first reading after unplugging can still be the

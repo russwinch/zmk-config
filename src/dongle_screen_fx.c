@@ -56,8 +56,10 @@
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
+#include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc-v2.h> /* NRF_SAADC_VDD */
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
@@ -442,6 +444,51 @@ void lvgl_heap_stats(struct sys_memory_stats *stats);
 
 static uint32_t reset_cause;
 
+/* The dongle's own supply, for the Debug screen: the XIAO's 3.3 V regulator,
+ * read by the SAADC on its VDD input (channel 6, which nothing else in this
+ * firmware sets up). The USB 5 V isn't wired to anything the chip can
+ * measure, only detected. */
+#if IS_ENABLED(CONFIG_ADC) && DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
+#define VDD_CHANNEL 6
+static uint16_t read_vdd_mv(void) {
+    static const struct device *const adc = DEVICE_DT_GET(DT_NODELABEL(adc));
+    static bool set_up;
+    if (!device_is_ready(adc)) {
+        return 0;
+    }
+    if (!set_up) {
+        const struct adc_channel_cfg cfg = {
+            .gain = ADC_GAIN_1_6,
+            .reference = ADC_REF_INTERNAL,
+            .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
+            .channel_id = VDD_CHANNEL,
+            .input_positive = NRF_SAADC_VDD,
+        };
+        if (adc_channel_setup(adc, &cfg) != 0) {
+            return 0;
+        }
+        set_up = true;
+    }
+    int16_t raw = 0;
+    const struct adc_sequence seq = {
+        .channels = BIT(VDD_CHANNEL),
+        .buffer = &raw,
+        .buffer_size = sizeof(raw),
+        .resolution = 12,
+    };
+    if (adc_read(adc, &seq) != 0) {
+        return 0;
+    }
+    int32_t mv = raw;
+    if (adc_raw_to_millivolts(adc_ref_internal(adc), ADC_GAIN_1_6, 12, &mv) != 0 || mv <= 0) {
+        return 0;
+    }
+    return (uint16_t)mv;
+}
+#else
+static uint16_t read_vdd_mv(void) { return 0; }
+#endif
+
 /* The dongle's own chip temperature, for the Debug screen. */
 #if IS_ENABLED(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_NODELABEL(temp), okay)
 static bool read_temp(int8_t *celsius) {
@@ -461,7 +508,7 @@ static bool read_temp(int8_t *celsius) { return false; }
 /*
  * The readings that ask something else and wait for the answer: each link's
  * signal strength (a command to the radio), the dongle's temperature (the
- * TEMP sensor) and what the halves have said. Taken once a second on a
+ * TEMP sensor) and supply (the SAADC), and what the halves have said. Taken once a second on a
  * thread of their own, only while the Debug or Keys screen is showing, so a
  * slow or stuck answer can't hold up a frame on the display queue (a frame
  * drawn after a stuck one would never come, leaving the screen blank).
@@ -473,6 +520,7 @@ static struct {
     struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
     bool temp_known[3], tx_known[3];
     int8_t temp_c[3], tx_dbm[3];
+    uint16_t vdd_mv;
 } readings; /* under debug_lock */
 static atomic_t readings_until; /* uptime ms: wanted until then */
 
@@ -495,6 +543,7 @@ static void readings_cb(struct k_work *work) {
     bool temp_known[3] = {false}, tx_known[3] = {false};
     int8_t temp_c[3] = {0}, tx_dbm[3] = {0};
     temp_known[1] = read_temp(&temp_c[1]);
+    const uint16_t vdd_mv = read_vdd_mv();
 #ifdef CONFIG_BT_CTLR_TX_PWR_DBM
     tx_known[1] = true; /* the dongle's own, as built */
     tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
@@ -511,6 +560,7 @@ static void readings_cb(struct k_work *work) {
         memcpy(readings.temp_c, temp_c, sizeof(temp_c));
         memcpy(readings.tx_known, tx_known, sizeof(tx_known));
         memcpy(readings.tx_dbm, tx_dbm, sizeof(tx_dbm));
+        readings.vdd_mv = vdd_mv;
     }
     /* again while a screen still wants them */
     if ((int32_t)((uint32_t)atomic_get(&readings_until) - k_uptime_get_32()) > 0) {
@@ -574,6 +624,7 @@ static void read_debug(void) {
         memcpy(d->temp_c, readings.temp_c, sizeof(d->temp_c));
         memcpy(d->tx_known, readings.tx_known, sizeof(d->tx_known));
         memcpy(d->tx_dbm, readings.tx_dbm, sizeof(d->tx_dbm));
+        d->vdd_mv = readings.vdd_mv;
     }
     readings_wanted();
 #if IS_ENABLED(CONFIG_ZMK_USB)

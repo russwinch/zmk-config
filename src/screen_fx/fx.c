@@ -1849,8 +1849,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%04X", (unsigned)(d->layers & 0xffff));
     put(fb, x, 68, buf, DBG_LABEL);
 
-    /* each half's average draw, percent an hour; key presses since the dongle started */
-    x = put(fb, 5, 76, "DRAW", DBG_LABEL) + 4;
+    /* each half's average draw, percent an hour; the dongle's supply, under the
+     * modifiers; key presses since the dongle started */
+    x = 5;
     for (int half = 0; half < 2; half++) {
         const unsigned tenths = d->drain_tenths[half];
         x = put(fb, x, 76, half ? "R" : "L", DBG_LABEL) + 1;
@@ -1864,6 +1865,12 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         x = put(fb, x, 76, buf, tenths == FX_DRAIN_UNKNOWN ? DBG_LABEL : DBG_TEXT) + 4;
     }
     put(fb, x - 2, 76, "%/H", DBG_LABEL);
+    if (d->vdd_mv) {
+        snprintf(buf, sizeof(buf), "%u.%02uV", d->vdd_mv / 1000, d->vdd_mv % 1000 / 10);
+        put(fb, mods_x, 76, buf, DBG_TEXT);
+    } else {
+        put(fb, mods_x, 76, "-.--V", DBG_LABEL);
+    }
     count_text(buf + 1, sizeof(buf) - 1, d->presses);
     buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);

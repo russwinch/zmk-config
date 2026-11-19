@@ -147,6 +147,7 @@ struct fx_debug {
     uint8_t bounce_key;
     uint32_t usb_reports; /* keyboard and media reports sent over USB since power-up */
     uint16_t usb_errors;  /* and those that failed (the computer not taking them) */
+    uint16_t vdd_mv;      /* the dongle's supply, from its 3.3 V regulator (0: not known) */
     bool temp_known[3];   /* chip temperatures: left half, dongle, right half */
     int8_t temp_c[3];
     bool tx_known[3];     /* radio transmit power, as built, dBm: the same three */
