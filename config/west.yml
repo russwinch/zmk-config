@@ -9,9 +9,6 @@ manifest:
       # kyek / duckyb
     - name: duckyb
       url-base: https://github.com/duckyb
-      # nice-view-gem
-    - name: m165437
-      url-base: https://github.com/M165437
       # forager, prospector
     - name: carrefinho
       url-base: https://github.com/carrefinho
@@ -37,9 +34,6 @@ manifest:
       # pinned: tip of upstream's feat/new-status-screens branch (Zephyr 4.1)
       revision: ed98221f3b52b7066dbb10ba3af8a29150b93a5a
     # Pinned commits on these modules' main branches, which target ZMK main.
-    - name: nice-view-gem
-      remote: m165437
-      revision: 0a50fe209d929c916c5664c6affd0f4977c6b012
     - name: zmk-rgbled-widget
       remote: caksoylar
       revision: e6b467792a1dabef8cfa5c9fd26bfefc9c16662b

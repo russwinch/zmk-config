@@ -29,9 +29,3 @@ endif()
 target_sources_ifdef(CONFIG_BEHAVIOR_SCREEN_NEXT app PRIVATE src/behavior_screen_next.c)
 target_sources_ifdef(CONFIG_BEHAVIOR_APP_SWITCH app PRIVATE src/behavior_app_switch.c)
 target_sources_ifdef(CONFIG_BEHAVIOR_WHEEL app PRIVATE src/behavior_wheel.c)
-# nice-view-gem screens: no battery percentage while charging, just the bolt
-# (src/gem_battery_charging.c wraps the module's draw_battery_status).
-if(CONFIG_SHIELD_NICE_VIEW_GEM AND CONFIG_NICE_VIEW_WIDGET_STATUS AND CONFIG_ZMK_DISPLAY)
-  target_sources(app PRIVATE src/gem_battery_charging.c)
-  zephyr_ld_options(-Wl,--wrap=draw_battery_status)
-endif()

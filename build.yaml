@@ -2,7 +2,7 @@
 # Keymaps: config/<shield>.keymap -> shared config/keymap.dtsi
 # Settings: config/default.conf (all builds) + config/<shield>.conf for each
 # shield named here: prospector_adapter.conf is every dongle's,
-# nice_view_gem.conf every gem display's, <keyboard>.conf one keyboard's.
+# nice_view.conf every left half's nice!view, <keyboard>.conf one keyboard's.
 # ZMK merges default.conf last, so to make an exception for one build put
 # `cmake-args: -DCONFIG_...=...` on its entry here (that beats every file).
 ---
@@ -24,13 +24,13 @@ include:
     cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n
     artifact-name: urchin_left_peripheral_for_dongle
 
-  # --- splitkb Aurora Corne (nice!nano v2, nice!view gem on the left, encoders) ---
+  # --- splitkb Aurora Corne (nice!nano v2, nice!view on the left, encoders) ---
   - board: nice_nano//zmk
-    shield: splitkb_aurora_corne_left nice_view_adapter nice_view_gem
+    shield: splitkb_aurora_corne_left nice_view_adapter nice_view
   - board: nice_nano//zmk
     # no screen on the right half: nice_view_adapter only for its SPI bus,
     # which the keymap points at the left half's screen (no display driver
-    # without nice_view_gem, so nothing is drawn)
+    # without the nice_view shield, so nothing is drawn)
     shield: splitkb_aurora_corne_right nice_view_adapter
 
   # --- splitkb Aurora Corne via Prospector dongle ---
@@ -38,11 +38,9 @@ include:
     shield: splitkb_aurora_corne_dongle prospector_adapter
     cmake-args: -DCONFIG_ZMK_SLEEP=n
   - board: nice_nano//zmk
-    # peripheral, with the plain nice_view shield instead of nice_view_gem: it
-    # shows the half status screen (see the Waterfowl's below), and so
-    # needs the display turned on here (nice_view_gem.conf isn't read)
+    # peripheral; nice!view shows the half status screen, as the Waterfowl's below
     shield: splitkb_aurora_corne_left nice_view_adapter nice_view
-    cmake-args: -DCONFIG_ZMK_DISPLAY=y -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n -DCONFIG_NICE_VIEW_WIDGET_STATUS=n -DCONFIG_WATERFOWL_HALF_STATUS_SCREEN=y
+    cmake-args: -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n -DCONFIG_NICE_VIEW_WIDGET_STATUS=n -DCONFIG_WATERFOWL_HALF_STATUS_SCREEN=y
     artifact-name: splitkb_aurora_corne_left_peripheral_for_dongle
 
   # --- Waterfowl (nice!nano v2, nice!view on left, encoders) ---

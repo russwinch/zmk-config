@@ -7,7 +7,7 @@ each board's own file only adds its extras.
 | Keyboard | Controller | Display / LEDs | Extras |
 | --- | --- | --- | --- |
 | Urchin | nice!nano v2 | RGB LED widget (no screens) | optional Prospector dongle |
-| splitkb Aurora Corne | nice!nano v2 | nice!view gem on the left half, RGB LED widget | 2 encoders, outer thumb keys, an outer column per side; optional Prospector dongle |
+| splitkb Aurora Corne | nice!nano v2 | nice!view on the left half, RGB LED widget | 2 encoders, outer thumb keys, an outer column per side; optional Prospector dongle |
 | Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side; optional Prospector dongle |
 | Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | optional Prospector dongle |
 
@@ -79,7 +79,7 @@ while it's on USB power. The sleep timeout is shared by every board in
 | `config/<shield>.keymap` | Per-board glue: maps the 34 core keys onto that board (extra keys, encoders), then includes `keymap.dtsi`. |
 | `config/default.conf` | Settings shared by every build (deep sleep, Bluetooth power, LED flash times). ZMK applies it after the other `.conf` files, so exceptions go in `build.yaml` as `cmake-args`. |
 | `config/prospector_adapter.conf` | Settings shared by every Prospector dongle (status screen, brightness, animated screens). ZMK reads `config/<shield>.conf` for each shield in a build, and every dongle build has the `prospector_adapter` shield. |
-| `config/nice_view_gem.conf` | The same way, for every half with a nice-view-gem display (the Aurora Corne's left). |
+| `config/nice_view.conf` | The same way, for every left half with a nice!view (Waterfowl, Aurora Corne): turns the display on. |
 | `config/<keyboard>.conf` | Only what is particular to one keyboard (encoders, LED widget, display options); also read for its dongle. A `config/<keyboard>_dongle.conf` would be read for that dongle alone, but none is needed. |
 | `config/<keyboard>_layout.dtsi` | Glue shared by a keyboard's normal and dongle keymaps (Urchin, Aurora Corne, Waterfowl; the Forager dongle uses `forager.keymap` itself). |
 | `config/half_status.dtsi` | The behavior the dongle sends its status to, for the left half's nice!view (Waterfowl and Aurora Corne keymaps). |
@@ -174,7 +174,7 @@ The right halves have no screens (and the Forager's and Urchin's none at
 all): they keep their RGB LED. Every left half
 with a nice!view (Waterfowl, Aurora Corne; in
 `<keyboard>_left_peripheral_for_dongle`) shows a small status screen in place
-of ZMK's stock picture or nice-view-gem's, read with the screen vertical:
+of ZMK's stock picture, read with the screen vertical:
 
 | Part | Shows |
 | --- | --- |
@@ -393,9 +393,7 @@ power its radio transmits at, as the standard Tx Power Service
 plugged in, not still charging: a half can't tell when its charger has
 finished. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
-once-a-minute reading. Without the dongle, the Aurora Corne's left
-nice-view-gem screen likewise show just the bolt, no percentage, while on USB
-power (`src/gem_battery_charging.c`). A half on older firmware just
+once-a-minute reading. A half on older firmware just
 never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on

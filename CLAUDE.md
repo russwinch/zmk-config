@@ -16,7 +16,7 @@
   maps the 34 core keys onto that board. See README.md.
 - Settings go in the widest file they are true for: `config/default.conf`
   (every build), `config/prospector_adapter.conf` (every dongle),
-  `config/nice_view_gem.conf` (every gem display), and only then
+  `config/nice_view.conf` (every nice!view half), and only then
   `config/<keyboard>.conf`. Don't repeat a setting per board.
 - The firmware only really gets checked by CI, so check the build run after
   pushing keymap changes.
