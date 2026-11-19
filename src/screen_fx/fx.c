@@ -1782,10 +1782,19 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, FX_W - top_inset, 5, buf, DBG_TEXT);
 
     x = put(fb, 7, 12, "RST", DBG_LABEL) + 3;
-    const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
-    x = put(fb, x, 12, reset_name(d->reset_cause), fault ? DBG_BAD : DBG_TEXT) + 3;
-    snprintf(buf, sizeof(buf), "%02X", (unsigned)(d->reset_cause & 0xff));
-    put(fb, x, 12, buf, DBG_LABEL);
+    if (d->crash == FX_CRASH_HANG) {
+        /* no picture came after power-up: it restarted itself */
+        put(fb, x, 12, "HANG", DBG_BAD);
+    } else if (d->crash == FX_CRASH_FAULT) {
+        x = put(fb, x, 12, "CRASH", DBG_BAD) + 3;
+        snprintf(buf, sizeof(buf), "%02X", (unsigned)d->crash_code);
+        put(fb, x, 12, buf, DBG_LABEL);
+    } else {
+        const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
+        x = put(fb, x, 12, reset_name(d->reset_cause), fault ? DBG_BAD : DBG_TEXT) + 3;
+        snprintf(buf, sizeof(buf), "%02X", (unsigned)(d->reset_cause & 0xff));
+        put(fb, x, 12, buf, DBG_LABEL);
+    }
     if (d->heap_known) {
         x = put(fb, 73, 12, "MEM", DBG_LABEL) + 3;
         snprintf(buf, sizeof(buf), "%u%%", d->heap_used);

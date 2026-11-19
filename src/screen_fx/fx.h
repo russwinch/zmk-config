@@ -97,6 +97,9 @@ struct fx_theme {
 #define FX_BATTERY_CHARGING 0x80 /* or'd into a level taken while that half was charging */
 #define FX_DRAIN_UNKNOWN 0xffff
 
+#define FX_CRASH_HANG 1
+#define FX_CRASH_FAULT 2
+
 /* fx_link.rssi_err beyond an error number */
 #define FX_RSSI_ERR_HANDLE 254
 #define FX_RSSI_ERR_BUFFER 255
@@ -133,6 +136,10 @@ struct fx_debug {
      * report, or not connected), | FX_BATTERY_CHARGING while charging */
     uint8_t battery_history[2][FX_BATTERY_HISTORY];
     uint8_t n_battery_history;
+    /* how the dongle's last run ended, beyond reset_cause: 0, FX_CRASH_HANG
+     * (no picture within 15 s of power-up, so it restarted itself) or
+     * FX_CRASH_FAULT (crashed, with Zephyr's reason in crash_code) */
+    uint8_t crash, crash_code;
     uint16_t drain_tenths[2]; /* each half's average draw, tenths of a percent an hour (FX_DRAIN_UNKNOWN) */
     uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */

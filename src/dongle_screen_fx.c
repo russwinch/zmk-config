@@ -54,6 +54,9 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/hwinfo.h>
+#include <zephyr/fatal.h>
+#include <zephyr/linker/section_tags.h> /* __noinit */
+#include <zephyr/sys/reboot.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
 #include <zephyr/drivers/adc.h>
@@ -457,6 +460,81 @@ void lvgl_heap_stats(struct sys_memory_stats *stats);
 
 static uint32_t reset_cause;
 
+/*
+ * A start that never shows a picture. More than once the dongle has come up
+ * from a flash with the panel black and the backlight off, for good: the
+ * display queue stuck, or the system halted after a crash (Zephyr halts on
+ * a fatal error unless told otherwise). So: no first picture within
+ * FIRST_PICTURE_BY_MS of power-up restarts the dongle, and so does a
+ * crash, each noted in RAM that a restart keeps (boot_note) for the Debug
+ * screen to show (HANG, or CRASH and Zephyr's reason). After such a
+ * restart the dongle starts on the first animation rather than the saved
+ * screen, in case that screen is what stops it (the saved one stays saved).
+ * After HANG_RESTARTS_MAX of them in a row without a picture it stops
+ * trying, and the backlight comes up anyway (src/dongle_idle_backlight.c).
+ */
+#define FIRST_PICTURE_BY_MS 15000
+#define HANG_RESTARTS_MAX 3
+#define BOOT_NOTE_MAGIC 0x5c3ee17aU
+
+static __noinit struct {
+    uint32_t magic;
+    uint8_t crash, code; /* how this run ended, if it did: FX_CRASH_* */
+    uint8_t troubled;    /* restarts in a row before a first picture */
+} boot_note;
+static uint8_t last_crash, last_crash_code; /* how the run before this one ended */
+static bool safe_start;                     /* that run never showed a picture */
+static atomic_t pictured;                   /* this run has shown one */
+
+static void boot_note_valid(void) {
+    if (boot_note.magic != BOOT_NOTE_MAGIC) { /* power-on: whatever RAM held */
+        memset(&boot_note, 0, sizeof(boot_note));
+        boot_note.magic = BOOT_NOTE_MAGIC;
+    }
+}
+
+static void boot_note_take(void) {
+    boot_note_valid();
+    last_crash = boot_note.crash;
+    last_crash_code = boot_note.code;
+    boot_note.crash = boot_note.code = 0;
+    safe_start = boot_note.troubled > 0;
+}
+
+/* The first picture is out (or the module's screen is showing instead). */
+static void first_picture(void) {
+    if (!atomic_set(&pictured, 1)) {
+        boot_note.troubled = 0;
+    }
+}
+
+static void picture_watch_cb(struct k_work *work) {
+    if (atomic_get(&pictured) || boot_note.troubled >= HANG_RESTARTS_MAX) {
+        return;
+    }
+    boot_note.crash = FX_CRASH_HANG;
+    boot_note.code = 0;
+    boot_note.troubled++;
+    sys_reboot(SYS_REBOOT_WARM);
+}
+
+static K_WORK_DELAYABLE_DEFINE(picture_watch_work, picture_watch_cb);
+
+/* In place of Zephyr's, which halts: note it and restart. Any context. */
+void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) {
+    ARG_UNUSED(esf);
+    boot_note_valid();
+    boot_note.crash = FX_CRASH_FAULT;
+    boot_note.code = (uint8_t)MIN(reason, 0xff);
+    if (!atomic_get(&pictured)) {
+        boot_note.troubled++;
+    }
+    if (atomic_get(&pictured) || boot_note.troubled <= HANG_RESTARTS_MAX) {
+        sys_reboot(SYS_REBOOT_WARM);
+    }
+    k_fatal_halt(reason);
+}
+
 /* The dongle's own supply, for the Debug screen: the XIAO's 3.3 V regulator,
  * read by the SAADC on its VDD input (channel 6, which nothing else in this
  * firmware sets up). The USB 5 V isn't wired to anything the chip can
@@ -527,7 +605,7 @@ static bool read_temp(int8_t *celsius) { return false; }
  * drawn after a stuck one would never come, leaving the screen blank).
  */
 #define READINGS_EVERY_MS 1000
-#define READINGS_STACK 2048
+#define READINGS_STACK 3072
 
 static struct {
     struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
@@ -608,6 +686,8 @@ static void read_debug(void) {
     d->uptime_s = (uint32_t)(k_uptime_get() / 1000);
     d->firmware = FIRMWARE_BUILD;
     d->reset_cause = reset_cause;
+    d->crash = last_crash;
+    d->crash_code = last_crash_code;
     d->activity = (uint8_t)zmk_activity_get_state();
     d->wpm = (uint16_t)atomic_get(&wpm);
     read_keys(d);
@@ -987,6 +1067,7 @@ static void frame_cb(struct k_work *work) {
     if (start_pending) {
         if (!borrow_memory()) {
             /* back to the module's screen */
+            first_picture();
             saver = SAVER_OFF;
             atomic_set(&wanted_screen, 0);
             k_work_submit_to_queue(zmk_display_work_q(), &apply_work);
@@ -1088,6 +1169,7 @@ static void frame_cb(struct k_work *work) {
         fx_draw_notice(frame, names[dongle_backlight_level()], "BRIGHTNESS");
     }
     present(now);
+    first_picture();
     frames_since++;
     const uint32_t took = k_uptime_get_32() - now;
     debug_shown.frame_ms = (uint8_t)MIN(took, 255);
@@ -1785,12 +1867,26 @@ static void start_cb(struct k_work *work) {
             start = which;
         }
     }
-    const int saved = saved_screen();
+    int saved = saved_screen();
+    if (safe_start) {
+        /* the last start showed nothing: the first animation this time */
+        saved = -1;
+        for (int which = 1; which <= fx_count(); which++) {
+            if (can_choose(which) && !fx_is_debug(which - 1) && !fx_shows_keys(which - 1)) {
+                saved = which;
+                break;
+            }
+        }
+    }
     atomic_set(&wanted_screen, saved >= 0 ? saved : start);
     request_apply();
 }
 
 static int screen_fx_init(void) {
+    boot_note_take();
+#if !IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_MODULE_SCREEN)
+    k_work_schedule(&picture_watch_work, K_MSEC(FIRST_PICTURE_BY_MS));
+#endif
     k_work_queue_start(&readings_q, readings_stack, K_THREAD_STACK_SIZEOF(readings_stack),
                        K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_read"});
     /* after the module's screen has drawn itself once, and ZMK has loaded

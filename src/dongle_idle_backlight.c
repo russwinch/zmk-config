@@ -234,7 +234,15 @@ int dongle_backlight_step(void) {
 
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX) && !IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_MODULE_SCREEN)
 
-static void light_anyway_cb(struct k_work *work) { dongle_backlight_on(); }
+// On the system work queue, and straight to the PWM: the fades run on the
+// display queue, which is what may be stuck when no picture comes.
+static void light_anyway_cb(struct k_work *work) {
+    if (!atomic_set(&lit, 1)) {
+        set_backlight(on_percent());
+        level_now = on_percent() * 10;
+        request_backlight(on_percent(), 0, 0);
+    }
+}
 
 static K_WORK_DELAYABLE_DEFINE(light_anyway_work, light_anyway_cb);
 
