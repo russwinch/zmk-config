@@ -200,17 +200,18 @@ static void battery_history_cb(struct k_work *work) {
 /*
  * Each half's average draw, in percent an hour, for the Debug screen: from
  * the half's battery reports, which come when its level moves a whole
- * percent. Timed from one drop to a later one, so the part of a percent
- * already gone when it started counting doesn't skew it: the first drop
- * starts the clock (`from`), and each one after is the latest (`to`). It
- * starts again when the level goes up or the half charges, and then waits
- * for a drop before the first, as the first reading after unplugging is
- * often still the charger's. Under debug_lock.
+ * percent. The clock starts at the first reading (`from`) and each drop
+ * after is the latest (`to`), so there is a figure from the first drop: up
+ * to a percent out at first, as some of the first percent may already have
+ * gone, and closer the longer it runs. It starts again when the level goes
+ * up or the half charges, and then the clock starts at the first drop
+ * instead, as the first reading after unplugging is often still the
+ * charger's. Under debug_lock.
  */
 struct drain {
     uint8_t last;            /* the level last reported (0: none yet) */
-    bool settling;           /* the next drop is from a charger's reading: it only sets `last` */
-    uint8_t from_level, to_level; /* 0: no drop yet */
+    bool settling;           /* the next drop is from a charger's reading: the clock starts there */
+    uint8_t from_level, to_level; /* 0: not yet */
     uint32_t from_ms, to_ms;
 };
 static struct drain drain[2];
@@ -221,7 +222,12 @@ static void drain_reading(struct drain *dr, uint8_t level, bool charging, uint32
     }
     if (charging || level > dr->last) {
         /* charging, or charged without the dongle hearing so: the next drop may be the charger's going */
-        *dr = (struct drain){.last = charging ? 0 : level, .settling = charging || dr->settling || dr->last != 0};
+        const bool settling = charging || dr->settling || dr->last != 0;
+        *dr = (struct drain){.last = charging ? 0 : level, .settling = settling};
+        if (!charging && !settling) { /* the first reading since the dongle started */
+            dr->from_level = level;
+            dr->from_ms = now;
+        }
         return;
     }
     if (level == dr->last) {
@@ -230,7 +236,6 @@ static void drain_reading(struct drain *dr, uint8_t level, bool charging, uint32
     dr->last = level;
     if (dr->settling) {
         dr->settling = false;
-    } else if (dr->from_level == 0) {
         dr->from_level = level;
         dr->from_ms = now;
     } else {
@@ -239,7 +244,7 @@ static void drain_reading(struct drain *dr, uint8_t level, bool charging, uint32
     }
 }
 
-/* In tenths of a percent an hour; FX_DRAIN_UNKNOWN until two drops. */
+/* In tenths of a percent an hour; FX_DRAIN_UNKNOWN until a drop after the clock started. */
 static uint16_t drain_tenths(const struct drain *dr) {
     if (dr->to_level == 0 || dr->to_ms == dr->from_ms) {
         return FX_DRAIN_UNKNOWN;

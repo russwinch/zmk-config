@@ -447,10 +447,11 @@ The link rows' columns:
 
 `DRAW` is each half's average draw since the dongle started or the half was
 last charged, to compare boards and settings. A half reports its level when it
-moves a whole percent, so it is timed from one drop to a later one: `--`
-until the level has dropped twice (three times after a charge, as the
-first reading after unplugging can still be the charger's), so a frugal half
-takes a few hours to show one, and it is coarse at first. It is an average
+moves a whole percent, so it is `--` until the level has dropped once (twice
+after a charge, as the first reading after unplugging can still be the
+charger's, so the clock starts at the first drop). Up to a percent out at
+first, as some of the first percent may already have gone when the clock
+started; closer the longer it runs. It is an average
 over everything since: typing, idle and asleep. ZMK works the percent out
 from the battery's voltage, which falls faster near full and empty than in
 the middle, so compare boards over similar stretches of charge. It is percent,
