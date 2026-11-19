@@ -56,10 +56,8 @@
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
-#include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/dt-bindings/adc/nrf-saadc-v2.h> /* NRF_SAADC_VDD */
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
@@ -158,7 +156,6 @@ static struct k_spinlock debug_lock;
 static struct fx_debug debug;
 static uint32_t last_event_at;
 static uint32_t released_at[BOUNCE_KEYS]; /* 0: not yet */
-static uint32_t battery_at[2];            /* 0: no report yet */
 static const struct bt_conn *half_conn[2]; /* only ever compared, never used */
 
 /*
@@ -198,6 +195,57 @@ static void battery_history_cb(struct k_work *work) {
         debug.n_battery_history++;
     }
     k_work_schedule(&battery_history_work, K_MINUTES(FX_BATTERY_EVERY_MIN));
+}
+
+/*
+ * Each half's average draw, in percent an hour, for the Debug screen: from
+ * the half's battery reports, which come when its level moves a whole
+ * percent. Timed from one drop to a later one, so the part of a percent
+ * already gone when it started counting doesn't skew it: the first drop
+ * starts the clock (`from`), and each one after is the latest (`to`). It
+ * starts again when the level goes up or the half charges, and then waits
+ * for a drop before the first, as the first reading after unplugging is
+ * often still the charger's. Under debug_lock.
+ */
+struct drain {
+    uint8_t last;            /* the level last reported (0: none yet) */
+    bool settling;           /* the next drop is from a charger's reading: it only sets `last` */
+    uint8_t from_level, to_level; /* 0: no drop yet */
+    uint32_t from_ms, to_ms;
+};
+static struct drain drain[2];
+
+static void drain_reading(struct drain *dr, uint8_t level, bool charging, uint32_t now) {
+    if (level == 0) {
+        return; /* not a reading */
+    }
+    if (charging || level > dr->last) {
+        /* charging, or charged without the dongle hearing so: the next drop may be the charger's going */
+        *dr = (struct drain){.last = charging ? 0 : level, .settling = charging || dr->settling || dr->last != 0};
+        return;
+    }
+    if (level == dr->last) {
+        return;
+    }
+    dr->last = level;
+    if (dr->settling) {
+        dr->settling = false;
+    } else if (dr->from_level == 0) {
+        dr->from_level = level;
+        dr->from_ms = now;
+    } else {
+        dr->to_level = level;
+        dr->to_ms = now;
+    }
+}
+
+/* In tenths of a percent an hour; FX_DRAIN_UNKNOWN until two drops. */
+static uint16_t drain_tenths(const struct drain *dr) {
+    if (dr->to_level == 0 || dr->to_ms == dr->from_ms) {
+        return FX_DRAIN_UNKNOWN;
+    }
+    const uint64_t tenths = (uint64_t)(dr->from_level - dr->to_level) * 10 * 3600000 / (dr->to_ms - dr->from_ms);
+    return (uint16_t)MIN(tenths, FX_DRAIN_UNKNOWN - 1);
 }
 
 /*
@@ -371,7 +419,6 @@ static void read_link(struct bt_conn *conn, void *data) {
     }
     struct fx_link *link = reading->link[which];
     link->up = true;
-    link->interval = info.le.interval;
     reading->found[which] = bt_hci_get_conn_handle(conn, &reading->handle[which]) == 0;
 }
 
@@ -390,51 +437,7 @@ void lvgl_heap_stats(struct sys_memory_stats *stats);
 
 static uint32_t reset_cause;
 
-/* The dongle's own supply and chip temperature, for the Debug screen. The
- * supply is the XIAO's 3.3 V regulator, read by the SAADC on its VDD input
- * (channel 6, which nothing else in this firmware sets up); the USB 5 V isn't wired to
- * anything the chip can measure. */
-#if IS_ENABLED(CONFIG_ADC) && DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
-#define VDD_CHANNEL 6
-static uint16_t read_vdd_mv(void) {
-    static const struct device *const adc = DEVICE_DT_GET(DT_NODELABEL(adc));
-    static bool set_up;
-    if (!device_is_ready(adc)) {
-        return 0;
-    }
-    if (!set_up) {
-        const struct adc_channel_cfg cfg = {
-            .gain = ADC_GAIN_1_6,
-            .reference = ADC_REF_INTERNAL,
-            .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
-            .channel_id = VDD_CHANNEL,
-            .input_positive = NRF_SAADC_VDD,
-        };
-        if (adc_channel_setup(adc, &cfg) != 0) {
-            return 0;
-        }
-        set_up = true;
-    }
-    int16_t raw = 0;
-    const struct adc_sequence seq = {
-        .channels = BIT(VDD_CHANNEL),
-        .buffer = &raw,
-        .buffer_size = sizeof(raw),
-        .resolution = 12,
-    };
-    if (adc_read(adc, &seq) != 0) {
-        return 0;
-    }
-    int32_t mv = raw;
-    if (adc_raw_to_millivolts(adc_ref_internal(adc), ADC_GAIN_1_6, 12, &mv) != 0 || mv <= 0) {
-        return 0;
-    }
-    return (uint16_t)mv;
-}
-#else
-static uint16_t read_vdd_mv(void) { return 0; }
-#endif
-
+/* The dongle's own chip temperature, for the Debug screen. */
 #if IS_ENABLED(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_NODELABEL(temp), okay)
 static bool read_temp(int8_t *celsius) {
     static const struct device *const temp = DEVICE_DT_GET(DT_NODELABEL(temp));
@@ -456,7 +459,7 @@ static void read_debug(uint32_t now) {
     K_SPINLOCK(&debug_lock) {
         debug_shown = debug;
         for (int half = 0; half < 2; half++) {
-            debug_shown.battery_age_s[half] = battery_at[half] ? MIN((now - battery_at[half]) / 1000, UINT16_MAX) : 0;
+            debug_shown.drain_tenths[half] = drain_tenths(&drain[half]);
         }
     }
     struct fx_debug *d = &debug_shown;
@@ -503,7 +506,6 @@ static void read_debug(uint32_t now) {
 #endif
         struct fx_link *out = i < 2 ? &d->half[i] : &d->host;
         out->up = now_link[i].up;
-        out->interval = now_link[i].interval;
         out->rssi_known = now_link[i].rssi_known;
         out->rssi = now_link[i].rssi;
     }
@@ -511,26 +513,31 @@ static void read_debug(uint32_t now) {
         rssi_at = now;
     }
 
-    /* USB reports; the supply and the temperatures, once a second too */
+    /* USB reports; the temperatures and transmit powers, once a second too */
 #if IS_ENABLED(CONFIG_ZMK_USB)
     d->usb_reports = dongle_usb_reports_sent();
     d->usb_errors = (uint16_t)MIN(dongle_usb_reports_failed(), UINT16_MAX);
 #endif
-    static uint16_t vdd_mv;
-    static bool temp_known[3];
-    static int8_t temp_c[3];
+    static bool temp_known[3], tx_known[3];
+    static int8_t temp_c[3], tx_dbm[3];
     if (rssi_due) {
-        vdd_mv = read_vdd_mv();
         temp_known[1] = read_temp(&temp_c[1]);
+#ifdef CONFIG_BT_CTLR_TX_PWR_DBM
+        tx_known[1] = true; /* the dongle's own, as built */
+        tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
+#endif
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         temp_known[0] = dongle_half_temperature(0, &temp_c[0]);
         temp_known[2] = dongle_half_temperature(1, &temp_c[2]);
+        tx_known[0] = dongle_half_tx_power(0, &tx_dbm[0]);
+        tx_known[2] = dongle_half_tx_power(1, &tx_dbm[2]);
 #endif
     }
-    d->vdd_mv = vdd_mv;
     for (int i = 0; i < 3; i++) {
         d->temp_known[i] = temp_known[i];
         d->temp_c[i] = temp_c[i];
+        d->tx_known[i] = tx_known[i];
+        d->tx_dbm[i] = tx_dbm[i];
     }
 }
 
@@ -1588,7 +1595,13 @@ static int screen_fx_listener(const zmk_event_t *eh) {
     if (battery != NULL) {
         if (battery->source < 2) {
             K_SPINLOCK(&debug_lock) {
-                battery_at[battery->source] = k_uptime_get_32() | 1;
+                drain_reading(&drain[battery->source], battery->state_of_charge,
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+                              dongle_half_charging(battery->source),
+#else
+                              false,
+#endif
+                              k_uptime_get_32());
             }
             if (atomic_cas(&battery_history_started, 0, 1)) {
                 /* the first reading: a moment from now, when the level is in */

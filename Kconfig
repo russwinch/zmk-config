@@ -77,7 +77,8 @@ config WATERFOWL_HALF_STATUS_SCREEN
       Turned on for the dongle build of each left half with a nice!view
       (Waterfowl, Aurora Corne) in build.yaml.
 
-# --- Charging and temperature of the halves (src/half_charging.c, src/half_temperature.c, src/dongle_half_info.c) ---
+# --- Charging, temperature and transmit power of the halves (src/half_charging.c, src/half_temperature.c,
+#     src/half_tx_power.c, src/dongle_half_info.c) ---
 
 config HALF_CHARGING_STATUS
     bool "Tell the dongle when this half is on USB power"
@@ -104,8 +105,17 @@ config HALF_TEMPERATURE_EVERY_S
     default 300
     depends on HALF_TEMPERATURE
 
+config HALF_TX_POWER
+    bool "Offer this half's radio transmit power to the dongle"
+    default y
+    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && BT_CTLR
+    help
+      As the Tx Power Service's Tx Power Level, BT_CTLR_TX_PWR_DBM as built:
+      the dongle's Debug screen shows it, so a board with more than the
+      default 0 dBm stands out.
+
 config DONGLE_HALF_INFO
-    bool "Hear whether each half is on USB power, and its temperature"
+    bool "Hear whether each half is on USB power, its temperature and transmit power"
     default y
     depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
     depends on BT_GATT_AUTO_DISCOVER_CCC
@@ -113,7 +123,8 @@ config DONGLE_HALF_INFO
       Read once when a half connects, then subscribed to (the half sends
       only changes). The dongle's screens then show a bolt for a charging
       half instead of its battery level, which reads near 100 while it
-      charges, and the Debug screen its temperature.
+      charges, and the Debug screen its temperature and transmit power (read
+      once: it doesn't change).
 
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"
@@ -134,7 +145,6 @@ config DONGLE_SCREEN_FX
     select HWINFO
     select SYS_HEAP_RUNTIME_STATS
     imply BT_CTLR_CONN_RSSI
-    imply ADC
     imply SENSOR
     help
       The &scr_next key steps through the animations in

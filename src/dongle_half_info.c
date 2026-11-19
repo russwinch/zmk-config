@@ -6,13 +6,17 @@
  *                  half instead of its level
  *   temperature    the Environmental Sensing Service's Temperature (offered
  *                  by src/half_temperature.c): the Debug screen shows it
+ *   transmit power the Tx Power Service's Tx Power Level (offered by
+ *                  src/half_tx_power.c): the Debug screen shows it
  *
  * Each is read once, a few seconds after a half connects (a read by UUID
  * needs no finding first, so it doesn't get in the way of ZMK's own setup of
  * the link), and then subscribed to: the half sends it again only when it
- * changes, in a connection event it wakes for anyway. Nothing is polled, so
- * it costs the halves' batteries next to nothing. A half with firmware from
- * before this has neither: it reads as not charging, temperature unknown.
+ * changes, in a connection event it wakes for anyway. The transmit power is
+ * fixed when the half's firmware is built, so it is only read. Nothing is
+ * polled, so it costs the halves' batteries next to nothing. A half with
+ * firmware from before this has none of them: it reads as not charging,
+ * temperature and transmit power unknown.
  */
 
 #include <string.h>
@@ -41,7 +45,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define POWER_STATE_CHARGE_MASK (BIT_MASK(2) << POWER_STATE_CHARGE_SHIFT)
 #define CHARGE_STATE_CHARGING 1
 
-enum { BLS, TEMP, KINDS };
+enum { BLS, TEMP, TX_POWER, KINDS };
 
 // One characteristic on one half: read once, then subscribed to.
 struct watch {
@@ -54,6 +58,8 @@ static struct watch watches[2][KINDS];
 static atomic_t charging;   // bit per half
 static atomic_t temp_known; // bit per half
 static atomic_t temp_c[2];
+static atomic_t tx_known; // bit per half
+static atomic_t tx_dbm[2];
 
 bool dongle_half_charging(int half) {
     return half >= 0 && half < 2 && atomic_test_bit(&charging, half);
@@ -67,8 +73,17 @@ bool dongle_half_temperature(int half, int8_t *celsius) {
     return true;
 }
 
+bool dongle_half_tx_power(int half, int8_t *dbm) {
+    if (half < 0 || half >= 2 || !atomic_test_bit(&tx_known, half)) {
+        return false;
+    }
+    *dbm = (int8_t)atomic_get(&tx_dbm[half]);
+    return true;
+}
+
 static const struct bt_uuid *uuid_of(int kind) {
-    return kind == BLS ? BT_UUID_BAS_BATTERY_LEVEL_STATUS : BT_UUID_TEMPERATURE;
+    return kind == BLS ? BT_UUID_BAS_BATTERY_LEVEL_STATUS : kind == TEMP ? BT_UUID_TEMPERATURE
+                                                                         : BT_UUID_TPS_TX_POWER_LEVEL;
 }
 
 // Which half a connection is: the slot ZMK keeps its address in.
@@ -105,6 +120,11 @@ static void take(int half, int kind, const void *data, uint16_t length) {
             on = FIELD_GET(POWER_STATE_CHARGE_MASK, power) == CHARGE_STATE_CHARGING;
         }
         atomic_set_bit_to(&charging, half, on);
+    } else if (kind == TX_POWER) {
+        if (data != NULL && length >= 1) {
+            atomic_set(&tx_dbm[half], *(const int8_t *)data);
+        }
+        atomic_set_bit_to(&tx_known, half, data != NULL && length >= 1);
     } else {
         const int16_t hundredths =
             data != NULL && length >= 2 ? (int16_t)sys_get_le16(data) : INT16_MIN;
@@ -159,7 +179,7 @@ static uint8_t read_cb(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_pa
     }
     const bool found = !err && data != NULL;
     take(half, kind, found ? data : NULL, length);
-    if (found) {
+    if (found && kind != TX_POWER) {
         subscribe(conn, half, kind, params->by_uuid.start_handle);
     }
     return BT_GATT_ITER_STOP;
@@ -213,6 +233,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
         atomic_clear_bit(&pending, half);
         atomic_clear_bit(&charging, half);
         atomic_clear_bit(&temp_known, half);
+        atomic_clear_bit(&tx_known, half);
     }
 }
 

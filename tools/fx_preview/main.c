@@ -211,10 +211,11 @@ int main(int argc, char **argv) {
     static struct fx_debug debug = {
         .firmware = "B149", .uptime_s = 4365, .reset_cause = 2, .fps = 15, .frame_ms = 38, .heap_known = true, .heap_used = 62,
         .heap_peak = 71,
-        .half = {{.up = true, .rssi_known = true, .rssi = -52, .interval = 6, .drops = 2, .reason = 0x08},
-                 {.up = true, .rssi_known = true, .rssi = -71, .interval = 6}},
-        .host = {.up = true, .rssi_known = true, .rssi = -48, .interval = 12, .drops = 1, .reason = 0x13},
-        .battery_age_s = {12, 340}, .usb_reports = 18342, .usb_errors = 0, .vdd_mv = 3312,
+        .half = {{.up = true, .rssi_known = true, .rssi = -52, .drops = 2, .reason = 0x08},
+                 {.up = true, .rssi_known = true, .rssi = -71}},
+        .host = {.up = true, .rssi_known = true, .rssi = -48, .drops = 1, .reason = 0x13},
+        .usb_reports = 18342, .usb_errors = 0, .drain_tenths = {6, 13},
+        .tx_known = {true, true, false}, .tx_dbm = {8, 0},
         .temp_known = {true, true, true}, .temp_c = {27, 31, 26}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };

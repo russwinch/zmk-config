@@ -387,7 +387,9 @@ then subscribes (`src/dongle_half_info.c`), so a half only sends it when it
 changes, in a connection event it wakes for anyway: nothing is polled. The
 half's chip temperature, for the Debug screen, comes the same way, as a
 standard Environmental Sensing Service (`src/half_temperature.c`), measured
-every 5 minutes and sent only when it moves by a degree. The bolt means
+every 5 minutes and sent only when it moves by a degree, and so does the
+power its radio transmits at, as the standard Tx Power Service
+(`src/half_tx_power.c`), read once as it is fixed when the half is built. The bolt means
 plugged in, not still charging: a half can't tell when its charger has
 finished. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
@@ -422,9 +424,9 @@ everything on it that the dongle can get at. Top to bottom:
 | `B149 1:12:46 ACT 10F 38MS` | the firmware: `B149` is CI build 149, the `build-149` release in Keyboard Writer (`DEV` if built anywhere else); time since the dongle started; `ACT`ive, `IDL`e or `SLP`; this screen's frames a second and the time one takes to draw and send |
 | `RST SOFT 02  MEM 62% ^71` | why the dongle last restarted (`POR` power on, `PIN` reset button, `SOFT` asked to, e.g. into the bootloader; in red `WDOG` watchdog, `LOCK` CPU lock-up, `BRWN` brown-out) and the raw bits; how full LVGL's memory is and the fullest it has been |
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
-| profile circles, `USB`, `TX`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
+| profile circles, `USB`, `RPT`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
 | `L3 NAV 0009  ⌃⌥⇧⌘  51WPM` | the highest active layer and its name (shortened to fit), a bit for every active layer (hex); the modifiers as the Mac's symbols, lit while held (either side); typing speed |
-| `3.31V   N29` | the dongle's supply: its own 3.3 V regulator's output (the USB 5 V isn't wired to anything the chip can measure); key presses since the dongle started |
+| `DRAW L0.6 R1.3%/H   N29` | each half's average battery draw in percent an hour (below); key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
@@ -437,11 +439,22 @@ The link rows' columns:
 | bars | signal strength, from `DBM` |
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
 | `-2H` | each half's battery over the last two hours, a reading every 5 minutes, the newest on the right (filling in from there after the dongle starts; the dotted part is still to come). Scaled to the readings shown, but never to less than 6 percent top to bottom, so a level that hasn't moved is a flat line and a pixel is at most a percent; coloured as `BAT` is. A green dot along the top is a reading taken while that half was charging, and a gap one with no level (the half out of reach) |
-| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -65, amber to -80, red below. Bluetooth keeps working to about -90, so amber is still a solid link; red is where drops start. Every device transmits at 0 dBm, the default (`config/default.conf`) |
+| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -65, amber to -80, red below. Bluetooth keeps working to about -90, so amber is still a solid link; red is where drops start. How strongly each end transmits is `TX` |
 | `C` | chip temperature in °C: the half's (measured every 5 minutes, `--` until it has said), and on the `H` row the dongle's own; amber from 60 |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
-| `S` | seconds since that half last reported its battery |
+| `TX` | the power that end's radio transmits at, in dBm, as its firmware was built: the half's own, and on the `H` row the dongle's. `0` is the default (`config/default.conf`); green above it, so a board built with `CONFIG_BT_CTLR_TX_PWR_PLUS_8` shows `+8`. `--` for a half with firmware from before this |
+
+`DRAW` is each half's average draw since the dongle started or the half was
+last charged, to compare boards and settings. A half reports its level when it
+moves a whole percent, so it is timed from one drop to a later one: `--`
+until the level has dropped twice (three times after a charge, as the
+first reading after unplugging can still be the charger's), so a frugal half
+takes a few hours to show one, and it is coarse at first. It is an average
+over everything since: typing, idle and asleep. ZMK works the percent out
+from the battery's voltage, which falls faster near full and empty than in
+the middle, so compare boards over similar stretches of charge. It is percent,
+not milliamps: a bigger battery reads lower for the same current.
 
 The halves don't report their battery voltage to the dongle, only the percent,
 so there is no voltage here. Key timings are taken when an event reaches the
@@ -450,7 +463,7 @@ shorter than that (7.5 ms) can't be seen from here. The counts and the battery h
 when the dongle restarts.
 
 Only the dongle needs flashing to change these (the keymap and the screen
-code both live there): pick the build in
+code both live there), except the halves' `C` and `TX`, which their own firmware sends: pick the build in
 [Keyboard Writer](https://github.com/russwinch/keyboard-writer), see
 [Flashing](#flashing).
 

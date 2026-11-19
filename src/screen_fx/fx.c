@@ -1473,7 +1473,7 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 #define DBG_COL_TEMP 98
 #define DBG_COL_DROPS 111
 #define DBG_COL_REASON 124
-#define DBG_COL_AGE 138
+#define DBG_COL_TX 138
 
 /* A knob's mark turns this many times as far as the encoder does: one of the
  * Waterfowl's 18 degree clicks moves it 45, an eighth of the way round. */
@@ -1640,7 +1640,7 @@ static void battery_sparkline(uint8_t *fb, int x, int y, const uint8_t *history,
 
 /* One row of the table: `level` is the battery, or the output for the computer. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
-                       uint8_t level_color, int age_s, bool temp_known, int temp_c) {
+                       uint8_t level_color, bool temp_known, int temp_c, bool tx_known, int tx_dbm) {
     char buf[12];
     const char label[2] = {name, '\0'};
     put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
@@ -1668,9 +1668,12 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
         snprintf(buf, sizeof(buf), "%02X", link->reason);
         put_right(fb, DBG_COL_REASON, y, buf, DBG_WARN);
     }
-    if (age_s >= 0) {
-        snprintf(buf, sizeof(buf), "%d", age_s > 999 ? 999 : age_s);
-        put_right(fb, DBG_COL_AGE, y, buf, age_s > 600 ? DBG_WARN : DBG_TEXT);
+    /* the transmit power at that end (the H row: the dongle's), bright when boosted above the default 0 dBm */
+    if (tx_known) {
+        snprintf(buf, sizeof(buf), tx_dbm > 0 ? "+%d" : "%d", tx_dbm < -9 ? -9 : tx_dbm > 9 ? 9 : tx_dbm);
+        put_right(fb, DBG_COL_TX, y, buf, tx_dbm > 0 ? DBG_GOOD : DBG_TEXT);
+    } else {
+        put_right(fb, DBG_COL_TX, y, "--", DBG_LABEL);
     }
 }
 
@@ -1764,7 +1767,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put(fb, DBG_COL_HISTORY + (FX_BATTERY_HISTORY + 1 - 5 * (int)strlen(buf)) / 2, 23, buf, DBG_LABEL);
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
-    put_right(fb, DBG_COL_AGE, 23, "S", DBG_LABEL);
+    put_right(fb, DBG_COL_TX, 23, "TX", DBG_LABEL);
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const bool charging = in->status && in->status->charging[half];
@@ -1777,14 +1780,14 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
                    charging ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
-                   level ? d->battery_age_s[half] : -1, d->temp_known[half * 2], d->temp_c[half * 2]);
+                   d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2]);
         battery_sparkline(fb, DBG_COL_HISTORY, 31 + half * 8, d->battery_history[half],
                           d->n_battery_history < FX_BATTERY_HISTORY ? d->n_battery_history : FX_BATTERY_HISTORY);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, -1, d->temp_known[1],
-               d->temp_c[1]);
+    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, d->temp_known[1],
+               d->temp_c[1], d->tx_known[1], d->tx_dbm[1]);
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those
@@ -1793,7 +1796,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     x = put(fb, 50, 59, "USB", DBG_LABEL) + 3;
     x = put(fb, x, 59, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--",
             d->usb == 2 ? (usb_out && in->status->host_connected ? DBG_GOOD : DBG_TEXT) : DBG_TEXT) + 6;
-    x = put(fb, x, 59, "TX", DBG_LABEL);
+    x = put(fb, x, 59, "RPT", DBG_LABEL);
     count_text(buf, sizeof(buf), d->usb_reports);
     x = put(fb, x, 59, buf, DBG_TEXT) + 4;
     x = put(fb, x, 59, "E", DBG_LABEL);
@@ -1833,13 +1836,21 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%04X", (unsigned)(d->layers & 0xffff));
     put(fb, x, 68, buf, DBG_LABEL);
 
-    /* the dongle's supply; key presses since the dongle started */
-    if (d->vdd_mv) {
-        snprintf(buf, sizeof(buf), "%u.%02uV", d->vdd_mv / 1000, d->vdd_mv % 1000 / 10);
-        put(fb, 5, 76, buf, DBG_TEXT);
-    } else {
-        put(fb, 5, 76, "-.--V", DBG_LABEL);
+    /* each half's average draw, percent an hour; key presses since the dongle started */
+    x = put(fb, 5, 76, "DRAW", DBG_LABEL) + 4;
+    for (int half = 0; half < 2; half++) {
+        const unsigned tenths = d->drain_tenths[half];
+        x = put(fb, x, 76, half ? "R" : "L", DBG_LABEL) + 1;
+        if (tenths == FX_DRAIN_UNKNOWN) {
+            strcpy(buf, "--");
+        } else if (tenths < 100) {
+            snprintf(buf, sizeof(buf), "%u.%u", tenths / 10, tenths % 10);
+        } else {
+            snprintf(buf, sizeof(buf), "%u", tenths / 10 > 99 ? 99 : tenths / 10);
+        }
+        x = put(fb, x, 76, buf, tenths == FX_DRAIN_UNKNOWN ? DBG_LABEL : DBG_TEXT) + 4;
     }
+    put(fb, x - 2, 76, "%/H", DBG_LABEL);
     count_text(buf + 1, sizeof(buf) - 1, d->presses);
     buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);

@@ -93,13 +93,13 @@ struct fx_theme {
 #define FX_BATTERY_HISTORY 24
 #define FX_BATTERY_EVERY_MIN 5
 #define FX_BATTERY_CHARGING 0x80 /* or'd into a level taken while that half was charging */
+#define FX_DRAIN_UNKNOWN 0xffff
 
 /* A Bluetooth link: to a half, or to the computer. */
 struct fx_link {
     bool up;
     bool rssi_known;
     int8_t rssi;       /* dBm, as the dongle hears the other end */
-    uint16_t interval; /* connection interval, in units of 1.25 ms */
     uint16_t drops;    /* times it has been lost since power-up */
     uint8_t reason;    /* Bluetooth's reason for the last loss (0: none yet) */
 };
@@ -122,11 +122,11 @@ struct fx_debug {
     bool heap_known;
     uint8_t heap_used, heap_peak; /* LVGL's memory, percent */
     struct fx_link half[2], host;
-    uint16_t battery_age_s[2]; /* since each half last reported its level */
     /* each half's level, oldest first, the newest last: 0 not known (no
      * report, or not connected), | FX_BATTERY_CHARGING while charging */
     uint8_t battery_history[2][FX_BATTERY_HISTORY];
     uint8_t n_battery_history;
+    uint16_t drain_tenths[2]; /* each half's average draw, tenths of a percent an hour (FX_DRAIN_UNKNOWN) */
     uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */
     bool usb_asleep;      /* the computer has suspended the port: it is asleep */
@@ -147,9 +147,10 @@ struct fx_debug {
     uint8_t bounce_key;
     uint32_t usb_reports; /* keyboard and media reports sent over USB since power-up */
     uint16_t usb_errors;  /* and those that failed (the computer not taking them) */
-    uint16_t vdd_mv;      /* the dongle's supply, from its 3.3 V regulator (0: not known) */
     bool temp_known[3];   /* chip temperatures: left half, dongle, right half */
     int8_t temp_c[3];
+    bool tx_known[3];     /* radio transmit power, as built, dBm: the same three */
+    int8_t tx_dbm[3];
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
     uint8_t n_log;
 };
