@@ -117,11 +117,14 @@ config HALF_TX_POWER
       the dongle's Debug screen shows it, so a board with more than the
       default 0 dBm stands out.
 
+# the comma in the chosen name can't go straight into the call
+DT_CHOSEN_ZMK_BATTERY := zmk,battery
+
 config HALF_VOLTAGE
     bool "Offer this half's battery voltage to the dongle"
     default y
     depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && ZMK_BATTERY_REPORTING
-    depends on $(dt_chosen_enabled,zmk,battery)
+    depends on $(dt_chosen_enabled,$(DT_CHOSEN_ZMK_BATTERY))
     help
       As the Voltage characteristic of an Environmental Sensing Service:
       the last of ZMK's own battery readings (nothing extra is measured),
