@@ -390,12 +390,11 @@ ZMK has finished setting the link up, then subscribes (`src/dongle_half_info.c`)
 so a half only sends it when it changes, in a connection event it wakes for
 anyway: nothing is polled. Those reads go one at a time and wait for ZMK, as
 ZMK can't wait for a free request while it subscribes to a half's keys: when
-it couldn't, that half connected and showed its battery but typed nothing. The
-half's chip temperature, for the Debug screen, comes the same way, as a
-standard Environmental Sensing Service (`src/half_temperature.c`), measured
-every 5 minutes and sent only when it moves by a degree, and so does the
-power its radio transmits at, as the standard Tx Power Service
-(`src/half_tx_power.c`), read once as it is fixed when the half is built. The bolt means
+it couldn't, that half connected and showed its battery but typed nothing.
+The Debug screen's `CH` column shows where it got to for each half. That is
+all the dongle asks of the halves beyond what ZMK does: the temperature,
+battery volts and transmit power it once also asked for never arrived, and
+went. The bolt means
 plugged in, not still charging: a half can't tell when its charger has
 finished, so the solid bolt at 100 is only the reading reaching the top. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
@@ -443,12 +442,10 @@ The link rows' columns:
 | --- | --- |
 | bars | signal strength, from `DBM` |
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
-| `V` | each half's battery voltage, as the half last measured it for its percentage (about once a minute; sent when it moves by about 30 mV, `src/half_voltage.c`), dim while it charges, as it is then the charger's, about 4.2 V; on the `H` row the dongle's supply, its own 3.3 V regulator's output (the USB 5 V is only detected, `USB PWR`: nothing on the board can measure it). `-.--` when not known, e.g. a half on older firmware |
-| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. The bars are a bar for every 10 dB above -90, in the same colour. How strongly each end transmits is `TX`. Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
-| `C` | chip temperature in °C: the half's (measured every 5 minutes, `--` until it has said), and on the `H` row the dongle's own; amber from 60. For a half, in red in its place while not known: the last error from the dongle's reads of it (`src/dongle_half_info.c`), in hex: an ATT error code (`0E` unlikely error, `05` not authenticated), or from `80` a Zephyr errno plus `80` (`82` no such entry: no CCC found, `8C` out of memory) |
+| `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. The bars are a bar for every 10 dB above -90, in the same colour. Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
-| `TX` | the power that end's radio transmits at, in dBm, as its firmware was built: the half's own, and on the `H` row the dongle's. `0` is the default (`config/default.conf`); green above it, so a board built with `CONFIG_BT_CTLR_TX_PWR_PLUS_8` shows `+8`. `--` for a half with firmware from before this. Until it is known, how far the dongle's reads of that half have got, in amber: `WT` waiting for ZMK to finish setting the link up, then the request out and its try: `B1` charging, `C1` temperature, `X1` transmit power, `V1` volts (it goes `B1`, `C1`, `X1`, `V1`, one half then the other, a few seconds each at most). `T` and a letter in red: that request had no answer in 10 s, so the dongle leaves that half alone until it next connects; the other half's reads go on |
+| `CH` | for a half, where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows beside the level while it is plugged in; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
 
 The `%/H` figures are each half's average draw since the dongle started or the half was
 last charged, to compare boards and settings. A half reports its level when it
@@ -469,7 +466,7 @@ shorter than that (7.5 ms) can't be seen from here. The counts and the battery h
 when the dongle restarts.
 
 Only the dongle needs flashing to change these (the keymap and the screen
-code both live there), except the halves' `C` and `TX`, which their own firmware sends: pick the build in
+code both live there), except the charging state, which the halves' own firmware sends: pick the build in
 [Keyboard Writer](https://github.com/russwinch/keyboard-writer), see
 [Flashing](#flashing).
 

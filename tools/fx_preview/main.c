@@ -214,9 +214,8 @@ int main(int argc, char **argv) {
         .half = {{.up = true, .rssi_known = true, .rssi = -52, .drops = 2, .reason = 0x08},
                  {.up = true, .rssi_known = true, .rssi = -71}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .drops = 1, .reason = 0x13},
-        .usb_reports = 18342, .usb_errors = 0, .drain_tenths = {6, 13}, .mv = {3921, 3312, 3604},
-        .tx_known = {true, true, false}, .tx_dbm = {8, 0}, .half_reads = {"", "B2"},
-        .temp_known = {true, true, true}, .temp_c = {27, 31, 26}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
+        .usb_reports = 18342, .usb_errors = 0, .drain_tenths = {6, 13},
+        .half_reads = {"OK", "E"}, .half_err = {0, 0x85}, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };
     const int8_t *encoders;

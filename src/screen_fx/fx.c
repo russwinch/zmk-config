@@ -1493,12 +1493,10 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 
 /* Column right edges of the links table. */
 #define DBG_COL_LEVEL 41
-#define DBG_COL_VOLTS 64
-#define DBG_COL_RSSI 84
-#define DBG_COL_TEMP 98
-#define DBG_COL_DROPS 111
-#define DBG_COL_REASON 124
-#define DBG_COL_TX 138
+#define DBG_COL_RSSI 68
+#define DBG_COL_DROPS 88
+#define DBG_COL_REASON 106
+#define DBG_COL_CHARGE 138
 
 /* A knob's mark turns this many times as far as the encoder does: one of the
  * Waterfowl's 18 degree clicks moves it 45, an eighth of the way round. */
@@ -1608,19 +1606,6 @@ static void count_text(char *buf, size_t size, uint32_t n) {
     }
 }
 
-/* A supply in the V column: volts to two places, "-.--" when not known. */
-static void debug_volts(uint8_t *fb, int y, uint16_t mv, bool dim) {
-    char buf[8];
-    if (mv == 0) {
-        put_right(fb, DBG_COL_VOLTS, y, "-.--", DBG_LABEL);
-        return;
-    }
-    mv = (uint16_t)(mv + 5 > 9999 ? 9999 : mv + 5); /* to the nearest hundredth */
-    snprintf(buf, sizeof(buf), "%u.%02u", mv / 1000, mv % 1000 / 10);
-    put_right(fb, DBG_COL_VOLTS, y, buf, dim ? DBG_LABEL : DBG_TEXT);
-}
-
-/* The colour of a battery level, as the BAT column has it. */
 /* A charging half's level with its bolt: "82" then `unit`, and the bolt
  * after (or before, `bolt_first`), a space in place of it in the off half of
  * its flash; the bolt alone while no level is known. */
@@ -1635,14 +1620,14 @@ static void charging_text(char *buf, size_t size, uint8_t level, const char *uni
     }
 }
 
+/* The colour of a battery level, as the BAT column has it. */
 static uint8_t battery_color(int level) {
     return level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT;
 }
 
 /* One row of the table: `level` is the battery, or the output for the computer. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
-                       uint8_t level_color, bool temp_known, int temp_c, bool tx_known, int tx_dbm,
-                       const char *reads, uint8_t reads_err) {
+                       uint8_t level_color, const char *reads, uint8_t reads_err) {
     char buf[12];
     const char label[2] = {name, '\0'};
     put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
@@ -1667,34 +1652,24 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     } else {
         put_right(fb, DBG_COL_RSSI, y, "--", DBG_BAD);
     }
-    /* the chip's temperature: that half's, or for the H row the dongle's own */
-    if (temp_known) {
-        snprintf(buf, sizeof(buf), "%d", temp_c < -9 ? -9 : temp_c > 99 ? 99 : temp_c);
-        put_right(fb, DBG_COL_TEMP, y, buf, temp_c >= 60 ? DBG_WARN : DBG_TEXT);
-    } else if (reads_err) {
-        /* not known, and the dongle's reads of the half have failed: the last
-         * error, in hex (an ATT error code, or 80 and up a Zephyr errno) */
-        snprintf(buf, sizeof(buf), "%02X", reads_err);
-        put_right(fb, DBG_COL_TEMP, y, buf, DBG_BAD);
-    } else {
-        put_right(fb, DBG_COL_TEMP, y, "--", DBG_LABEL);
-    }
     snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
     put_right(fb, DBG_COL_DROPS, y, buf, link->drops ? DBG_WARN : DBG_LABEL);
     if (link->reason) {
         snprintf(buf, sizeof(buf), "%02X", link->reason);
         put_right(fb, DBG_COL_REASON, y, buf, DBG_WARN);
     }
-    /* the transmit power at that end (the H row: the dongle's), bright when boosted above the default 0 dBm */
-    if (tx_known) {
-        snprintf(buf, sizeof(buf), tx_dbm > 0 ? "+%d" : "%d", tx_dbm < -9 ? -9 : tx_dbm > 9 ? 9 : tx_dbm);
-        put_right(fb, DBG_COL_TX, y, buf, tx_dbm > 0 ? DBG_GOOD : DBG_TEXT);
-    } else if (reads && reads[0]) {
-        /* not known yet: how far the dongle's reads of the half have got
-         * (WT waiting for ZMK, B1 a request out and its try, TB no answer) */
-        put_right(fb, DBG_COL_TX, y, reads, reads[0] == 'T' ? DBG_BAD : DBG_WARN);
-    } else {
-        put_right(fb, DBG_COL_TX, y, "--", DBG_LABEL);
+    /* a half's charging state: where the dongle has got with it (see
+     * dongle_half_info_progress): OK green, WT/Q/R/S on the way in amber,
+     * NF (firmware without it) dim, E and its error or TO in red */
+    if (reads && reads[0]) {
+        const bool bad = reads[0] == 'E' || reads[0] == 'T';
+        if (reads[0] == 'E' && reads_err) {
+            snprintf(buf, sizeof(buf), "E%02X", reads_err);
+        } else {
+            snprintf(buf, sizeof(buf), "%s", reads);
+        }
+        put_right(fb, DBG_COL_CHARGE, y, buf,
+                  bad ? DBG_BAD : reads[0] == 'O' ? DBG_GOOD : reads[0] == 'N' ? DBG_LABEL : DBG_WARN);
     }
 }
 
@@ -1794,11 +1769,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     /* the links */
     put_right(fb, DBG_COL_LEVEL, 23, "BAT", DBG_LABEL);
     put_right(fb, DBG_COL_RSSI, 23, "DBM", DBG_LABEL);
-    put_right(fb, DBG_COL_TEMP, 23, "C", DBG_LABEL);
-    put_right(fb, DBG_COL_VOLTS, 23, "V", DBG_LABEL);
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
-    put_right(fb, DBG_COL_TX, 23, "TX", DBG_LABEL);
+    put_right(fb, DBG_COL_CHARGE, 23, "CH", DBG_LABEL);
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const bool charging = in->status && in->status->charging[half];
@@ -1816,16 +1789,11 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
                    spin || (charging && level == 0) ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
-                   d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2],
                    d->half_reads[half], d->half_err[half]);
-        /* dim while charging: it is the charger's then */
-        debug_volts(fb, 31 + half * 8, d->mv[half * 2], charging);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, d->temp_known[1],
-               d->temp_c[1], d->tx_known[1], d->tx_dbm[1], NULL, 0);
-    debug_volts(fb, 47, d->mv[1], false);
+    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, NULL, 0);
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those

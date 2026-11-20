@@ -80,8 +80,7 @@ config WATERFOWL_HALF_STATUS_SCREEN
       screen). Turned on for every left half with a nice!view in
       config/nice_view.conf.
 
-# --- Charging, temperature and transmit power of the halves (src/half_charging.c, src/half_temperature.c,
-#     src/half_tx_power.c, src/dongle_half_info.c) ---
+# --- Whether each half is charging (src/half_charging.c, src/dongle_half_info.c) ---
 
 config HALF_CHARGING_STATUS
     bool "Tell the dongle when this half is on USB power"
@@ -93,55 +92,15 @@ config HALF_CHARGING_STATUS
       dongle, where nothing reads it). Sets the battery service's Battery
       Level Status to charging while on USB power, for the dongle's screens.
 
-config HALF_TEMPERATURE
-    bool "Offer this half's chip temperature to the dongle"
-    default y
-    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && DT_HAS_NORDIC_NRF_TEMP_ENABLED
-    select SENSOR
-    help
-      As the Environmental Sensing Service's Temperature: measured every
-      HALF_TEMPERATURE_EVERY_S, sent only when it has moved by a degree. The
-      dongle's Debug screen shows it.
-
-config HALF_TEMPERATURE_EVERY_S
-    int "Seconds between measurements"
-    default 300
-    depends on HALF_TEMPERATURE
-
-config HALF_TX_POWER
-    bool "Offer this half's radio transmit power to the dongle"
-    default y
-    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && HAS_BT_CTLR
-    help
-      As the Tx Power Service's Tx Power Level, BT_CTLR_TX_PWR_DBM as built:
-      the dongle's Debug screen shows it, so a board with more than the
-      default 0 dBm stands out.
-
-# the comma in the chosen name can't go straight into the call
-DT_CHOSEN_ZMK_BATTERY := zmk,battery
-
-config HALF_VOLTAGE
-    bool "Offer this half's battery voltage to the dongle"
-    default y
-    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && ZMK_BATTERY_REPORTING
-    depends on $(dt_chosen_enabled,$(DT_CHOSEN_ZMK_BATTERY))
-    help
-      As the Voltage characteristic of an Environmental Sensing Service:
-      the last of ZMK's own battery readings (nothing extra is measured),
-      sent when it has moved by about 30 mV. The dongle's Debug screen
-      shows it.
-
 config DONGLE_HALF_INFO
-    bool "Hear whether each half is on USB power, its temperature, transmit power and battery volts"
+    bool "Hear whether each half is on USB power"
     default y
     depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
     depends on BT_GATT_AUTO_DISCOVER_CCC && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     help
       Read once a half is connected and ZMK is done setting it up, one
-      request at a time, then subscribed to (the half sends only changes). The dongle's screens then show a bolt for a charging
-      half instead of its battery level, which reads near 100 while it
-      charges, and the Debug screen its temperature and transmit power (read
-      once: it doesn't change).
+      request at a time, then subscribed to (the half sends only changes).
+      The dongle's screens then show a bolt beside a charging half's level.
 
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"
@@ -162,8 +121,6 @@ config DONGLE_SCREEN_FX
     select HWINFO
     select SYS_HEAP_RUNTIME_STATS
     imply BT_CTLR_CONN_RSSI
-    imply ADC
-    imply SENSOR
     help
       The &scr_next key steps through the animations in
       src/screen_fx/fx.c (those that aren't screensavers) and round again;

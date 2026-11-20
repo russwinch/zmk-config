@@ -59,10 +59,7 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
-#include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/display.h>
-#include <zephyr/drivers/sensor.h>
-#include <zephyr/dt-bindings/adc/nrf-saadc-v2.h> /* NRF_SAADC_VDD */
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
@@ -515,71 +512,10 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) 
     k_fatal_halt(reason);
 }
 
-/* The dongle's own supply, for the Debug screen: the XIAO's 3.3 V regulator,
- * read by the SAADC on its VDD input (channel 6, which nothing else in this
- * firmware sets up). The USB 5 V isn't wired to anything the chip can
- * measure, only detected. */
-#if IS_ENABLED(CONFIG_ADC) && DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
-#define VDD_CHANNEL 6
-static uint16_t read_vdd_mv(void) {
-    static const struct device *const adc = DEVICE_DT_GET(DT_NODELABEL(adc));
-    static bool set_up;
-    if (!device_is_ready(adc)) {
-        return 0;
-    }
-    if (!set_up) {
-        const struct adc_channel_cfg cfg = {
-            .gain = ADC_GAIN_1_6,
-            .reference = ADC_REF_INTERNAL,
-            .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
-            .channel_id = VDD_CHANNEL,
-            .input_positive = NRF_SAADC_VDD,
-        };
-        if (adc_channel_setup(adc, &cfg) != 0) {
-            return 0;
-        }
-        set_up = true;
-    }
-    int16_t raw = 0;
-    const struct adc_sequence seq = {
-        .channels = BIT(VDD_CHANNEL),
-        .buffer = &raw,
-        .buffer_size = sizeof(raw),
-        .resolution = 12,
-    };
-    if (adc_read(adc, &seq) != 0) {
-        return 0;
-    }
-    int32_t mv = raw;
-    if (adc_raw_to_millivolts(adc_ref_internal(adc), ADC_GAIN_1_6, 12, &mv) != 0 || mv <= 0) {
-        return 0;
-    }
-    return (uint16_t)mv;
-}
-#else
-static uint16_t read_vdd_mv(void) { return 0; }
-#endif
-
-/* The dongle's own chip temperature, for the Debug screen. */
-#if IS_ENABLED(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_NODELABEL(temp), okay)
-static bool read_temp(int8_t *celsius) {
-    static const struct device *const temp = DEVICE_DT_GET(DT_NODELABEL(temp));
-    struct sensor_value v;
-    if (!device_is_ready(temp) || sensor_sample_fetch(temp) != 0 ||
-        sensor_channel_get(temp, SENSOR_CHAN_DIE_TEMP, &v) != 0) {
-        return false;
-    }
-    *celsius = (int8_t)CLAMP(v.val1, INT8_MIN, INT8_MAX);
-    return true;
-}
-#else
-static bool read_temp(int8_t *celsius) { return false; }
-#endif
-
 /*
  * The readings that ask something else and wait for the answer: each link's
- * signal strength (a command to the radio), the dongle's temperature (the
- * TEMP sensor) and supply (the SAADC), and what the halves have said. Taken once a second on a
+ * signal strength (a command to the radio), and how far the dongle has got
+ * with each half's charging state. Taken once a second on a
  * thread of their own, only while the Debug or Keys screen is showing, so a
  * slow or stuck answer can't hold up a frame on the display queue (a frame
  * drawn after a stuck one would never come, leaving the screen blank).
@@ -589,9 +525,6 @@ static bool read_temp(int8_t *celsius) { return false; }
 
 static struct {
     struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
-    bool temp_known[3], tx_known[3];
-    int8_t temp_c[3], tx_dbm[3];
-    uint16_t mv[3];
     char half_reads[2][3];
     uint8_t half_err[2];
 } readings; /* under debug_lock */
@@ -614,33 +547,15 @@ static void readings_cb(struct k_work *work) {
         }
 #endif
     }
-    bool temp_known[3] = {false}, tx_known[3] = {false};
-    int8_t temp_c[3] = {0}, tx_dbm[3] = {0};
-    temp_known[1] = read_temp(&temp_c[1]);
-    uint16_t mv[3] = {0, read_vdd_mv(), 0};
+    /* where the dongle has got to with each half's charging state */
     char half_reads[2][3] = {{0}};
     uint8_t half_err[2] = {0};
-#ifdef CONFIG_BT_CTLR_TX_PWR_DBM
-    tx_known[1] = true; /* the dongle's own, as built */
-    tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
-#endif
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
-    temp_known[0] = dongle_half_temperature(0, &temp_c[0]);
-    temp_known[2] = dongle_half_temperature(1, &temp_c[2]);
-    tx_known[0] = dongle_half_tx_power(0, &tx_dbm[0]);
-    tx_known[2] = dongle_half_tx_power(1, &tx_dbm[2]);
-    mv[0] = dongle_half_millivolts(0);
-    mv[2] = dongle_half_millivolts(1);
     dongle_half_info_progress(0, half_reads[0], &half_err[0]);
     dongle_half_info_progress(1, half_reads[1], &half_err[1]);
 #endif
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
-        memcpy(readings.temp_known, temp_known, sizeof(temp_known));
-        memcpy(readings.temp_c, temp_c, sizeof(temp_c));
-        memcpy(readings.tx_known, tx_known, sizeof(tx_known));
-        memcpy(readings.tx_dbm, tx_dbm, sizeof(tx_dbm));
-        memcpy(readings.mv, mv, sizeof(mv));
         memcpy(readings.half_reads, half_reads, sizeof(half_reads));
         memcpy(readings.half_err, half_err, sizeof(half_err));
     }
@@ -699,17 +614,12 @@ static void read_debug(void) {
     }
 #endif
 
-    /* the links, signal strengths, temperatures and transmit powers: from the
+    /* the links, signal strengths and the halves' charging reads: from the
      * readings thread, as last read */
     K_SPINLOCK(&debug_lock) {
         d->half[0] = mix_link(d->half[0], readings.link[0]);
         d->half[1] = mix_link(d->half[1], readings.link[1]);
         d->host = mix_link(d->host, readings.link[2]);
-        memcpy(d->temp_known, readings.temp_known, sizeof(d->temp_known));
-        memcpy(d->temp_c, readings.temp_c, sizeof(d->temp_c));
-        memcpy(d->tx_known, readings.tx_known, sizeof(d->tx_known));
-        memcpy(d->tx_dbm, readings.tx_dbm, sizeof(d->tx_dbm));
-        memcpy(d->mv, readings.mv, sizeof(d->mv));
         memcpy(d->half_reads, readings.half_reads, sizeof(d->half_reads));
         memcpy(d->half_err, readings.half_err, sizeof(d->half_err));
     }

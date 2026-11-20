@@ -158,15 +158,9 @@ struct fx_debug {
     uint8_t bounce_key;
     uint32_t usb_reports; /* keyboard and media reports sent over USB since power-up */
     uint16_t usb_errors;  /* and those that failed (the computer not taking them) */
-    uint16_t mv[3];       /* supplies, millivolts (0: not known): the left half's battery, the
-                           * dongle's 3.3 V regulator, the right half's battery */
-    bool temp_known[3];   /* chip temperatures: left half, dongle, right half */
-    int8_t temp_c[3];
-    bool tx_known[3];     /* radio transmit power, as built, dBm: the same three */
-    int8_t tx_dbm[3];
-    char half_reads[2][3]; /* left, right: how far the dongle's own reads of it have got (two letters, see
-                            * dongle_half_info_progress), "" when done */
-    uint8_t half_err[2];   /* and their last error: ATT error code, or 0x80 | errno; 0 for none */
+    char half_reads[2][3]; /* left, right: where the dongle has got with its charging state (see
+                            * dongle_half_info_progress), "" when not connected */
+    uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
     uint8_t n_log;
 };
