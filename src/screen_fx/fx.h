@@ -162,6 +162,8 @@ struct fx_debug {
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
     bool dongle_temp_known;
     int8_t dongle_temp_c;  /* the dongle's chip temperature */
+    char dongle_mv_why[3], dongle_temp_why[3]; /* when not known, why: "WT" not read yet, "TO" a read
+                                                * not back, "E1".. failed, "NB" not built in */
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
     uint8_t n_log;
 };

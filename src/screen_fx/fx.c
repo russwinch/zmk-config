@@ -1782,6 +1782,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
         snprintf(buf, sizeof(buf), "%dC", c);
         put_right(fb, DBG_COL_CHARGE, 47, buf, c >= 60 ? DBG_WARN : DBG_TEXT);
+    } else if (d->dongle_temp_why[0]) {
+        put_right(fb, DBG_COL_CHARGE, 47, d->dongle_temp_why, DBG_WARN);
     } else {
         put_right(fb, DBG_COL_CHARGE, 47, "--C", DBG_LABEL);
     }
@@ -1850,7 +1852,10 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
     put(fb, x - 2, 76, "%/H", DBG_LABEL);
     dongle_volts(buf, sizeof(buf), d->dongle_mv);
-    put(fb, mods_x, 76, buf, d->dongle_mv ? DBG_TEXT : DBG_LABEL);
+    if (!d->dongle_mv && d->dongle_mv_why[0]) {
+        snprintf(buf, sizeof(buf), "V:%s", d->dongle_mv_why);
+    }
+    put(fb, mods_x, 76, buf, d->dongle_mv ? DBG_TEXT : d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL);
     count_text(buf + 1, sizeof(buf) - 1, d->presses);
     buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);

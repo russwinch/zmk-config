@@ -517,10 +517,11 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) 
  * measure, only detected. */
 #if IS_ENABLED(CONFIG_ADC) && DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
 #define VDD_CHANNEL 6
-static uint16_t read_vdd_mv(void) {
+static uint16_t read_vdd_mv(uint8_t *err) {
     static const struct device *const adc = DEVICE_DT_GET(DT_NODELABEL(adc));
     static bool set_up;
     if (!device_is_ready(adc)) {
+        *err = 1;
         return 0;
     }
     if (!set_up) {
@@ -532,6 +533,7 @@ static uint16_t read_vdd_mv(void) {
             .input_positive = NRF_SAADC_VDD,
         };
         if (adc_channel_setup(adc, &cfg) != 0) {
+            *err = 2;
             return 0;
         }
         set_up = true;
@@ -544,32 +546,43 @@ static uint16_t read_vdd_mv(void) {
         .resolution = 12,
     };
     if (adc_read(adc, &seq) != 0) {
+        *err = 3;
         return 0;
     }
     int32_t mv = raw;
     if (adc_raw_to_millivolts(adc_ref_internal(adc), ADC_GAIN_1_6, 12, &mv) != 0 || mv <= 0) {
+        *err = 4;
         return 0;
     }
     return (uint16_t)mv;
 }
 #else
-static uint16_t read_vdd_mv(void) { return 0; }
+static uint16_t read_vdd_mv(uint8_t *err) {
+    *err = 9; /* not built in */
+    return 0;
+}
 #endif
 
 /* The dongle's own chip temperature, for the Debug screen. */
 #if IS_ENABLED(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_NODELABEL(temp), okay)
-static bool read_temp(int8_t *celsius) {
+static bool read_temp(int8_t *celsius, uint8_t *err) {
     static const struct device *const temp = DEVICE_DT_GET(DT_NODELABEL(temp));
     struct sensor_value v;
-    if (!device_is_ready(temp) || sensor_sample_fetch(temp) != 0 ||
-        sensor_channel_get(temp, SENSOR_CHAN_DIE_TEMP, &v) != 0) {
+    *err = !device_is_ready(temp)                                    ? 1
+           : sensor_sample_fetch(temp) != 0                          ? 2
+           : sensor_channel_get(temp, SENSOR_CHAN_DIE_TEMP, &v) != 0 ? 3
+                                                                     : 0;
+    if (*err) {
         return false;
     }
     *celsius = (int8_t)CLAMP(v.val1, INT8_MIN, INT8_MAX);
     return true;
 }
 #else
-static bool read_temp(int8_t *celsius) { return false; }
+static bool read_temp(int8_t *celsius, uint8_t *err) {
+    *err = 9; /* not built in */
+    return false;
+}
 #endif
 
 /*
@@ -582,12 +595,18 @@ static bool read_temp(int8_t *celsius) { return false; }
 #define DONGLE_READINGS_EVERY_MS 5000
 #define DONGLE_READINGS_STACK 1536
 
+#define DONGLE_READ_STUCK_MS 2000 /* a read not back after this shows TO */
+
 static struct {
     uint16_t mv;
     bool temp_known;
     int8_t temp_c;
+    uint8_t mv_err, temp_err; /* why not, as read_vdd_mv and read_temp say */
 } dongle_readings; /* under debug_lock */
 static atomic_t dongle_read_at; /* uptime ms of the last reading, 0 before the first */
+/* the read under way, to tell one that never came back: 0 none, 1 the
+ * temperature, 2 the supply; and since when (uptime ms) */
+static atomic_t dongle_reading, dongle_reading_since;
 
 static K_THREAD_STACK_DEFINE(dongle_readings_stack, DONGLE_READINGS_STACK);
 static struct k_work_q dongle_readings_q;
@@ -596,12 +615,20 @@ static K_WORK_DELAYABLE_DEFINE(dongle_readings_work, dongle_readings_cb);
 
 static void dongle_readings_cb(struct k_work *work) {
     int8_t temp_c = 0;
-    const bool temp_known = read_temp(&temp_c);
-    const uint16_t mv = read_vdd_mv();
+    uint8_t temp_err = 0, mv_err = 0;
+    atomic_set(&dongle_reading_since, (atomic_val_t)k_uptime_get_32());
+    atomic_set(&dongle_reading, 1);
+    const bool temp_known = read_temp(&temp_c, &temp_err);
+    atomic_set(&dongle_reading_since, (atomic_val_t)k_uptime_get_32());
+    atomic_set(&dongle_reading, 2);
+    const uint16_t mv = read_vdd_mv(&mv_err);
+    atomic_set(&dongle_reading, 0);
     K_SPINLOCK(&debug_lock) {
         dongle_readings.mv = mv;
         dongle_readings.temp_known = temp_known;
         dongle_readings.temp_c = temp_c;
+        dongle_readings.temp_err = temp_err;
+        dongle_readings.mv_err = mv_err;
     }
     atomic_set(&dongle_read_at, (atomic_val_t)MAX(k_uptime_get_32(), 1));
 }
@@ -681,6 +708,25 @@ static struct fx_link mix_link(struct fx_link kept, struct fx_link read) {
     return kept;
 }
 
+/* Why the dongle's own reading `which` (1 temperature, 2 supply) isn't
+ * shown, for the Debug screen: "TO" under way and not back, "WT" not read
+ * yet, "E1".. failed (see read_temp, read_vdd_mv), "NB" not built in; "" when
+ * it was read. */
+static void dongle_why(char why[3], uint8_t err, int which) {
+    const uint32_t since = k_uptime_get_32() - (uint32_t)atomic_get(&dongle_reading_since);
+    if (atomic_get(&dongle_reading) == which && since >= DONGLE_READ_STUCK_MS) {
+        strcpy(why, "TO");
+    } else if (atomic_get(&dongle_read_at) == 0) {
+        strcpy(why, "WT");
+    } else if (err == 9) {
+        strcpy(why, "NB");
+    } else if (err) {
+        why[0] = 'E', why[1] = (char)('0' + err % 10), why[2] = '\0';
+    } else {
+        why[0] = '\0';
+    }
+}
+
 static void read_debug(void) {
     K_SPINLOCK(&debug_lock) {
         debug_shown = debug;
@@ -726,6 +772,8 @@ static void read_debug(void) {
         d->dongle_mv = dongle_readings.mv;
         d->dongle_temp_known = dongle_readings.temp_known;
         d->dongle_temp_c = dongle_readings.temp_c;
+        dongle_why(d->dongle_temp_why, dongle_readings.temp_err, 1);
+        dongle_why(d->dongle_mv_why, dongle_readings.mv_err, 2);
     }
     readings_wanted();
 #if IS_ENABLED(CONFIG_ZMK_USB)
