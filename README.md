@@ -455,8 +455,8 @@ settings (`src/dongle_half_drain.c`). Each half sends its battery voltage in
 the same message as its charging state (the last of ZMK's own readings, when
 it has moved by 4 mV). Once a minute the dongle turns it into the energy
 left, from a typical LiPo cell's curve and the battery's capacity
-(`CONFIG_HALF_BATTERY_MAH` in each `config/<keyboard>.conf`: Waterfowl and
-Aurora Corne 200, Urchin 90, Forager 120 mAh), and fits a straight line
+(`CONFIG_HALF_BATTERY_MAH` in each `config/<keyboard>.conf`: Waterfowl, Urchin
+and Aurora Corne 200, Forager 120 mAh), and fits a straight line
 through those since the half was last unplugged (or the dongle started). It
 is `--` for the first hour, and readings from the first 20 minutes after
 unplugging don't count, while the voltage comes down from the charger's. It
