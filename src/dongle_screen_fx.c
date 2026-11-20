@@ -1742,7 +1742,7 @@ static int screen_fx_listener(const zmk_event_t *eh) {
                                         .mods = code->implicit_modifiers | code->explicit_modifiers},
                       k_uptime_get_32());
         }
-        /* the Config layer's lock key (Ctrl+Cmd+Q, a Mac's Lock Screen)
+        /* the Lower layer's lock key (Ctrl+Cmd+Q, a Mac's Lock Screen)
          * locks the computer, so the screensaver comes on with it instead of
          * 15 minutes later: when the key is let go. The computer's power key
          * (C_PWR) does the same, should a keymap have one. Not if the

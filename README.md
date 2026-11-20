@@ -24,11 +24,11 @@ the Windows layer read ⌘ as Win.
 | --- | --- | --- |
 | Mac | default | QWERTY, home-row mods Ctrl Alt Cmd Shift / Shift Cmd Alt Ctrl |
 | Windows | Config layer → Windows | Mac layer with Ctrl and Win swapped |
-| Lower | hold Esc | media, browser tabs, desktops, app windows (E), screenshots (X: drag out an area, to the clipboard; Z: the whole screen, to a file on the desktop), Mission Control (C), the app switcher (B: Cmd+Tab, V: Cmd+Shift+Tab; Cmd stays held until Esc/Lower is let go, so tap on through the apps), £ (comma), arrows, symbols |
+| Lower | hold Esc | lock screen (Q), media, browser tabs, desktops, app windows (E), screenshots (X: drag out an area, to the clipboard; Z: the whole screen, to a file on the desktop), Mission Control (C), the app switcher (B: Cmd+Tab, V: Cmd+Shift+Tab; Cmd stays held until Esc/Lower is let go, so tap on through the apps), £ (comma), arrows, symbols |
 | Raise | hold Enter | numbers, shifted numbers, brackets |
-| Config | hold Esc + Enter | lock screen (Z), Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme prev/next (I and O) and brightness (P) (shown as "Shit" on the screens) |
+| Config | hold Esc + Enter | Mac/Windows switch, battery level, Bluetooth, dongle screen prev/next (Y and U), colour theme prev/next (I and O) and brightness (P) (shown as "Shit" on the screens) |
 
-The Config layer's lock key sends Ctrl+Cmd+Q, the Mac's Lock Screen shortcut:
+The Lower layer's lock key sends Ctrl+Cmd+Q, the Mac's Lock Screen shortcut:
 the Mac locks at once and its display stays on until it times out. It is
 Mac only (Windows locks with Win+L). On a dongle it also starts
 the [screensaver](#animated-screens) when you let go of it. The battery key blinks each
@@ -221,7 +221,7 @@ themes](#colour-themes) of Keys, Debug, Tracker and Terminal; **Theme prev**
 | 5 | Terminal | a blinking cursor | what you type, in the theme's colour (green in PHOSPHOR), fading out over about 10 seconds |
 
 Three more animations are screensavers, not screens to choose. After 15
-minutes without a key (or an encoder turn), or when the Config layer's
+minutes without a key (or an encoder turn), or when the Lower layer's
 lock key is let go, one of them, picked at random,
 takes over from whichever screen is showing, coming in over 18 seconds by
 distorting the picture that was there:

@@ -223,11 +223,11 @@
             SENSORS
         };
 
-        // left: media, tabs, desktops, screenshots, Mission Control | right: arrows, symbols
+        // left: lock screen, media, tabs, desktops, screenshots, Mission Control | right: arrows, symbols
         lower_layer {
             display-name = "Lower";
             bindings = <KB_LAYOUT(
-    XXX,           XXX,           M_WINS,        M_PTAB,        M_NTAB,            &kp PLUS,      &kp MINUS,     &kp UNDER,     &kp PIPE,      &kp BSLH,
+    M_LOCK,        XXX,           M_WINS,        M_PTAB,        M_NTAB,            &kp PLUS,      &kp MINUS,     &kp UNDER,     &kp PIPE,      &kp BSLH,
     &kp C_PREV,    &kp C_PP,      &kp C_NEXT,    M_PDSK,        M_NDSK,            &kp LEFT,      &kp DOWN,      &kp UP,        &kp RIGHT,     &kp SQT,
     M_SHOT,        M_SNIP,        M_CTRL,        M_PAPP,        M_NAPP,            XXX,           XXX,           M_GBP,         &kp EQUAL,     &kp DQT,
                                                  ___,           ___,               &kp DEL,       ___
@@ -247,14 +247,14 @@
             SENSORS
         };
 
-        // Config: Lower + Raise held together. Lock screen, OS switch, battery,
+        // Config: Lower + Raise held together. OS switch, battery,
         // Bluetooth, the dongle's screen. Shown as "Shit" on the screens, which is what we call it.
         config_layer {
             display-name = "Shit";
             bindings = <KB_LAYOUT(
     XXX,           XXX,           XXX,           XXX,           XXX,               &scr_prev,     &scr_next,     &scr_theme_prev, &scr_theme,  &scr_bright,
     XXX,           XXX,           XXX,           XXX,           XXX,               XXX,           XXX,           XXX,           XXX,           XXX,
-    M_LOCK,        &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
+    XXX,           &to L_MAC,     &to L_WIN,     XXX,           IND_BAT,           &bt BT_PRV,    &bt BT_NXT,    XXX,           XXX,           &bt BT_CLR,
                                                  ___,           ___,               ___,           ___
             )>;
             SENSORS
