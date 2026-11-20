@@ -143,6 +143,16 @@ config DONGLE_HALF_INFO
       charges, and the Debug screen its temperature and transmit power (read
       once: it doesn't change).
 
+config DONGLE_CLEAN_START
+    bool "Restart the dongle once, cleanly, after a software restart"
+    default y
+    depends on SHIELD_PROSPECTOR_ADAPTER && SOC_NRF52840
+    help
+      After a flash the dongle came up wrong (its Debug readings stuck, once
+      the halves dropping) until its reset button was pressed: the
+      bootloader seems to start the new firmware without a full reset.
+      src/dongle_clean_start.c restarts it once more, fully.
+
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"
     default y
