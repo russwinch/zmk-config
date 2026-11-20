@@ -1616,13 +1616,14 @@ static uint8_t battery_color(int level) {
 /* One row of the table: `level` is the battery percent, or the output for
  * the computer; `mv` its battery's millivolts (the dongle's supply for the
  * computer's row); `presses` the key presses, from that half or (for the
- * computer) both. */
+ * computer) both. `off`: the link is down on purpose (the computer's, while
+ * typing over USB), so it isn't shown as a fault. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
                        uint8_t level_color, const char *mv, uint8_t mv_color, uint32_t presses, const char *reads,
-                       uint8_t reads_err) {
+                       uint8_t reads_err, bool off) {
     char buf[12];
     const char label[2] = {name, '\0'};
-    put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
+    put(fb, 5, y, label, link->up || off ? DBG_BRIGHT : DBG_BAD);
     put_right(fb, DBG_COL_LEVEL, y, level, level_color);
     put_right(fb, DBG_COL_MV, y, mv, mv_color);
     if (link->up) {
@@ -1642,7 +1643,7 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
             put_right(fb, DBG_COL_RSSI, y, buf, DBG_BAD);
         }
     } else {
-        put_right(fb, DBG_COL_RSSI, y, "--", DBG_BAD);
+        put_right(fb, DBG_COL_RSSI, y, "--", off ? DBG_LABEL : DBG_BAD);
     }
     snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
     put_right(fb, DBG_COL_DROPS, y, buf, link->drops ? DBG_WARN : DBG_LABEL);
@@ -1787,7 +1788,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf, level == 0 ? DBG_LABEL : battery_color(level),
                    mv_buf, mv && !charging ? DBG_TEXT : DBG_LABEL, d->presses[half], d->half_reads[half],
-                   d->half_err[half]);
+                   d->half_err[half], false);
         /* charging: a bolt in the level's place, flashing until 100 */
         charging_bolt(fb, DBG_COL_LEVEL - 5, 31 + half * 8, in->status, half);
     }
@@ -1801,7 +1802,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
     debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, mv_buf,
                d->dongle_mv ? DBG_TEXT : d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL, d->presses[0] + d->presses[1],
-               NULL, 0);
+               NULL, 0, usb_out);
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those
