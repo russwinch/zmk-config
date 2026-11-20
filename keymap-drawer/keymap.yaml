@@ -53,7 +53,7 @@ layers:
     - {t: ▽, type: trans}
     - {t: ▽, type: trans}
   Lower:
-  - ['', '', App windows, Prev tab, Next tab, +, '-', _, '|', \]
+  - [Lock, '', App windows, Prev tab, Next tab, +, '-', _, '|', \]
   - [⏮, ⏯, ⏭, Desk ←, Desk →, ←, ↓, ↑, →, '''']
   - [Screen shot, Snip area, Mission Ctrl, Prev app, Next app, '', '', £, '=', '"']
   - - {type: held}
@@ -71,7 +71,7 @@ layers:
   Config:
   - ['', '', '', '', '', Screen prev, Screen next, Theme prev, Theme next, Screen bright]
   - ['', '', '', '', '', '', '', '', '', '']
-  - [Lock, Mac, Windows, '', Battery, BT prev, BT next, '', '', BT clear]
+  - ['', Mac, Windows, '', Battery, BT prev, BT next, '', '', BT clear]
   - - {type: held}
     - {t: ▽, type: trans}
     - {t: ▽, type: trans}
