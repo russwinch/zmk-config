@@ -1478,13 +1478,16 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
     }
 }
 
-/* Column right edges of the links table. */
-#define DBG_COL_LEVEL 66
-#define DBG_COL_RSSI 38
+/* Column right edges of the links table: the readings (signal, battery
+ * percent and millivolts), then the link's troubles (drops, the reason for
+ * the last, the charging-state reads), then the key presses. */
+#define DBG_COL_RSSI 27
+#define DBG_COL_LEVEL 47
+#define DBG_COL_MV 71
 #define DBG_COL_DROPS 84
-#define DBG_COL_REASON 98
-#define DBG_COL_PRESSES 121
-#define DBG_COL_CHARGE 138
+#define DBG_COL_REASON 97
+#define DBG_COL_CHARGE 115
+#define DBG_COL_PRESSES 138
 
 /* A knob's mark turns this many times as far as the encoder does: one of the
  * Waterfowl's 18 degree clicks moves it 45, an eighth of the way round. */
@@ -1605,30 +1608,23 @@ static void charging_bolt(uint8_t *fb, int x, int y, const struct fx_status *sta
     }
 }
 
-/* The dongle's supply: volts to two places, "-.--V" when not known. */
-static void dongle_volts(char *buf, size_t size, uint16_t mv) {
-    if (mv == 0) {
-        snprintf(buf, size, "-.--V");
-        return;
-    }
-    mv = (uint16_t)(mv + 5 > 9999 ? 9999 : mv + 5); /* to the nearest hundredth */
-    snprintf(buf, size, "%u.%02uV", mv / 1000, mv % 1000 / 10);
-}
-
 /* The colour of a battery level, as the BAT column has it. */
 static uint8_t battery_color(int level) {
     return level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT;
 }
 
-/* One row of the table: `level` is the battery, or the output for the computer;
- * `presses` the key presses, from that half or (for the computer) both. */
+/* One row of the table: `level` is the battery percent, or the output for
+ * the computer; `mv` its battery's millivolts (the dongle's supply for the
+ * computer's row); `presses` the key presses, from that half or (for the
+ * computer) both. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
-                       uint8_t level_color, uint32_t presses, const char *reads, uint8_t reads_err) {
+                       uint8_t level_color, const char *mv, uint8_t mv_color, uint32_t presses, const char *reads,
+                       uint8_t reads_err) {
     char buf[12];
     const char label[2] = {name, '\0'};
     put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
-    signal_bars(fb, 12, y, link);
     put_right(fb, DBG_COL_LEVEL, y, level, level_color);
+    put_right(fb, DBG_COL_MV, y, mv, mv_color);
     if (link->up) {
         if (link->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", link->rssi < -99 ? -99 : link->rssi);
@@ -1765,32 +1761,47 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     rule(fb, 21);
 
     /* the links */
-    put_right(fb, DBG_COL_LEVEL, 23, "BAT", DBG_LABEL);
     put_right(fb, DBG_COL_RSSI, 23, "DBM", DBG_LABEL);
+    put_right(fb, DBG_COL_LEVEL, 23, "%", DBG_LABEL);
+    put_right(fb, DBG_COL_MV, 23, "MV", DBG_LABEL);
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
     put_right(fb, DBG_COL_PRESSES, 23, "KEY", DBG_LABEL);
     put_right(fb, DBG_COL_CHARGE, 23, "CH", DBG_LABEL);
+    char mv_buf[6];
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
-        const unsigned mv = d->half_mv[half];
-        if (mv) {
-            /* the volts, when the half sends them: finer than the percent */
-            snprintf(buf, sizeof(buf), "%u.%02u", mv / 1000, mv % 1000 / 10);
-        } else if (level) {
+        const bool charging = in->status && in->status->charging[half];
+        if (level && !charging) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
-            strcpy(buf, "--");
+            strcpy(buf, charging ? "" : "--"); /* charging: the bolt in its place */
+        }
+        /* the half's millivolts, when its firmware sends them (the charger's
+         * while charging, so dim then) */
+        const unsigned mv = d->half_mv[half];
+        if (mv) {
+            snprintf(mv_buf, sizeof(mv_buf), "%u", mv > 9999 ? 9999 : mv);
+        } else {
+            strcpy(mv_buf, "--");
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf, level == 0 ? DBG_LABEL : battery_color(level),
-                   d->presses[half], d->half_reads[half], d->half_err[half]);
-        /* charging: a bolt just right of the level, which stays where it is */
-        charging_bolt(fb, DBG_COL_LEVEL + 1, 31 + half * 8, in->status, half);
+                   mv_buf, mv && !charging ? DBG_TEXT : DBG_LABEL, d->presses[half], d->half_reads[half],
+                   d->half_err[half]);
+        /* charging: a bolt in the level's place, flashing until 100 */
+        charging_bolt(fb, DBG_COL_LEVEL - 5, 31 + half * 8, in->status, half);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT,
-               d->presses[0] + d->presses[1], NULL, 0);
+    /* the dongle's own supply in the MV column: its 3.3 V regulator */
+    if (d->dongle_mv) {
+        snprintf(mv_buf, sizeof(mv_buf), "%u", d->dongle_mv > 9999 ? 9999 : d->dongle_mv);
+    } else {
+        snprintf(mv_buf, sizeof(mv_buf), "%s", d->dongle_mv_why[0] ? d->dongle_mv_why : "--");
+    }
+    debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, mv_buf,
+               d->dongle_mv ? DBG_TEXT : d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL, d->presses[0] + d->presses[1],
+               NULL, 0);
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those
@@ -1840,35 +1851,28 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put(fb, x, 68, buf, DBG_LABEL);
 
     /* each half's average draw in milliwatts; under the modifiers, the
-     * dongle's supply and its chip temperature (amber from 60) */
-    x = 5;
+     * dongle's chip temperature (amber from 60) */
+    x = put(fb, 5, 76, "DRAW", DBG_LABEL) + 3;
     for (int half = 0; half < 2; half++) {
-        const int tenths = d->drain_tenths_mw[half];
+        const int hundredths = d->drain_hundredths_mw[half];
         x = put(fb, x, 76, half ? "R" : "L", DBG_LABEL) + 1;
-        if (tenths < 0) {
+        if (hundredths < 0) {
             strcpy(buf, "--");
-        } else if (tenths < 100) {
-            snprintf(buf, sizeof(buf), "%d.%d", tenths / 10, tenths % 10);
+        } else if (hundredths < 1000) {
+            snprintf(buf, sizeof(buf), "%d.%02d", hundredths / 100, hundredths % 100);
         } else {
-            snprintf(buf, sizeof(buf), "%d", tenths / 10);
+            snprintf(buf, sizeof(buf), "%d.%d", hundredths / 100, hundredths / 10 % 10);
         }
-        x = put(fb, x, 76, buf, tenths < 0 ? DBG_LABEL : DBG_TEXT) + 4;
+        x = put(fb, x, 76, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT) + 3;
     }
-    put(fb, x - 3, 76, "mW", DBG_LABEL);
-    dongle_volts(buf, sizeof(buf), d->dongle_mv);
-    if (!d->dongle_mv && d->dongle_mv_why[0]) {
-        snprintf(buf, sizeof(buf), "V:%s", d->dongle_mv_why);
-    }
-    x = put(fb, mods_x, 76, buf, d->dongle_mv ? DBG_TEXT : d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL) + 5;
+    put(fb, x - 2, 76, "mW", DBG_LABEL);
     if (d->dongle_temp_known) {
         const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
         snprintf(buf, sizeof(buf), "%dC", c);
-        put(fb, x, 76, buf, c >= 60 ? DBG_WARN : DBG_TEXT);
-    } else if (d->dongle_temp_why[0]) {
-        snprintf(buf, sizeof(buf), "C:%s", d->dongle_temp_why);
-        put(fb, x, 76, buf, DBG_WARN);
+        put_right(fb, FX_W - 4, 76, buf, c >= 60 ? DBG_WARN : DBG_TEXT);
     } else {
-        put(fb, x, 76, "--C", DBG_LABEL);
+        snprintf(buf, sizeof(buf), "%sC", d->dongle_temp_why[0] ? d->dongle_temp_why : "--");
+        put_right(fb, FX_W - 4, 76, buf, d->dongle_temp_why[0] ? DBG_WARN : DBG_LABEL);
     }
     rule(fb, 85);
 

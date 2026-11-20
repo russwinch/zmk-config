@@ -24,6 +24,21 @@
   workflow; pull before pushing after a keymap change.
 - Keep the README's tables (boards, layers, timings, encoders) in step with
   the keymap.
+- The dongle's Debug screen (`debug_frame` in `src/screen_fx/fx.c`) is for
+  seeing what works, what doesn't, and how the boards compare. When changing
+  it:
+  - keep like with like: in the link rows, the readings (dBm, %, mV), then the
+    link's troubles (drops, reason, charging-state reads), then the counts;
+  - give as much precision as the reading really has (mV, not volts to two
+    places; hundredths of a mW) and show its unit, in the column header if
+    there is no room beside the value;
+  - prefer live readings to fixed facts, and say why one is missing (`--`
+    not known, an amber or red code for why) rather than leaving it blank;
+  - a reading that can stick or fail must only blank itself: anything that
+    waits on hardware or a half goes on a thread of its own, never in the
+    frame;
+  - render it with `tools/fx_preview.py` and look before pushing, and keep
+    the README's Debug screen tables in step.
 - `tools/flash.py`'s `TARGETS` mirrors `build.yaml`: when a build is added,
   renamed or gets an `artifact-name`, update both (and `--dry-run` it). The
   Keyboard Writer app (russwinch/keyboard-writer) has its own copy in

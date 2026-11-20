@@ -529,51 +529,55 @@ static bool read_temp(int8_t *celsius, uint8_t *err) {
 #endif
 
 /*
- * The dongle's own supply and temperature, for the Debug screen, on a thread
- * of their own: once these were read with the readings below, and a read
- * that never came back was the likeliest thing to have stuck them all after
- * a flash (build 210 took them out). Here a stuck one blanks only these two.
- * Every few seconds while the readings are wanted.
+ * The dongle's own supply and temperature, for the Debug screen, each on a
+ * thread of its own: the temperature read sometimes never comes back after
+ * a flash (until the dongle is unplugged), and one that is stuck must blank
+ * only itself, never the other or anything else. Every few seconds while
+ * the readings are wanted.
  */
 #define DONGLE_READINGS_EVERY_MS 5000
 #define DONGLE_READINGS_STACK 1536
-
 #define DONGLE_READ_STUCK_MS 2000 /* a read not back after this shows TO */
+
+enum { DONGLE_MV, DONGLE_TEMP, DONGLE_READINGS };
 
 static struct {
     uint16_t mv;
     bool temp_known;
     int8_t temp_c;
-    uint8_t mv_err, temp_err; /* why not, as read_vdd_mv and read_temp say */
+    uint8_t err[DONGLE_READINGS]; /* why not, as read_vdd_mv and read_temp say */
 } dongle_readings; /* under debug_lock */
-static atomic_t dongle_read_at; /* uptime ms of the last reading, 0 before the first */
-/* the read under way, to tell one that never came back: 0 none, 1 the
- * temperature, 2 the supply; and since when (uptime ms) */
-static atomic_t dongle_reading, dongle_reading_since;
+static atomic_t dongle_read_at[DONGLE_READINGS]; /* uptime ms of the last, 0 before the first */
+/* a read under way (to tell one that never came back), and since when (uptime ms) */
+static atomic_t dongle_reading[DONGLE_READINGS], dongle_reading_since[DONGLE_READINGS];
 
-static K_THREAD_STACK_DEFINE(dongle_readings_stack, DONGLE_READINGS_STACK);
-static struct k_work_q dongle_readings_q;
+static K_THREAD_STACK_ARRAY_DEFINE(dongle_readings_stack, DONGLE_READINGS, DONGLE_READINGS_STACK);
+static struct k_work_q dongle_readings_q[DONGLE_READINGS];
 static void dongle_readings_cb(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(dongle_readings_work, dongle_readings_cb);
+static struct k_work_delayable dongle_readings_work[DONGLE_READINGS];
 
 static void dongle_readings_cb(struct k_work *work) {
-    int8_t temp_c = 0;
-    uint8_t temp_err = 0, mv_err = 0;
-    atomic_set(&dongle_reading_since, (atomic_val_t)k_uptime_get_32());
-    atomic_set(&dongle_reading, 1);
-    const bool temp_known = read_temp(&temp_c, &temp_err);
-    atomic_set(&dongle_reading_since, (atomic_val_t)k_uptime_get_32());
-    atomic_set(&dongle_reading, 2);
-    const uint16_t mv = read_vdd_mv(&mv_err);
-    atomic_set(&dongle_reading, 0);
-    K_SPINLOCK(&debug_lock) {
-        dongle_readings.mv = mv;
-        dongle_readings.temp_known = temp_known;
-        dongle_readings.temp_c = temp_c;
-        dongle_readings.temp_err = temp_err;
-        dongle_readings.mv_err = mv_err;
+    const int which = k_work_delayable_from_work(work) == &dongle_readings_work[DONGLE_TEMP] ? DONGLE_TEMP : DONGLE_MV;
+    atomic_set(&dongle_reading_since[which], (atomic_val_t)k_uptime_get_32());
+    atomic_set(&dongle_reading[which], 1);
+    uint8_t err = 0;
+    if (which == DONGLE_TEMP) {
+        int8_t temp_c = 0;
+        const bool known = read_temp(&temp_c, &err);
+        K_SPINLOCK(&debug_lock) {
+            dongle_readings.temp_known = known;
+            dongle_readings.temp_c = temp_c;
+            dongle_readings.err[which] = err;
+        }
+    } else {
+        const uint16_t mv = read_vdd_mv(&err);
+        K_SPINLOCK(&debug_lock) {
+            dongle_readings.mv = mv;
+            dongle_readings.err[which] = err;
+        }
     }
-    atomic_set(&dongle_read_at, (atomic_val_t)MAX(k_uptime_get_32(), 1));
+    atomic_set(&dongle_reading[which], 0);
+    atomic_set(&dongle_read_at[which], (atomic_val_t)MAX(k_uptime_get_32(), 1));
 }
 
 /*
@@ -634,12 +638,14 @@ static void readings_wanted(void) {
     atomic_set(&readings_until, (atomic_val_t)(k_uptime_get_32() + 2 * READINGS_EVERY_MS));
     k_work_schedule_for_queue(&readings_q, &readings_work, K_NO_WAIT); /* no change if already due */
     /* the dongle's own: the first at once, then every few seconds (no change if already due) */
-    const uint32_t read_at = (uint32_t)atomic_get(&dongle_read_at);
-    const uint32_t since = k_uptime_get_32() - read_at;
-    k_work_schedule_for_queue(&dongle_readings_q, &dongle_readings_work,
-                              read_at == 0 || since >= DONGLE_READINGS_EVERY_MS
-                                  ? K_NO_WAIT
-                                  : K_MSEC(DONGLE_READINGS_EVERY_MS - since));
+    for (int i = 0; i < DONGLE_READINGS; i++) {
+        const uint32_t read_at = (uint32_t)atomic_get(&dongle_read_at[i]);
+        const uint32_t since = k_uptime_get_32() - read_at;
+        k_work_schedule_for_queue(&dongle_readings_q[i], &dongle_readings_work[i],
+                                  read_at == 0 || since >= DONGLE_READINGS_EVERY_MS
+                                      ? K_NO_WAIT
+                                      : K_MSEC(DONGLE_READINGS_EVERY_MS - since));
+    }
 }
 
 /* A link as read, over what the Debug screen keeps of it (its drops and their reason). */
@@ -651,15 +657,14 @@ static struct fx_link mix_link(struct fx_link kept, struct fx_link read) {
     return kept;
 }
 
-/* Why the dongle's own reading `which` (1 temperature, 2 supply) isn't
- * shown, for the Debug screen: "TO" under way and not back, "WT" not read
- * yet, "E1".. failed (see read_temp, read_vdd_mv), "NB" not built in; "" when
- * it was read. */
+/* Why the dongle's own reading `which` isn't shown, for the Debug screen:
+ * "TO" under way and not back, "WT" not read yet, "E1".. failed (see
+ * read_temp, read_vdd_mv), "NB" not built in; "" when it was read. */
 static void dongle_why(char why[3], uint8_t err, int which) {
-    const uint32_t since = k_uptime_get_32() - (uint32_t)atomic_get(&dongle_reading_since);
-    if (atomic_get(&dongle_reading) == which && since >= DONGLE_READ_STUCK_MS) {
+    const uint32_t since = k_uptime_get_32() - (uint32_t)atomic_get(&dongle_reading_since[which]);
+    if (atomic_get(&dongle_reading[which]) && since >= DONGLE_READ_STUCK_MS) {
         strcpy(why, "TO");
-    } else if (atomic_get(&dongle_read_at) == 0) {
+    } else if (atomic_get(&dongle_read_at[which]) == 0) {
         strcpy(why, "WT");
     } else if (err == 9) {
         strcpy(why, "NB");
@@ -712,17 +717,17 @@ static void read_debug(void) {
         d->dongle_mv = dongle_readings.mv;
         d->dongle_temp_known = dongle_readings.temp_known;
         d->dongle_temp_c = dongle_readings.temp_c;
-        dongle_why(d->dongle_temp_why, dongle_readings.temp_err, 1);
-        dongle_why(d->dongle_mv_why, dongle_readings.mv_err, 2);
+        dongle_why(d->dongle_temp_why, dongle_readings.err[DONGLE_TEMP], DONGLE_TEMP);
+        dongle_why(d->dongle_mv_why, dongle_readings.err[DONGLE_MV], DONGLE_MV);
     }
     readings_wanted();
     /* each half's battery volts and average draw */
     for (int half = 0; half < 2; half++) {
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         d->half_mv[half] = dongle_half_millivolts(half);
-        d->drain_tenths_mw[half] = (int16_t)dongle_half_drain_tenths_mw(half);
+        d->drain_hundredths_mw[half] = dongle_half_drain_hundredths_mw(half);
 #else
-        d->drain_tenths_mw[half] = -1;
+        d->drain_hundredths_mw[half] = -1;
 #endif
     }
 #if IS_ENABLED(CONFIG_ZMK_USB)
@@ -1885,8 +1890,12 @@ static int screen_fx_init(void) {
 #endif
     k_work_queue_start(&readings_q, readings_stack, K_THREAD_STACK_SIZEOF(readings_stack),
                        K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_read"});
-    k_work_queue_start(&dongle_readings_q, dongle_readings_stack, K_THREAD_STACK_SIZEOF(dongle_readings_stack),
-                       K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_dongle"});
+    static const char *const dongle_q_names[DONGLE_READINGS] = {"screen_fx_mv", "screen_fx_temp"};
+    for (int i = 0; i < DONGLE_READINGS; i++) {
+        k_work_init_delayable(&dongle_readings_work[i], dongle_readings_cb);
+        k_work_queue_start(&dongle_readings_q[i], dongle_readings_stack[i], K_THREAD_STACK_SIZEOF(dongle_readings_stack[i]),
+                           K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = dongle_q_names[i]});
+    }
     /* after the module's screen has drawn itself once, and ZMK has loaded
      * the settings (the saved screen among them) */
     k_work_schedule(&start_work, K_MSEC(1500));

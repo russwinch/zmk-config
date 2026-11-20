@@ -109,11 +109,11 @@ static void sample_cb(struct k_work *work) {
     k_work_schedule(&sample_work, K_SECONDS(SAMPLE_EVERY_S));
 }
 
-int dongle_half_drain_tenths_mw(int half) {
+int dongle_half_drain_hundredths_mw(int half) {
     if (half < 0 || half >= 2) {
         return -1;
     }
-    int tenths = -1;
+    int hundredths = -1;
     K_SPINLOCK(&lock) {
         const struct fit *f = &fits[half];
         if (f->n < 2 || f->last_ms - f->start_ms < SHOW_AFTER_MIN * 60 * 1000) {
@@ -124,9 +124,9 @@ int dongle_half_drain_tenths_mw(int half) {
             K_SPINLOCK_BREAK;
         }
         const double mw = -(f->n * f->te - f->t * f->e) / denom; // mWh lost an hour
-        tenths = (int)CLAMP(mw * 10 + 0.5, 0, 9999);
+        hundredths = (int)CLAMP(mw * 100 + 0.5, 0, 99999);
     }
-    return tenths;
+    return hundredths;
 }
 
 static int dongle_half_drain_init(void) {

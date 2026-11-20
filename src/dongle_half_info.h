@@ -13,10 +13,10 @@ bool dongle_half_charging(int half);
 // before it sent them.
 uint16_t dongle_half_millivolts(int half);
 
-// The half's average draw in tenths of a milliwatt, from its voltage since it
+// The half's average draw in hundredths of a milliwatt, from its voltage since it
 // was last unplugged (or the dongle started), or -1 until there is enough
 // of it. src/dongle_half_drain.c.
-int dongle_half_drain_tenths_mw(int half);
+int dongle_half_drain_hundredths_mw(int half);
 
 // Where the dongle has got to with the half's charging state, for the Debug
 // screen: up to two letters in `code` ("" when the half isn't connected):
