@@ -441,8 +441,8 @@ The link rows' columns:
 | Column | Shows |
 | --- | --- |
 | bars | signal strength, from `DBM` |
-| `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
 | `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. The bars are a bar for every 10 dB above -90, in the same colour. Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
+| `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
 | `CH` | for a half, where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows beside the level while it is plugged in; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |

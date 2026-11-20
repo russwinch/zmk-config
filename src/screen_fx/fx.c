@@ -1492,8 +1492,8 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 }
 
 /* Column right edges of the links table. */
-#define DBG_COL_LEVEL 41
-#define DBG_COL_RSSI 68
+#define DBG_COL_LEVEL 66
+#define DBG_COL_RSSI 38
 #define DBG_COL_DROPS 88
 #define DBG_COL_REASON 106
 #define DBG_COL_CHARGE 138
