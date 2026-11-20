@@ -90,8 +90,6 @@ struct fx_theme {
 #define FX_DEBUG_PROFILES 5
 #define FX_MAX_ENCODERS 4
 
-#define FX_DRAIN_UNKNOWN 0xffff
-
 #define FX_CRASH_HANG 1
 #define FX_CRASH_FAULT 2
 /* crash_code for FX_CRASH_HANG: when no picture came */
@@ -135,7 +133,6 @@ struct fx_debug {
      * itself: crash_code FX_HANG_AT_START or FX_HANG_AFTER_WAKE) or
      * FX_CRASH_FAULT (crashed, with Zephyr's reason in crash_code) */
     uint8_t crash, crash_code;
-    uint16_t drain_tenths[2]; /* each half's average draw, tenths of a percent an hour (FX_DRAIN_UNKNOWN) */
     uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */
     bool usb_asleep;      /* the computer has suspended the port: it is asleep */
@@ -151,7 +148,7 @@ struct fx_debug {
     int16_t turned[FX_MAX_ENCODERS]; /* each encoder's turn since power-up, by sensor (+ clockwise), in the
                                       * whole degrees its events carry (ZMK's EC11: 360 / steps a pulse,
                                       * 4 on the Waterfowl); wraps round */
-    uint32_t presses;     /* key presses since power-up */
+    uint32_t presses[2];  /* key presses since power-up: left, right */
     uint16_t bounce_ms;   /* shortest release-to-press of one key (0: none seen) */
     uint8_t bounce_key;
     uint32_t usb_reports; /* keyboard and media reports sent over USB since power-up */

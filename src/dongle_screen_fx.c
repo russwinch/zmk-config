@@ -73,7 +73,6 @@
 #include <zmk/ble.h>
 #include <zmk/display.h>
 #include <zmk/keymap.h>
-#include <zmk/events/battery_state_changed.h>
 #include <zmk/events/sensor_event.h>
 #include <zmk/endpoints.h>
 #include <zmk/hid.h>
@@ -162,62 +161,6 @@ static struct fx_debug debug;
 static uint32_t last_event_at;
 static uint32_t released_at[BOUNCE_KEYS]; /* 0: not yet */
 static const struct bt_conn *half_conn[2]; /* only ever compared, never used */
-
-/*
- * Each half's average draw, in percent an hour, for the Debug screen: from
- * the half's battery reports, which come when its level moves a whole
- * percent. The clock starts at the first reading (`from`) and each drop
- * after is the latest (`to`), so there is a figure from the first drop: up
- * to a percent out at first, as some of the first percent may already have
- * gone, and closer the longer it runs. It starts again when the level goes
- * up or the half charges, and then the clock starts at the first drop
- * instead, as the first reading after unplugging is often still the
- * charger's. Under debug_lock.
- */
-struct drain {
-    uint8_t last;            /* the level last reported (0: none yet) */
-    bool settling;           /* the next drop is from a charger's reading: the clock starts there */
-    uint8_t from_level, to_level; /* 0: not yet */
-    uint32_t from_ms, to_ms;
-};
-static struct drain drain[2];
-
-static void drain_reading(struct drain *dr, uint8_t level, bool charging, uint32_t now) {
-    if (level == 0) {
-        return; /* not a reading */
-    }
-    if (charging || level > dr->last) {
-        /* charging, or charged without the dongle hearing so: the next drop may be the charger's going */
-        const bool settling = charging || dr->settling || dr->last != 0;
-        *dr = (struct drain){.last = charging ? 0 : level, .settling = settling};
-        if (!charging && !settling) { /* the first reading since the dongle started */
-            dr->from_level = level;
-            dr->from_ms = now;
-        }
-        return;
-    }
-    if (level == dr->last) {
-        return;
-    }
-    dr->last = level;
-    if (dr->settling) {
-        dr->settling = false;
-        dr->from_level = level;
-        dr->from_ms = now;
-    } else {
-        dr->to_level = level;
-        dr->to_ms = now;
-    }
-}
-
-/* In tenths of a percent an hour; FX_DRAIN_UNKNOWN until a drop after the clock started. */
-static uint16_t drain_tenths(const struct drain *dr) {
-    if (dr->to_level == 0 || dr->to_ms == dr->from_ms) {
-        return FX_DRAIN_UNKNOWN;
-    }
-    const uint64_t tenths = (uint64_t)(dr->from_level - dr->to_level) * 10 * 3600000 / (dr->to_ms - dr->from_ms);
-    return (uint16_t)MIN(tenths, FX_DRAIN_UNKNOWN - 1);
-}
 
 /*
  * What a held key is holding, for the Keys and Debug screens to colour it
@@ -730,9 +673,6 @@ static void dongle_why(char why[3], uint8_t err, int which) {
 static void read_debug(void) {
     K_SPINLOCK(&debug_lock) {
         debug_shown = debug;
-        for (int half = 0; half < 2; half++) {
-            debug_shown.drain_tenths[half] = drain_tenths(&drain[half]);
-        }
     }
     struct fx_debug *d = &debug_shown;
     d->uptime_s = (uint32_t)(k_uptime_get() / 1000);
@@ -1704,8 +1644,8 @@ static void debug_position(const struct zmk_position_state_changed *pos) {
         if (key < 64) {
             debug.held = (debug.held & ~BIT64(key)) | (pos->state ? BIT64(key) : 0);
         }
-        if (pos->state) {
-            debug.presses++;
+        if (pos->state && pos->source < 2) {
+            debug.presses[pos->source]++;
         }
         if (key < BOUNCE_KEYS) {
             if (!pos->state) {
@@ -1835,22 +1775,6 @@ static int screen_fx_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    const struct zmk_peripheral_battery_state_changed *battery = as_zmk_peripheral_battery_state_changed(eh);
-    if (battery != NULL) {
-        if (battery->source < 2) {
-            K_SPINLOCK(&debug_lock) {
-                drain_reading(&drain[battery->source], battery->state_of_charge,
-#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
-                              dongle_half_charging(battery->source),
-#else
-                              false,
-#endif
-                              k_uptime_get_32());
-            }
-        }
-        return ZMK_EV_EVENT_BUBBLE;
-    }
-
     const struct zmk_sensor_event *sensor = as_zmk_sensor_event(eh);
     if (sensor != NULL) {
         saver_key(); /* an encoder counts */
@@ -1895,7 +1819,6 @@ ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_wpm_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_split_central_status_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_activity_state_changed);
-ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_peripheral_battery_state_changed);
 ZMK_SUBSCRIPTION(dongle_screen_fx, zmk_sensor_event);
 
 /* --- the screen to start on ----------------------------------------------------- */

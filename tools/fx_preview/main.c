@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
         .half = {{.up = true, .rssi_known = true, .rssi = -52, .drops = 2, .reason = 0x08},
                  {.up = true, .rssi_known = true, .rssi = -71}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .drops = 1, .reason = 0x13},
-        .usb_reports = 18342, .usb_errors = 0, .drain_tenths = {6, 13},
+        .usb_reports = 18342, .usb_errors = 0, .presses = {1180, 1093},
         .half_reads = {"OK", "E"}, .half_err = {0, 0x85}, .dongle_mv = 3312, .dongle_temp_known = true, .dongle_temp_c = 31, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };
@@ -258,14 +258,14 @@ int main(int argc, char **argv) {
             debug.log[1] = events[0];
             debug.log[2] = events[1];
             debug.n_log = 3;
-            debug.presses++;
+            const uint32_t presses = ++debug.presses[events[0].source];
             /* with a thumb key holding a layer and a home row key a modifier, now and then */
-            debug.held_layer = debug.presses % 5 < 3 ? 1ull << 31 : 0;
-            debug.held_mod = debug.presses % 7 < 2 ? 1ull << 16 : 0;
+            debug.held_layer = presses % 5 < 3 ? 1ull << 31 : 0;
+            debug.held_mod = presses % 7 < 2 ? 1ull << 16 : 0;
             debug.held = 1ull << in.keys[in.n_keys - 1] | debug.held_layer | debug.held_mod;
             debug.layer = debug.held_layer ? 3 : 0;
             debug.layer_name = debug.held_layer ? "Nav" : "Mac";
-            debug.mods = debug.presses % 7 == 0 ? 0x0a : 0;
+            debug.mods = presses % 7 == 0 ? 0x0a : 0;
             in.chars[in.n_chars++] = typed[typed_at++ % (sizeof(typed) - 1)];
             energy += 0.03f;
         }
