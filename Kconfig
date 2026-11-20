@@ -53,7 +53,8 @@ config WATERFOWL_DONGLE_HALF_STATUS
     help
       Not the Forager's or Urchin's dongles: their halves have no display. The dongle tells each half the active profile (and which profiles are
       connected/paired), whether it is typing over USB, and the other half's
-      battery. Used by WATERFOWL_HALF_STATUS_SCREEN on the left half.
+      battery and whether it is charging. Used by WATERFOWL_HALF_STATUS_SCREEN
+      on the left half.
 
 config WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S
     int "Seconds between repeat sends, as a catch-all"
@@ -134,14 +135,19 @@ config HALF_VOLTAGE
 config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power, its temperature, transmit power and battery volts"
     default y
-    depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
+    depends on SHIELD_PROSPECTOR_ADAPTER || WATERFOWL_HALF_STATUS_SCREEN
+    depends on ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
     depends on BT_GATT_AUTO_DISCOVER_CCC && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     help
       Read once a half is connected and ZMK is done setting it up, one
-      request at a time, then subscribed to (the half sends only changes). The dongle's screens then show a bolt for a charging
-      half instead of its battery level, which reads near 100 while it
-      charges, and the Debug screen its temperature and transmit power (read
-      once: it doesn't change).
+      request at a time, then subscribed to (the half sends only changes).
+      The dongle's screens then show a bolt blinking beside a charging
+      half's battery level (which reads near 100 while it charges), the
+      Debug screen its temperature, battery volts and transmit power (read
+      once: it doesn't change), and the dongle tells the left half's
+      nice!view when the right half is charging. A left half with a
+      nice!view that is the central itself (no dongle) reads only whether
+      the right half is charging, for its screen.
 
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"

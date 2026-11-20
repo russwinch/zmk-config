@@ -26,6 +26,7 @@ static struct half_status_view make(const char *name) {
     v.profile_bonded = true;
     if (!strcmp(name, "usb")) { v.usb = true; v.own_battery = 100; v.charging = true; }
     if (!strcmp(name, "charging")) { v.own_battery = 47; v.charging = true; v.usb = true; }
+    if (!strcmp(name, "right_charging")) { v.other_battery = 100; v.other_charging = true; }
     if (!strcmp(name, "paired")) { v.profile = 2; v.profile_connected = false; v.own_battery = 9; }
     if (!strcmp(name, "free")) { v.profile = 4; v.profile_connected = false; v.profile_bonded = false; }
     if (!strcmp(name, "waiting")) { v.valid = false; }

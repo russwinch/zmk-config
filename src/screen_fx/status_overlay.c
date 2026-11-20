@@ -61,6 +61,7 @@ static uint16_t colors[COLORS];
 static uint8_t levels[OVERLAY_AREAS]; /* 0..FULL */
 static struct fx_status drawn;        /* what the masks show */
 static bool have_drawn, stale;        /* stale: the theme has changed since */
+static bool drawn_lit;                /* a charging half's bolt is in the masks */
 static bool revealed;                 /* the output is being shown for a change to it... */
 static uint32_t revealed_at;          /* ...since then */
 static bool pixel_font, dots;
@@ -245,17 +246,8 @@ static void draw_battery(const struct area *area, int x, int y, uint8_t percent,
     }
 }
 
-/* A battery level, "-" when its half isn't connected or hasn't said, a bolt
- * when it is on USB power, a spinner when just unplugged. */
-static uint8_t level_text(char *p, uint8_t percent, bool connected, bool charging, uint8_t settling) {
-    if (connected && charging) {
-        strcpy(p, FX_BOLT); /* the level is the charger's voltage then */
-        return INK;
-    }
-    if (connected && settling) {
-        fx_spin_text(p, settling); /* still the charger's, until read again */
-        return INK;
-    }
+/* A battery level, "-" when its half isn't connected or hasn't said. */
+static uint8_t level_text(char *p, uint8_t percent, bool connected) {
     if (!connected || percent == 0) {
         strcpy(p, "-");
         return INK;
@@ -272,45 +264,57 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected, bool chargin
     return percent <= FX_LOW_BATTERY ? LOW : percent <= FX_WARN_BATTERY ? WARN : INK;
 }
 
-/* Work the masks out. */
-static void render(const struct fx_status *status) {
-    const struct area left = area_of(OVERLAY_LEFT), right = area_of(OVERLAY_RIGHT);
-    const struct area symbol = area_of(OVERLAY_SYMBOL), number_area = area_of(OVERLAY_NUMBER);
-    memset(masks, 0, OVERLAY_BYTES);
+/* Where the text stands: everything on the line the Field screen's smaller levels do. */
+static int foot_y(void) { return LINE_BOTTOM + drop - 5; }
 
-    /* everything stands on the line the Field screen's smaller levels do */
-    const int line_bottom = LINE_BOTTOM + drop, foot = line_bottom - 5;
-    const lv_font_t *font = &FR_Regular_36;
-    const int top = foot - (font->line_height - font->base_line);
-    const int pixel_top = foot - 6 * PIXEL_SCALE; /* the digits leave the 7th row empty */
+/* A half's level, and beside it, while that half is on USB power and `lit`,
+ * the bolt: to the right of the level, which stays where it is whether the
+ * bolt is there or not. The right half's level leaves room for it at the
+ * edge. (In the pixel letters the bolt and "100" fit the mask with room to
+ * spare; in the Field font, which no screen shows numbers in now, the bolt
+ * would be cut short.) */
+static void render_half(const struct fx_status *status, int half, bool lit) {
+    const struct area area = area_of(half ? OVERLAY_RIGHT : OVERLAY_LEFT);
+    memset(area.mask, 0, OVERLAY_BATTERY_W * OVERLAY_ROWS);
+    const int foot = foot_y();
     char level[4];
-    for (int half = 0; half < 2; half++) {
-        const struct area *area = half ? &right : &left;
-        const uint8_t color =
-            level_text(level, status->battery[half], status->half_connected[half], status->charging[half],
-                       status->settling[half]);
-        if (dots) {
-            /* where the level's outer digit would be, at half its height */
-            if (color != INK) {
-                const int x = half ? PANEL_W - SIDE - inset - BATTERY_W : SIDE + inset;
-                draw_battery(area, x, foot - (pixel_font ? 9 : 12) - BATTERY_H / 2, status->battery[half], color);
-                add_shadow(area);
-            }
-            continue;
+    const uint8_t color = level_text(level, status->battery[half], status->half_connected[half]);
+    const bool charging = status->half_connected[half] && status->charging[half];
+    if (dots) {
+        /* where the level's outer digit would be, at half its height */
+        if (color != INK && !charging) {
+            const int x = half ? PANEL_W - SIDE - inset - BATTERY_W : SIDE + inset;
+            draw_battery(&area, x, foot - (pixel_font ? 9 : 12) - BATTERY_H / 2, status->battery[half], color);
+            add_shadow(&area);
         }
-        /* the bolt is only in the pixel letters: a size up for the Field font */
-        const bool pixels = pixel_font || fx_glyph_is_symbol(level[0]);
-        const int scale = pixel_font ? PIXEL_SCALE : PIXEL_SCALE + 1;
-        const int wide = pixels ? draw_pixel_text(area, level, 0, 0, scale, 0, false)
-                                : draw_text(area, font, level, 0, 0, -1, 0, false);
-        const int x = half ? PANEL_W - SIDE - inset - wide : SIDE + inset;
-        if (pixels) {
-            draw_pixel_text(area, level, x, foot - 6 * scale, scale, color, true);
-        } else {
-            draw_text(area, font, level, x, top, -1, color, true);
-        }
-        add_shadow(area);
+        return;
     }
+    const lv_font_t *font = &FR_Regular_36;
+    const int scale = pixel_font ? PIXEL_SCALE : PIXEL_SCALE + 1; /* the bolt: a size up for the Field font */
+    const int bolt_gap = scale, bolt_room = bolt_gap + 5 * scale; /* the bolt's dots fill all 5 columns */
+    const int wide = pixel_font ? draw_pixel_text(&area, level, 0, 0, PIXEL_SCALE, 0, false)
+                                : draw_text(&area, font, level, 0, 0, -1, 0, false);
+    const int x = half ? PANEL_W - SIDE - inset - bolt_room - wide : SIDE + inset;
+    if (pixel_font) {
+        draw_pixel_text(&area, level, x, foot - 6 * PIXEL_SCALE, PIXEL_SCALE, color, true);
+    } else {
+        draw_text(&area, font, level, x, foot - (font->line_height - font->base_line), -1, color, true);
+    }
+    if (charging && lit) {
+        draw_pixel_text(&area, FX_BOLT, x + wide + bolt_gap, foot - 6 * scale, scale, INK, true);
+    }
+    add_shadow(&area);
+}
+
+/* Work the masks out. */
+static void render(const struct fx_status *status, bool lit) {
+    render_half(status, 0, lit);
+    render_half(status, 1, lit);
+    const struct area symbol = area_of(OVERLAY_SYMBOL), number_area = area_of(OVERLAY_NUMBER);
+    memset(symbol.mask, 0, (OVERLAY_SYMBOL_W + OVERLAY_NUMBER_W) * OVERLAY_ROWS);
+
+    const int line_bottom = LINE_BOTTOM + drop;
+    const int pixel_top = foot_y() - 6 * PIXEL_SCALE; /* the digits leave the 7th row empty */
 
     /* The output: the Field screen's waves in the middle of the panel, and
      * the Bluetooth profile number to their right. Solid when that profile's
@@ -346,8 +350,10 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
         revealed = true;
         revealed_at = ms;
     }
+    /* a charging half's bolt blinks: only that half is worked out again for it */
+    const bool lit = fx_bolt_lit(ms);
     if (!have_drawn || stale || memcmp(status, &drawn, sizeof(drawn)) != 0) {
-        render(status);
+        render(status, lit);
         /* by value, field by field: the padding is then the same every time */
         memset(&drawn, 0, sizeof(drawn));
         drawn.battery[0] = status->battery[0];
@@ -356,8 +362,6 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
         drawn.half_connected[1] = status->half_connected[1];
         drawn.charging[0] = status->charging[0];
         drawn.charging[1] = status->charging[1];
-        drawn.settling[0] = status->settling[0];
-        drawn.settling[1] = status->settling[1];
         drawn.host_connected = status->host_connected;
         drawn.usb = status->usb;
         drawn.host_open = status->host_open;
@@ -365,7 +369,16 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
         drawn.profile = status->profile;
         have_drawn = true;
         stale = false;
+        drawn_lit = lit;
         changed = (1u << OVERLAY_AREAS) - 1;
+    } else if (lit != drawn_lit) {
+        for (int half = 0; half < 2; half++) {
+            if (drawn.half_connected[half] && drawn.charging[half] && !dots) {
+                render_half(&drawn, half, lit);
+                changed |= 1u << (half ? OVERLAY_RIGHT : OVERLAY_LEFT);
+            }
+        }
+        drawn_lit = lit;
     }
 
     /* what fades: all there for SHOWN_MS after the change, then going */
@@ -378,7 +391,7 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
     uint8_t now[OVERLAY_AREAS];
     for (int half = 0; half < 2; half++) {
         /* a low battery flashes, a flat one fast */
-        const bool off = drawn.half_connected[half] && !drawn.charging[half] && !drawn.settling[half] &&
+        const bool off = drawn.half_connected[half] && !drawn.charging[half] &&
                          fx_battery_flash_off(drawn.battery[half], ms);
         now[half ? OVERLAY_RIGHT : OVERLAY_LEFT] = off ? 0 : FULL;
     }

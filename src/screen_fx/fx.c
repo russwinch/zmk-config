@@ -308,20 +308,9 @@ static const uint8_t mod_glyphs[4][7] = {
     {0x1b, 0x1f, 0x0a, 0x1f, 0x1b, 0x00, 0x00},
 };
 
-/* | / - \ as FX_GLYPH_SPIN on: the spinner turning */
-static const uint8_t spin_glyphs[FX_SPIN_FRAMES][7] = {
-    {0x00, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00},
-    {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x00},
-    {0x00, 0x00, 0x00, 0x1f, 0x00, 0x00, 0x00},
-    {0x00, 0x10, 0x08, 0x04, 0x02, 0x01, 0x00},
-};
-
 const uint8_t *fx_glyph_rows(char c) {
     if (c == FX_GLYPH_BOLT) {
         return bolt;
-    }
-    if (c >= FX_GLYPH_SPIN && c < FX_GLYPH_SPIN + FX_SPIN_FRAMES) {
-        return spin_glyphs[c - FX_GLYPH_SPIN];
     }
     if (c >= FX_GLYPH_CTRL && c <= FX_GLYPH_GUI) {
         return mod_glyphs[c - FX_GLYPH_CTRL];
@@ -1288,11 +1277,11 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
     glyph(fb, FX_W - 18, 13, 'm', TRACK_TEXT);
 
     if (in->status) {
-        /* empty while charging, or just unplugged: the level then isn't the battery's */
+        /* empty while charging: the level then isn't the battery's */
         const struct fx_status *s = in->status;
-        side_battery(fb, 5, s->charging[0] || s->settling[0] ? 0 : s->battery[0], s->half_connected[0],
+        side_battery(fb, 5, s->charging[0] ? 0 : s->battery[0], s->half_connected[0],
                      TRACK_LINE, TRACK_TEXT, 0);
-        side_battery(fb, FX_W - 10, s->charging[1] || s->settling[1] ? 0 : s->battery[1], s->half_connected[1],
+        side_battery(fb, FX_W - 10, s->charging[1] ? 0 : s->battery[1], s->half_connected[1],
                      TRACK_LINE, TRACK_TEXT, 0);
     }
 }
@@ -1493,8 +1482,8 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 }
 
 /* Column right edges of the links table. */
-#define DBG_COL_LEVEL 39
-#define DBG_COL_VOLTS 64
+#define DBG_COL_LEVEL 36 /* a charging half's bolt blinks just right of it */
+#define DBG_COL_VOLTS 66
 #define DBG_COL_RSSI 84
 #define DBG_COL_TEMP 98
 #define DBG_COL_DROPS 111
@@ -1724,6 +1713,17 @@ static const char *reset_name(uint32_t cause) {
     return cause ? "?" : "POR";
 }
 
+/* A clock for the bolt's blinking, in ms, moved on by a frame's `step`
+ * (30ths of a second) and kept within a second. */
+static uint32_t bolt_ms(float step) {
+    static float t;
+    t += step;
+    while (t >= 30) {
+        t -= 30;
+    }
+    return (uint32_t)(t * 1000 / 30);
+}
+
 static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     static const struct fx_debug none;
     const struct fx_debug *d = in->debug ? in->debug : &none;
@@ -1776,22 +1776,20 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
     put_right(fb, DBG_COL_TX, 23, "TX", DBG_LABEL);
+    const bool lit = fx_bolt_lit(bolt_ms(in->step));
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const bool charging = in->status && in->status->charging[half];
-        const uint8_t spin = in->status && !charging ? in->status->settling[half] : 0;
-        if (charging) {
-            strcpy(buf, FX_BOLT);
-        } else if (spin) {
-            fx_spin_text(buf, spin);
-        } else if (level) {
+        if (level) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
             strcpy(buf, "--");
         }
-        debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   charging || spin ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
+        debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf, level == 0 ? DBG_LABEL : battery_color(level),
                    d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2]);
+        if (charging && lit) {
+            put(fb, DBG_COL_LEVEL + 1, 31 + half * 8, FX_BOLT, DBG_TEXT);
+        }
         /* dim while charging: it is the charger's then */
         debug_volts(fb, 31 + half * 8, d->mv[half * 2], charging);
     }
@@ -2066,31 +2064,29 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
     /* the halves: a battery and its level, in the middle of the block as
      * everything in the three is */
+    const bool lit = fx_bolt_lit(bolt_ms(in->step));
     for (int half = 0; half < 2; half++) {
         const bool charging = in->status && in->status->charging[half];
-        const uint8_t spin = in->status && !charging ? in->status->settling[half] : 0;
-        /* while charging: an empty battery and a bolt, the level then
-         * being the charger's voltage; just unplugged, a spinner until the
-         * battery is read again */
-        const uint8_t level = in->status && !charging && !spin ? in->status->battery[half] : 0;
-        const uint8_t color = charging || spin           ? DBG_TEXT
-                              : level == 0               ? DBG_LABEL
+        const uint8_t level = in->status ? in->status->battery[half] : 0;
+        const uint8_t color = level == 0                 ? DBG_LABEL
                               : level <= FX_LOW_BATTERY  ? DBG_BAD
                               : level <= FX_WARN_BATTERY ? DBG_WARN
                                                          : DBG_TEXT;
-        if (charging) {
-            strcpy(buf, FX_BOLT);
-        } else if (spin) {
-            fx_spin_text(buf, spin);
-        } else if (level == 0) {
+        if (level == 0) {
             strcpy(buf, "--");
         } else {
             snprintf(buf, sizeof(buf), "%u%%", level);
         }
-        if (!fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
-            const int wide = 10 + 3 + 5 * (int)strlen(buf), left = keys_block_x(half * 2) + (SIGNAL_W - wide) / 2;
+        /* centred with room for the bolt, so the level stays put whether
+         * it is there or not; a low level flashes, but not while charging */
+        const int wide = 10 + 3 + 5 * (int)strlen(buf), bolt_room = 2 + 5;
+        const int left = keys_block_x(half * 2) + (SIGNAL_W - wide - bolt_room) / 2;
+        if (charging || !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
             battery_icon(fb, left, 6, level, color);
             put(fb, left + 13, 6, buf, color);
+        }
+        if (charging && lit) {
+            put(fb, left + wide + 2, 6, FX_BOLT, DBG_TEXT);
         }
         keys_link(fb, half * 2, links[half * 2]);
     }

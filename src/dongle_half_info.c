@@ -1,9 +1,12 @@
 /*
  * Prospector dongle: what it hears from each half beyond what ZMK does.
+ * (Also a left half with a nice!view that is the central itself, without
+ * the dongle: there only whether the right half is on USB power, for its
+ * screen, and the right half is "half" 0, ZMK's only peripheral slot.)
  *
  *   on USB power   the battery service's Battery Level Status (set by
  *                  src/half_charging.c): the screens show a bolt for that
- *                  half instead of its level
+ *                  half beside its level (on a half's nice!view, in place of it)
  *   temperature    the Environmental Sensing Service's Temperature (offered
  *                  by src/half_temperature.c): the Debug screen shows it
  *   transmit power the Tx Power Service's Tx Power Level (offered by
@@ -29,11 +32,6 @@
  * and two seconds more; or 12 s after it connected, if no reading comes),
  * and has at most one request out at a time, for both halves together: a
  * read, or a subscription and the finding of its CCC.
- *
- * After a half is unplugged its next battery reading is a second or so
- * away, and the level until then is the charger's, near 100: for up to
- * SETTLE_MS, or until that reading comes, dongle_half_settling() says so and
- * the screens show a spinner in place of the level.
  */
 
 #include <string.h>
@@ -54,6 +52,7 @@
 #include <zmk/events/battery_state_changed.h>
 
 #include "dongle_half_info.h"
+#include "half_status.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -68,9 +67,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define READY_AT_MOST_S 12      // after the half connected, reading or not
 #define RETRY_S 5               // a failed read or subscription, again after this
 #define RETRIES 5
-#define SETTLE_MS 3000 // after unplugging, a fresh battery reading within this
 
 enum { BLS, TEMP, TX_POWER, VOLTS, KINDS };
+
+// What is read: all of it on the dongle, for its Debug screen; on a left half
+// without one, only the right half's charging state, for its nice!view.
+#define WANTED (IS_ENABLED(CONFIG_SHIELD_PROSPECTOR_ADAPTER) ? BIT_MASK(KINDS) : BIT(BLS))
 
 // One characteristic on one half: read once, then subscribed to.
 struct watch {
@@ -86,16 +88,9 @@ static atomic_t temp_c[2];
 static atomic_t tx_known; // bit per half
 static atomic_t tx_dbm[2];
 static atomic_t millivolts[2]; // 0: not known
-static atomic_t settling; // bit per half: unplugged, no battery reading since
-static atomic_t unplugged_at[2];
 
 bool dongle_half_charging(int half) {
     return half >= 0 && half < 2 && atomic_test_bit(&charging, half);
-}
-
-bool dongle_half_settling(int half) {
-    return half >= 0 && half < 2 && atomic_test_bit(&settling, half) &&
-           k_uptime_get_32() - (uint32_t)atomic_get(&unplugged_at[half]) < SETTLE_MS;
 }
 
 bool dongle_half_temperature(int half, int8_t *celsius) {
@@ -179,6 +174,16 @@ static void finish(int half, int kind, bool ok) {
     step_soon();
 }
 
+// A half's charging state has changed: what shows it elsewhere hears at once.
+static void charging_changed(void) {
+#if IS_ENABLED(CONFIG_WATERFOWL_DONGLE_HALF_STATUS)
+    dongle_half_status_send_soon(); // the dongle: to the other half's nice!view
+#endif
+#if IS_ENABLED(CONFIG_WATERFOWL_HALF_STATUS_SCREEN)
+    half_status_screen_redraw(); // a left half on its own: its own nice!view
+#endif
+}
+
 // A value, read or notified; NULL when there is none.
 static void take(int half, int kind, const void *data, uint16_t length) {
     if (kind == BLS) {
@@ -189,11 +194,8 @@ static void take(int half, int kind, const void *data, uint16_t length) {
         }
         const bool was = atomic_test_bit(&charging, half);
         atomic_set_bit_to(&charging, half, on);
-        if (was && !on) {
-            atomic_set(&unplugged_at[half], (atomic_val_t)k_uptime_get_32());
-            atomic_set_bit(&settling, half);
-        } else if (on) {
-            atomic_clear_bit(&settling, half);
+        if (was != on) {
+            charging_changed();
         }
     } else if (kind == VOLTS) {
         // in 1/64 V, as the characteristic has it
@@ -295,7 +297,7 @@ static void step_cb(struct k_work *work) {
     }
     int32_t wait_ms = 0; // until a half waiting for a retry may go
     for (int half = 0; half < 2; half++) {
-        const atomic_val_t todo = BIT_MASK(KINDS) & ~atomic_get(&done[half]);
+        const atomic_val_t todo = WANTED & ~atomic_get(&done[half]);
         if (!atomic_test_bit(&ready, half) || todo == 0) {
             continue;
         }
@@ -359,8 +361,6 @@ static int half_info_listener(const zmk_event_t *eh) {
     if (ev == NULL || ev->source >= 2) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-    // a fresh reading: no longer the charger's
-    atomic_clear_bit(&settling, ev->source);
     if (atomic_test_and_clear_bit(&awaiting_battery, ev->source)) {
         k_work_reschedule(&ready_work[ev->source], K_SECONDS(READY_AFTER_BATTERY_S));
     }
@@ -403,8 +403,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     k_work_cancel_delayable(&ready_work[half]);
     atomic_clear_bit(&ready, half);
     atomic_clear_bit(&awaiting_battery, half);
-    atomic_clear_bit(&charging, half);
-    atomic_clear_bit(&settling, half);
+    if (atomic_test_and_clear_bit(&charging, half)) {
+        charging_changed();
+    }
     atomic_clear_bit(&temp_known, half);
     atomic_clear_bit(&tx_known, half);
     atomic_clear(&millivolts[half]);

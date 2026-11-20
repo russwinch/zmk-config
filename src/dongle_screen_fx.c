@@ -322,8 +322,6 @@ static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
 static void saver_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(saver_work, saver_cb);
 
-#define SPIN_FRAME_MS 150
-
 static void read_status(void) {
     for (int half = 0; half < 2; half++) {
         uint8_t level = 0;
@@ -334,9 +332,6 @@ static void read_status(void) {
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         status.charging[half] = dongle_half_charging(half);
-        /* a spinner frame every SPIN_FRAME_MS while just unplugged */
-        status.settling[half] =
-            dongle_half_settling(half) ? (uint8_t)(1 + k_uptime_get_32() / SPIN_FRAME_MS % FX_SPIN_FRAMES) : 0;
 #endif
     }
 

@@ -8,10 +8,6 @@
 // On USB power, as last read. False when not known.
 bool dongle_half_charging(int half);
 
-// Unplugged a moment ago, with no battery reading since: the level held is
-// still the charger's, near 100.
-bool dongle_half_settling(int half);
-
 // The half's chip temperature in whole degrees C; false when not known.
 bool dongle_half_temperature(int half, int8_t *celsius);
 

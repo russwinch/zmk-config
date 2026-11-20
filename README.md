@@ -179,7 +179,7 @@ shows a small status screen in place of ZMK's stock picture
 | Part | Shows |
 | --- | --- |
 | Top: `L` | this half's battery, as a big number with a small `%` and a bar (100 a size smaller, to fit). On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
-| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it |
+| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it. A big bolt in its place while the right half is on USB power: on its own the left half reads that from the right half as the dongle does (`src/dongle_half_info.c`); behind the dongle, the dongle passes it on (a dongle on older firmware never does) |
 | Bottom | the output (the keyboard's own, or the dongle's): the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
 On its own the left half is the central and knows all of this itself. Behind
@@ -379,9 +379,10 @@ all of them, the screensavers too, they sit low in the bottom corners, clear
 of the panel's rounding (on Tracker, under the line across the bottom); and Tracker
 adds a gauge for each battery up the sides.
 
-A half on USB power shows a bolt instead of its level, on every screen
-(Tracker's gauge for it goes empty): while it charges, its reading is the
-charger's voltage, near 100 whatever the charge. Each half says so through
+A half on USB power has a bolt blinking just right of its level, on every
+dongle screen; the level stays where it is, bolt or not (Tracker's gauge for
+it goes empty). While it charges its reading is the charger's voltage, near
+100 whatever the charge. Each half says so through
 the Battery Level Status of Bluetooth's standard battery service
 (`src/half_charging.c`). The dongle reads it once a half has connected and
 ZMK has finished setting the link up, then subscribes (`src/dongle_half_info.c`),
@@ -397,8 +398,7 @@ power its radio transmits at, as the standard Tx Power Service
 plugged in, not still charging: a half can't tell when its charger has
 finished. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
-once-a-minute reading; until that reading reaches the dongle (3 seconds at
-most) a spinner stands in for the level, which is still the charger's. A half on older firmware just
+once-a-minute reading, so the charger's level doesn't stay up for long. A half on older firmware just
 never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on

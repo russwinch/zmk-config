@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parent.parent
 TOOL_DIR = REPO / "tools" / "half_status_preview"
 LVGL_URL = "https://github.com/lvgl/lvgl"
 LVGL_VERSION = "v9.2.2"
-CASES = ["bluetooth", "paired", "free", "usb", "charging", "waiting", "no_dongle"]
+CASES = ["bluetooth", "paired", "free", "usb", "charging", "right_charging", "waiting", "no_dongle"]
 SCALE = 4
 
 

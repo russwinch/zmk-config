@@ -55,9 +55,7 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
-    bool charging[2];       /* left, right: on USB power, its level not worth showing */
-    uint8_t settling[2];    /* left, right: just unplugged, its level still the charger's:
-                             * a spinner frame (FX_SPIN_FRAMES), 0 when not */
+    bool charging[2];       /* left, right: on USB power (a bolt blinks beside its level) */
     bool host_connected;    /* the computer */
     bool usb;               /* typing over USB, not Bluetooth */
     bool host_open;         /* Bluetooth: nothing paired on this profile */
@@ -200,9 +198,9 @@ const struct fx_theme *fx_theme(int fx);
  * in bit 4), or NULL if there is none. */
 const uint8_t *fx_glyph_rows(char c);
 
-/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown for a
- * half on USB power in place of its battery level, which then reads near 100
- * whatever the charge. */
+/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, blinking
+ * beside the battery level of a half on USB power. The level is then the
+ * charger's voltage, near 100 whatever the charge. */
 #define FX_GLYPH_BOLT '\x7f'
 #define FX_BOLT "\x7f"
 
@@ -213,22 +211,9 @@ const uint8_t *fx_glyph_rows(char c);
 #define FX_GLYPH_SHIFT '\x03'
 #define FX_GLYPH_GUI '\x04'
 
-/* Also in fx_glyph_rows: a spinner's frames (| / - \\), shown for a half
- * just unplugged until its battery is read again (fx_status.settling counts
- * 1 to FX_SPIN_FRAMES). */
-#define FX_GLYPH_SPIN '\x05'
-#define FX_SPIN_FRAMES 4
-
-/* A battery level's text for fx_status.settling's frame (1 on). */
-static inline void fx_spin_text(char *p, uint8_t frame) {
-    p[0] = (char)(FX_GLYPH_SPIN + (frame - 1) % FX_SPIN_FRAMES);
-    p[1] = '\0';
-}
-
-/* A character only the pixel letters have: the bolt, the spinner. */
-static inline bool fx_glyph_is_symbol(char c) {
-    return c == FX_GLYPH_BOLT || (c >= FX_GLYPH_SPIN && c < FX_GLYPH_SPIN + FX_SPIN_FRAMES);
-}
+/* Whether a charging half's bolt is lit at `ms`: it blinks, half a second
+ * on, half off, beside the level (which stays where it is). */
+static inline bool fx_bolt_lit(uint32_t ms) { return ms % 1000 < 500; }
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text over it. */

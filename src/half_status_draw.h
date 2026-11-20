@@ -24,6 +24,7 @@ struct half_status_view {
     uint8_t own_battery;   // this (left) half, 0-100 or HALF_STATUS_DRAW_UNKNOWN
     uint8_t other_battery; // right half, from the dongle
     bool charging;         // this half is on USB power
+    bool other_charging;   // the right half is
     bool linked;           // this half is connected to the dongle
     bool valid;            // the dongle has sent its status since then
     bool usb;              // the dongle is typing over USB
