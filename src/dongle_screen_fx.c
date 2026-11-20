@@ -592,6 +592,8 @@ static struct {
     bool temp_known[3], tx_known[3];
     int8_t temp_c[3], tx_dbm[3];
     uint16_t mv[3];
+    char half_reads[2][3];
+    uint8_t half_err[2];
 } readings; /* under debug_lock */
 static atomic_t readings_until; /* uptime ms: wanted until then */
 
@@ -616,6 +618,8 @@ static void readings_cb(struct k_work *work) {
     int8_t temp_c[3] = {0}, tx_dbm[3] = {0};
     temp_known[1] = read_temp(&temp_c[1]);
     uint16_t mv[3] = {0, read_vdd_mv(), 0};
+    char half_reads[2][3] = {{0}};
+    uint8_t half_err[2] = {0};
 #ifdef CONFIG_BT_CTLR_TX_PWR_DBM
     tx_known[1] = true; /* the dongle's own, as built */
     tx_dbm[1] = CONFIG_BT_CTLR_TX_PWR_DBM;
@@ -627,6 +631,8 @@ static void readings_cb(struct k_work *work) {
     tx_known[2] = dongle_half_tx_power(1, &tx_dbm[2]);
     mv[0] = dongle_half_millivolts(0);
     mv[2] = dongle_half_millivolts(1);
+    dongle_half_info_progress(0, half_reads[0], &half_err[0]);
+    dongle_half_info_progress(1, half_reads[1], &half_err[1]);
 #endif
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
@@ -635,6 +641,8 @@ static void readings_cb(struct k_work *work) {
         memcpy(readings.tx_known, tx_known, sizeof(tx_known));
         memcpy(readings.tx_dbm, tx_dbm, sizeof(tx_dbm));
         memcpy(readings.mv, mv, sizeof(mv));
+        memcpy(readings.half_reads, half_reads, sizeof(half_reads));
+        memcpy(readings.half_err, half_err, sizeof(half_err));
     }
     /* again while a screen still wants them */
     if ((int32_t)((uint32_t)atomic_get(&readings_until) - k_uptime_get_32()) > 0) {
@@ -702,6 +710,8 @@ static void read_debug(void) {
         memcpy(d->tx_known, readings.tx_known, sizeof(d->tx_known));
         memcpy(d->tx_dbm, readings.tx_dbm, sizeof(d->tx_dbm));
         memcpy(d->mv, readings.mv, sizeof(d->mv));
+        memcpy(d->half_reads, readings.half_reads, sizeof(d->half_reads));
+        memcpy(d->half_err, readings.half_err, sizeof(d->half_err));
     }
     readings_wanted();
 #if IS_ENABLED(CONFIG_ZMK_USB)

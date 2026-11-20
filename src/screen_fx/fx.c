@@ -1641,7 +1641,8 @@ static uint8_t battery_color(int level) {
 
 /* One row of the table: `level` is the battery, or the output for the computer. */
 static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const char *level,
-                       uint8_t level_color, bool temp_known, int temp_c, bool tx_known, int tx_dbm) {
+                       uint8_t level_color, bool temp_known, int temp_c, bool tx_known, int tx_dbm,
+                       const char *reads, uint8_t reads_err) {
     char buf[12];
     const char label[2] = {name, '\0'};
     put(fb, 5, y, label, link->up ? DBG_BRIGHT : DBG_BAD);
@@ -1670,6 +1671,11 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     if (temp_known) {
         snprintf(buf, sizeof(buf), "%d", temp_c < -9 ? -9 : temp_c > 99 ? 99 : temp_c);
         put_right(fb, DBG_COL_TEMP, y, buf, temp_c >= 60 ? DBG_WARN : DBG_TEXT);
+    } else if (reads_err) {
+        /* not known, and the dongle's reads of the half have failed: the last
+         * error, in hex (an ATT error code, or 80 and up a Zephyr errno) */
+        snprintf(buf, sizeof(buf), "%02X", reads_err);
+        put_right(fb, DBG_COL_TEMP, y, buf, DBG_BAD);
     } else {
         put_right(fb, DBG_COL_TEMP, y, "--", DBG_LABEL);
     }
@@ -1683,6 +1689,10 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     if (tx_known) {
         snprintf(buf, sizeof(buf), tx_dbm > 0 ? "+%d" : "%d", tx_dbm < -9 ? -9 : tx_dbm > 9 ? 9 : tx_dbm);
         put_right(fb, DBG_COL_TX, y, buf, tx_dbm > 0 ? DBG_GOOD : DBG_TEXT);
+    } else if (reads && reads[0]) {
+        /* not known yet: how far the dongle's reads of the half have got
+         * (WT waiting for ZMK, B1 a request out and its try, TB no answer) */
+        put_right(fb, DBG_COL_TX, y, reads, reads[0] == 'T' ? DBG_BAD : DBG_WARN);
     } else {
         put_right(fb, DBG_COL_TX, y, "--", DBG_LABEL);
     }
@@ -1806,14 +1816,15 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
                    spin || (charging && level == 0) ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
-                   d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2]);
+                   d->temp_known[half * 2], d->temp_c[half * 2], d->tx_known[half * 2], d->tx_dbm[half * 2],
+                   d->half_reads[half], d->half_err[half]);
         /* dim while charging: it is the charger's then */
         debug_volts(fb, 31 + half * 8, d->mv[half * 2], charging);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
     debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, d->temp_known[1],
-               d->temp_c[1], d->tx_known[1], d->tx_dbm[1]);
+               d->temp_c[1], d->tx_known[1], d->tx_dbm[1], NULL, 0);
     debug_volts(fb, 47, d->mv[1], false);
     rule(fb, 56);
 

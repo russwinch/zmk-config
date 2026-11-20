@@ -164,6 +164,9 @@ struct fx_debug {
     int8_t temp_c[3];
     bool tx_known[3];     /* radio transmit power, as built, dBm: the same three */
     int8_t tx_dbm[3];
+    char half_reads[2][3]; /* left, right: how far the dongle's own reads of it have got (two letters, see
+                            * dongle_half_info_progress), "" when done */
+    uint8_t half_err[2];   /* and their last error: ATT error code, or 0x80 | errno; 0 for none */
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
     uint8_t n_log;
 };

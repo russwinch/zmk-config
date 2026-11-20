@@ -30,6 +30,12 @@
  * and has at most one request out at a time, for both halves together: a
  * read, or a subscription and the finding of its CCC.
  *
+ * A request with no answer within REQUEST_TIMEOUT_S leaves that half alone
+ * until it next connects (its request may still be out: Zephyr owns its
+ * parameters until it answers or the link goes), so the other half's reads
+ * still go. The Debug screen shows how far each half has got
+ * (dongle_half_info_progress).
+ *
  * After a half is unplugged its next battery reading is a second or so
  * away, and the level until then is the charger's, near 100: for up to
  * SETTLE_MS, or until that reading comes, dongle_half_settling() says so and
@@ -69,6 +75,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define RETRY_S 5               // a failed read or subscription, again after this
 #define RETRIES 5
 #define SETTLE_MS 3000 // after unplugging, a fresh battery reading within this
+#define REQUEST_TIMEOUT_S 10 // a request with no answer by then: that half is left alone
 
 enum { BLS, TEMP, TX_POWER, VOLTS, KINDS };
 
@@ -160,17 +167,71 @@ static atomic_t tries[2][KINDS];
 static atomic_t not_before[2]; // uptime ms: that half waits for a retry until then
 #define IDLE (-1)
 static atomic_t inflight = ATOMIC_INIT(IDLE); // half * KINDS + kind, or IDLE
+#define NOT_STUCK (-1)
+static atomic_t stuck[2] = {ATOMIC_INIT(NOT_STUCK), ATOMIC_INIT(NOT_STUCK)}; // kind that timed out
+static atomic_t last_err[2]; // ATT error, or 0x80 | errno; 0 for none
+
+static void note_err(int half, int err) {
+    if (err != 0) {
+        atomic_set(&last_err[half], err < 0 ? 0x80 | MIN(-err, 0x7f) : MIN(err, 0x7f));
+    }
+}
 
 static void step_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(step_work, step_cb);
-
 static void step_soon(void) { k_work_reschedule(&step_work, K_NO_WAIT); }
+static void timeout_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_cb);
+
+// The one out has had no answer: leave its half alone until it reconnects.
+static void timeout_cb(struct k_work *work) {
+    const atomic_val_t id = atomic_get(&inflight);
+    if (id == IDLE || !atomic_cas(&inflight, id, IDLE)) {
+        return;
+    }
+    const int half = (int)id / KINDS;
+    atomic_set(&stuck[half], id % KINDS);
+    atomic_set(&done[half], BIT_MASK(KINDS));
+    LOG_WRN("half %d: no answer to request %d", half, (int)id % KINDS);
+    step_soon();
+}
+
+static const char kind_letter[KINDS] = {'B', 'C', 'X', 'V'};
+
+void dongle_half_info_progress(int half, char code[3], uint8_t *err) {
+    code[0] = code[1] = code[2] = '\0';
+    *err = 0;
+    if (half < 0 || half >= 2) {
+        return;
+    }
+    *err = (uint8_t)atomic_get(&last_err[half]);
+    const atomic_val_t id = atomic_get(&inflight);
+    const atomic_val_t was_stuck = atomic_get(&stuck[half]);
+    bool connected = false;
+    K_SPINLOCK(&lock) {
+        connected = conns[half] != NULL;
+    }
+    if (!connected) {
+        return;
+    }
+    if (was_stuck != NOT_STUCK) {
+        code[0] = 'T';
+        code[1] = kind_letter[was_stuck];
+    } else if (!atomic_test_bit(&ready, half)) {
+        code[0] = 'W';
+        code[1] = 'T';
+    } else if (id != IDLE && id / KINDS == half) {
+        code[0] = kind_letter[id % KINDS];
+        code[1] = (char)('1' + MIN(atomic_get(&tries[half][id % KINDS]), 8));
+    }
+}
 
 // The request for (half, kind) is over: done, or to be tried again later.
 static void finish(int half, int kind, bool ok) {
     if (!atomic_cas(&inflight, half * KINDS + kind, IDLE)) {
-        return; // not the one out (its half disconnected since)
+        return; // not the one out (its half disconnected, or it timed out)
     }
+    k_work_cancel_delayable(&timeout_work);
     if (ok || atomic_inc(&tries[half][kind]) + 1 >= RETRIES) {
         atomic_set_bit(&done[half], kind);
     } else {
@@ -224,6 +285,9 @@ static uint8_t notify_cb(struct bt_conn *conn, struct bt_gatt_subscribe_params *
     if (data == NULL) {
         // not subscribed (its CCC wasn't found), or no longer: the link has
         // gone (the subscription is volatile)
+        if (atomic_get(&inflight) == half * KINDS + kind) {
+            note_err(half, -ENOENT);
+        }
         params->value_handle = 0;
         finish(half, kind, false);
         return BT_GATT_ITER_STOP;
@@ -237,6 +301,7 @@ static void subscribed_cb(struct bt_conn *conn, uint8_t err, struct bt_gatt_subs
     int half, kind;
     find(params, &half, &kind);
     if (half >= 0) {
+        note_err(half, err);
         finish(half, kind, err == 0);
     }
 }
@@ -252,11 +317,13 @@ static void subscribe(struct bt_conn *conn, int half, int kind, uint16_t value_h
     w->sub.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
     w->sub.disc_params = &w->disc;
     atomic_set_bit(w->sub.flags, BT_GATT_SUBSCRIBE_FLAG_VOLATILE); // gone with the link
+    k_work_reschedule(&timeout_work, K_SECONDS(REQUEST_TIMEOUT_S)); // a new request: its own time
     const int err = bt_gatt_subscribe(conn, &w->sub);
     if (err == -EALREADY) {
         finish(half, kind, true);
     } else if (err) {
         LOG_DBG("half %d: no subscription to %d (%d)", half, kind, err);
+        note_err(half, err);
         finish(half, kind, false);
     }
     // else subscribed_cb, or notify_cb with no data, says how it went
@@ -275,6 +342,7 @@ static uint8_t read_cb(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_pa
     }
     if (err && err != BT_ATT_ERR_ATTRIBUTE_NOT_FOUND) {
         LOG_DBG("half %d: reading %d failed (0x%02x)", half, kind, err);
+        note_err(half, err);
         finish(half, kind, false);
         return BT_GATT_ITER_STOP;
     }
@@ -323,10 +391,12 @@ static void step_cb(struct k_work *work) {
         p->by_uuid.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
         p->by_uuid.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
         atomic_set(&inflight, half * KINDS + kind);
+        k_work_reschedule(&timeout_work, K_SECONDS(REQUEST_TIMEOUT_S));
         const int err = bt_gatt_read(conn, p);
         bt_conn_unref(conn);
         if (err) {
             LOG_DBG("half %d: couldn't read %d (%d)", half, kind, err);
+            note_err(half, err);
             finish(half, kind, false);
         }
         return; // one at a time
@@ -350,6 +420,8 @@ static void ready_cb(struct k_work *work) {
         atomic_clear(&tries[half][kind]);
     }
     atomic_clear(&not_before[half]);
+    atomic_set(&stuck[half], NOT_STUCK);
+    atomic_clear(&last_err[half]);
     atomic_set_bit(&ready, half);
     step_soon();
 }
@@ -382,6 +454,8 @@ static void connected(struct bt_conn *conn, uint8_t err) {
         conns[half] = bt_conn_ref(conn);
     }
     atomic_clear_bit(&ready, half);
+    atomic_set(&stuck[half], NOT_STUCK);
+    atomic_clear(&last_err[half]);
     atomic_set_bit(&awaiting_battery, half);
     k_work_reschedule(&ready_work[half], K_SECONDS(READY_AT_MOST_S));
 }
