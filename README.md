@@ -432,7 +432,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
 | profile circles, `USB`, `RPT`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
 | `L3 NAV 0009  ⌃⌥⇧⌘  51WPM` | the highest active layer and its name (shortened to fit), a bit for every active layer (hex); the modifiers as the Mac's symbols, lit while held (either side); typing speed (right-aligned, so the modifiers don't move as it changes) |
-| `DONGLE 3.31V 31C` | under the modifiers, the dongle's supply, its own 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it), and its chip temperature in °C (amber from 60), read every 5 s on a thread of their own, so a read that sticks blanks only those two. When one isn't known, amber `V:` or `C:` and why: `WT` not read yet, `TO` a read 2 s in and not back, `NB` not built in; for the volts `E1` the ADC isn't ready, `E2` setting up its channel failed, `E3` the read failed, `E4` the result didn't convert; for the temperature `E1` the sensor isn't ready, `E2` measuring failed, `E3` getting the value failed |
+| `L1.4 R0.9mW  3.31V 31C` | each half's average draw in milliwatts (below); under the modifiers, the dongle's supply, its own 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it), and its chip temperature in °C (amber from 60), read every 5 s on a thread of their own, so a read that sticks blanks only those two. When one isn't known, amber `V:` or `C:` and why: `WT` not read yet, `TO` a read 2 s in and not back, `NB` not built in; for the volts `E1` the ADC isn't ready, `E2` setting up its channel failed, `E3` the read failed, `E4` the result didn't convert; for the temperature `E1` the sensor isn't ready, `E2` measuring failed, `E3` getting the value failed |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
@@ -444,20 +444,31 @@ The link rows' columns:
 | --- | --- |
 | bars | signal strength, from `DBM` |
 | `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. The bars are a bar for every 10 dB above -90, in the same colour. Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
-| `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
+| `BAT` | the half's battery volts (`3.91`), coloured by its percent; the percent instead for a half whose firmware doesn't send volts. For the computer, the output (`BT1`, `USB`) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
 | `KEY` | key presses from that half since the dongle started; on `H`, both halves together. Shortened past 999: `1.2K`, `12K`, `1.2M` |
 | `CH` | for a half (blank on `H`), where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows beside the level while it is plugged in; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
 
-The halves don't report their battery voltage to the dongle, only the percent,
-so there is no voltage here. Key timings are taken when an event reaches the
+The `mW` figures are each half's average draw, to compare boards and
+settings (`src/dongle_half_drain.c`). Each half sends its battery voltage in
+the same message as its charging state (the last of ZMK's own readings, when
+it has moved by 4 mV). Once a minute the dongle turns it into the energy
+left, from a typical LiPo cell's curve and the battery's capacity
+(`CONFIG_HALF_BATTERY_MAH` in each `config/<keyboard>.conf`: Waterfowl and
+Urchin 90, Aurora Corne 200, Forager 120 mAh), and fits a straight line
+through those since the half was last unplugged (or the dongle started). It
+is `--` for the first hour, and readings from the first 20 minutes after
+unplugging don't count, while the voltage comes down from the charger's. It
+is an estimate: the voltage moves only a few millivolts for each percent
+through the middle of the charge, so it is steadier the longer it runs, and
+best for comparing halves over an evening or a day. Key timings are taken when an event reaches the
 dongle, and a half sends at most once per connection interval, so a bounce
-shorter than that (7.5 ms) can't be seen from here. The counts and the battery history start again
+shorter than that (7.5 ms) can't be seen from here. The counts and the draw start again
 when the dongle restarts.
 
 Only the dongle needs flashing to change these (the keymap and the screen
-code both live there), except the charging state, which the halves' own firmware sends: pick the build in
+code both live there), except the charging state and battery volts, which the halves' own firmware sends: pick the build in
 [Keyboard Writer](https://github.com/russwinch/keyboard-writer), see
 [Flashing](#flashing).
 

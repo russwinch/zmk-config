@@ -65,6 +65,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define POWER_STATE_CHARGE_SHIFT 5
 #define POWER_STATE_CHARGE_MASK (BIT_MASK(2) << POWER_STATE_CHARGE_SHIFT)
 #define CHARGE_STATE_CHARGING 1
+// Flags bit 0: an Identifier follows the power state (2, little endian):
+// the half's battery millivolts (src/half_charging.c).
+#define FLAG_IDENTIFIER BIT(0)
 
 #define READY_AFTER_BATTERY_S 2 // after ZMK's first battery reading of the half
 #define READY_AT_MOST_S 12      // after the half connected, reading or not
@@ -98,11 +101,16 @@ static atomic_t tries[2];
 static atomic_t last_err[2];   // ATT error, or 0x80 | errno; 0 for none
 static atomic_t not_before[2]; // uptime ms: a retry waits until then
 static atomic_t charging;      // bit per half
+static atomic_t millivolts[2]; // the half's battery, as last heard; 0 when not known
 #define IDLE (-1)
 static atomic_t inflight = ATOMIC_INIT(IDLE); // the half whose request is out, or IDLE
 
 bool dongle_half_charging(int half) {
     return half >= 0 && half < 2 && atomic_test_bit(&charging, half);
+}
+
+uint16_t dongle_half_millivolts(int half) {
+    return half >= 0 && half < 2 ? (uint16_t)atomic_get(&millivolts[half]) : 0;
 }
 
 void dongle_half_info_progress(int half, char code[3], uint8_t *err) {
@@ -204,6 +212,9 @@ static void take(int half, const void *data, uint16_t length) {
     if (data != NULL && length >= 3) {
         const uint16_t power = sys_get_le16((const uint8_t *)data + 1);
         on = FIELD_GET(POWER_STATE_CHARGE_MASK, power) == CHARGE_STATE_CHARGING;
+        if (length >= 5 && (((const uint8_t *)data)[0] & FLAG_IDENTIFIER)) {
+            atomic_set(&millivolts[half], sys_get_le16((const uint8_t *)data + 3));
+        }
     }
     const bool was = atomic_test_bit(&charging, half);
     atomic_set_bit_to(&charging, half, on);
@@ -392,6 +403,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     }
     k_work_cancel_delayable(&ready_work[half]);
     atomic_set(&stage[half], NOT_CONNECTED);
+    atomic_clear(&millivolts[half]);
     if (atomic_test_and_clear_bit(&charging, half)) {
         charging_changed();
     }

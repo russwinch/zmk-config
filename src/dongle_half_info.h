@@ -1,5 +1,5 @@
 /* What the dongle hears from each half (0 left, 1 right) beyond ZMK's own:
- * whether it is on USB power. src/dongle_half_info.c. */
+ * whether it is on USB power, and its battery's voltage. src/dongle_half_info.c. */
 #pragma once
 
 #include <stdbool.h>
@@ -7,6 +7,16 @@
 
 // On USB power, as last heard. False when not known.
 bool dongle_half_charging(int half);
+
+// The battery's millivolts, as last heard (the charger's while on USB
+// power). 0 when not known: not connected, or the half's firmware is from
+// before it sent them.
+uint16_t dongle_half_millivolts(int half);
+
+// The half's average draw in tenths of a milliwatt, from its voltage since it
+// was last unplugged (or the dongle started), or -1 until there is enough
+// of it. src/dongle_half_drain.c.
+int dongle_half_drain_tenths_mw(int half);
 
 // Where the dongle has got to with the half's charging state, for the Debug
 // screen: up to two letters in `code` ("" when the half isn't connected):

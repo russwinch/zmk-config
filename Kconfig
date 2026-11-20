@@ -81,17 +81,21 @@ config WATERFOWL_HALF_STATUS_SCREEN
       screen). Turned on for every left half with a nice!view in
       config/nice_view.conf.
 
-# --- Whether each half is charging (src/half_charging.c, src/dongle_half_info.c) ---
+# --- Whether each half is charging, and its battery's voltage and draw
+#     (src/half_charging.c, src/dongle_half_info.c, src/dongle_half_drain.c) ---
 
 config HALF_CHARGING_STATUS
     bool "Tell the dongle when this half is on USB power"
     default y
     depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL && USB_DEVICE_STACK && BT_BAS
     select BT_BAS_BLS
+    select BT_BAS_BLS_IDENTIFIER_PRESENT
     help
       Every half that is a peripheral (so also each right half without a
       dongle, where nothing reads it). Sets the battery service's Battery
-      Level Status to charging while on USB power, for the dongle's screens.
+      Level Status to charging while on USB power, for the dongle's screens,
+      and its Identifier field to the battery's millivolts, for the
+      dongle's figure of the half's draw.
 
 config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power"
@@ -107,6 +111,15 @@ config DONGLE_HALF_INFO
       and the dongle tells the left half's nice!view when the right half is
       charging. Also on a left half with a nice!view that is the central
       itself (no dongle), for the right half's bolt on its screen.
+
+config HALF_BATTERY_MAH
+    int "Capacity of each half's battery, mAh"
+    default 110
+    help
+      For the dongle's Debug screen, which turns each half's falling
+      voltage into an average draw in milliwatts. Set per keyboard in
+      config/<keyboard>.conf (read for its dongle too). Defined for every
+      build, so that setting it there is never an error.
 
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"

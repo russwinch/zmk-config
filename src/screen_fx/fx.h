@@ -156,6 +156,8 @@ struct fx_debug {
     char half_reads[2][3]; /* left, right: where the dongle has got with its charging state (see
                             * dongle_half_info_progress), "" when not connected */
     uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
+    uint16_t half_mv[2];   /* left, right: the battery's millivolts; 0 when not known */
+    int16_t drain_tenths_mw[2]; /* and its average draw, tenths of a milliwatt; -1 until known */
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
     bool dongle_temp_known;
     int8_t dongle_temp_c;  /* the dongle's chip temperature */

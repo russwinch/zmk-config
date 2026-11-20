@@ -7,6 +7,10 @@ target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_
 target_sources_ifdef(CONFIG_HALF_CHARGING_STATUS app PRIVATE src/half_charging.c)
 target_sources_ifdef(CONFIG_BATTERY_REFRESH_ON_UNPLUG app PRIVATE src/battery_refresh.c)
 target_sources_ifdef(CONFIG_DONGLE_HALF_INFO app PRIVATE src/dongle_half_info.c)
+# each half's draw, for the dongle's Debug screen
+if(CONFIG_DONGLE_HALF_INFO AND CONFIG_DONGLE_SCREEN_FX)
+  target_sources(app PRIVATE src/dongle_half_drain.c)
+endif()
 # The Debug screen's USB report counts: ZMK's two send functions are wrapped
 # at link time (src/dongle_usb_count.c).
 if(CONFIG_DONGLE_SCREEN_FX AND CONFIG_ZMK_USB)

@@ -716,6 +716,15 @@ static void read_debug(void) {
         dongle_why(d->dongle_mv_why, dongle_readings.mv_err, 2);
     }
     readings_wanted();
+    /* each half's battery volts and average draw */
+    for (int half = 0; half < 2; half++) {
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+        d->half_mv[half] = dongle_half_millivolts(half);
+        d->drain_tenths_mw[half] = (int16_t)dongle_half_drain_tenths_mw(half);
+#else
+        d->drain_tenths_mw[half] = -1;
+#endif
+    }
 #if IS_ENABLED(CONFIG_ZMK_USB)
     d->usb_reports = dongle_usb_reports_sent();
     d->usb_errors = (uint16_t)MIN(dongle_usb_reports_failed(), UINT16_MAX);

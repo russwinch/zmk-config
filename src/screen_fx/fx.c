@@ -1773,7 +1773,11 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, DBG_COL_CHARGE, 23, "CH", DBG_LABEL);
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
-        if (level) {
+        const unsigned mv = d->half_mv[half];
+        if (mv) {
+            /* the volts, when the half sends them: finer than the percent */
+            snprintf(buf, sizeof(buf), "%u.%02u", mv / 1000, mv % 1000 / 10);
+        } else if (level) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
             strcpy(buf, "--");
@@ -1835,8 +1839,22 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%04X", (unsigned)(d->layers & 0xffff));
     put(fb, x, 68, buf, DBG_LABEL);
 
-    /* the dongle's supply and its chip temperature (amber from 60), under the modifiers */
-    put(fb, 5, 76, "DONGLE", DBG_LABEL);
+    /* each half's average draw in milliwatts; under the modifiers, the
+     * dongle's supply and its chip temperature (amber from 60) */
+    x = 5;
+    for (int half = 0; half < 2; half++) {
+        const int tenths = d->drain_tenths_mw[half];
+        x = put(fb, x, 76, half ? "R" : "L", DBG_LABEL) + 1;
+        if (tenths < 0) {
+            strcpy(buf, "--");
+        } else if (tenths < 100) {
+            snprintf(buf, sizeof(buf), "%d.%d", tenths / 10, tenths % 10);
+        } else {
+            snprintf(buf, sizeof(buf), "%d", tenths / 10);
+        }
+        x = put(fb, x, 76, buf, tenths < 0 ? DBG_LABEL : DBG_TEXT) + 4;
+    }
+    put(fb, x - 3, 76, "mW", DBG_LABEL);
     dongle_volts(buf, sizeof(buf), d->dongle_mv);
     if (!d->dongle_mv && d->dongle_mv_why[0]) {
         snprintf(buf, sizeof(buf), "V:%s", d->dongle_mv_why);
