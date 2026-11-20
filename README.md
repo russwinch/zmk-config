@@ -314,11 +314,13 @@ screensavers', and those of the status text over them.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds, a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
+| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), with a bolt to its left while the half is on USB power, signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds, a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |
 | under the keys | a level meter for each column of keys, as on a hi-fi: a key pressed in the column sends its bar up (and its neighbours' a little), more keys send it higher, to amber and red at the top, and it falls back in about two seconds. A white mark stays at the highest each bar reached for a moment, then falls after it |
+
+Nothing on it moves as the readings change: each block has a place for the bolt, the battery with the signal bars under it, and the percent with the dBm under it, with room for `100%`; the typing speed has room for three figures.
 
 ##### Encoder knobs
 
@@ -379,10 +381,10 @@ all of them, the screensavers too, they sit low in the bottom corners, clear
 of the panel's rounding (on Tracker, under the line across the bottom); and Tracker
 adds a gauge for each battery up the sides.
 
-A half on USB power shows a bolt to the right of its level, on every screen
-with text, the level staying where it is with or without it (on the
-animations the right half's level leaves room for it at the edge): flashing
-while the level is under 100, solid at 100. While it charges the level reads high, from the
+A half on USB power shows a bolt: to the left of its battery on the Keys
+screen and to the right of its level on the Debug screen, neither moving
+for it; over the animations and the screensavers, in the place of its level.
+It flashes once a second while the level is under 100 and is solid at 100. While it charges the level reads high, from the
 charging voltage, so take it as rough; Tracker's gauge shows it too. Each
 half says it is on USB power through
 the Battery Level Status of Bluetooth's standard battery service
@@ -400,9 +402,9 @@ plugged in, not still charging: a half can't tell when its charger has
 finished, so the solid bolt at 100 is only the reading reaching the top. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
 once-a-minute reading, so the charger's level doesn't stay up for long. A half on older firmware just
-never shows the bolt. The screensavers show none of
-this: only a small battery in the corner of a half at 15% or under, with the
-same colours and flashing. The screen to start on
+never shows the bolt. The screensavers show only that bolt, or a small
+battery in the corner of a half at 15% or under, with the same colours and
+flashing. The screen to start on
 before one has been chosen and the typing speed that counts as flat out are set in
 `config/prospector_adapter.conf`.
 

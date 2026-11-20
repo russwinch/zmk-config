@@ -2001,6 +2001,15 @@ static void battery_icon(uint8_t *fb, int x, int y, int level, uint8_t color) {
     }
 }
 
+/*
+ * Where things go across a block of the Keys screen, from its left edge, so
+ * that nothing moves as readings change: a charging bolt, the battery with
+ * the signal bars under it, then the level with the dBm under it, both
+ * left-aligned with room for four characters ("100%", "-100").
+ */
+#define KEYS_ICON_X 7  /* the battery, and the bars: after the bolt (5) and a gap */
+#define KEYS_TEXT_X 20 /* the level, and the dBm: after the battery (10) and a gap */
+
 /* One of the three blocks' signal: the bars, the dBm and the history.
  * `place` 0 on the left, 1 in the middle, 2 on the right. */
 static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
@@ -2013,9 +2022,9 @@ static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
         snprintf(dbm, sizeof(dbm), "%d", link->rssi);
         dbm_color = signal_color(link);
     }
-    const int wide = 7 + 3 + 5 * (int)strlen(dbm), left = keys_block_x(place) + (SIGNAL_W - wide) / 2;
-    signal_bars(fb, left, 15, link);
-    put(fb, left + 10, 15, dbm, dbm_color);
+    const int left = keys_block_x(place);
+    signal_bars(fb, left + KEYS_ICON_X, 15, link);
+    put(fb, left + KEYS_TEXT_X, 15, dbm, dbm_color);
     spark(fb, keys_block_x(place), 24, keys_signal[place], SIGNAL_W, SIGNAL_H, DBG_TEXT);
 }
 
@@ -2049,12 +2058,11 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         history_add(keys_speed, SIGNAL_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
     }
 
-    /* the halves: a battery and its level, in the middle of the block as
-     * everything in the three is */
+    /* the halves: a battery and its level, in their places in the block */
     for (int half = 0; half < 2; half++) {
         const bool charging = in->status && in->status->charging[half];
-        /* while charging: the level (reading high, the charging voltage)
-         * and a bolt to its right, flashing until 100 */
+        /* while charging: a bolt to the left of the battery, flashing until
+         * 100, and the level (reading high, the charging voltage) */
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const uint8_t color = level == 0                 ? DBG_LABEL
                               : level <= FX_LOW_BATTERY  ? DBG_BAD
@@ -2065,16 +2073,13 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         } else {
             snprintf(buf, sizeof(buf), "%u%%", level);
         }
-        /* centred with room for the bolt, so the level stays put whether
-         * it is there or not */
-        const int wide = 10 + 3 + 5 * (int)strlen(buf), bolt_room = 2 + 5;
-        const int left = keys_block_x(half * 2) + (SIGNAL_W - wide - bolt_room) / 2;
+        const int left = keys_block_x(half * 2);
         /* a low battery flashes, unless it is charging (its bolt does) */
         if (charging || !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
-            battery_icon(fb, left, 6, level, color);
-            put(fb, left + 13, 6, buf, color);
+            battery_icon(fb, left + KEYS_ICON_X, 6, level, color);
+            put(fb, left + KEYS_TEXT_X, 6, buf, color);
         }
-        charging_bolt(fb, left + wide + 2, 6, in->status, half);
+        charging_bolt(fb, left, 6, in->status, half);
         keys_link(fb, half * 2, links[half * 2]);
     }
     /* the computer */
@@ -2084,9 +2089,11 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
          * where the halves have their signal */
         put(fb, (FX_W - 15 + 1) / 2, 6, "USB",
             d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
-        snprintf(buf, sizeof(buf), "%u", d->wpm);
-        const int left = (FX_W - (5 * (int)strlen(buf) + 1 + 15)) / 2;
-        put(fb, put(fb, left, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT) + 1, 15, "WPM", DBG_LABEL);
+        /* the speed right-aligned in room for three figures, so "WPM" stays put */
+        snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+        const int wpm_x = (FX_W - (15 + 1 + 15)) / 2 + 15 + 1;
+        put_right(fb, wpm_x - 1, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
+        put(fb, wpm_x, 15, "WPM", DBG_LABEL);
         int full = SPEED_FULL;
         for (int i = 0; i < SIGNAL_W; i++) {
             full = keys_speed[i] > full ? keys_speed[i] : full;

@@ -55,8 +55,8 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
-    bool charging[2];       /* left, right: on USB power: a bolt to the right of its level (which
-                             * reads high while charging: the charging voltage) */
+    bool charging[2];       /* left, right: on USB power: a bolt beside its level, or over the animations
+                             * in its place (the level reads high while charging: the charging voltage) */
     bool bolt_off[2];       /* left, right: charging, below 100, and the bolt in the off half of its flash */
     bool host_connected;    /* the computer */
     bool usb;               /* typing over USB, not Bluetooth */
@@ -199,9 +199,10 @@ const struct fx_theme *fx_theme(int fx);
  * in bit 4), or NULL if there is none. */
 const uint8_t *fx_glyph_rows(char c);
 
-/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown to the
- * right of the level of a half on USB power, the level staying where it is:
- * flashing while under 100, solid at 100 (fx_status.bolt_off). */
+/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown for a
+ * half on USB power (beside its level on the Keys and Debug screens, in its
+ * place over the animations): flashing while under 100, solid at 100
+ * (fx_status.bolt_off). */
 #define FX_GLYPH_BOLT '\x7f'
 #define FX_BOLT "\x7f"
 

@@ -301,7 +301,7 @@ int main(int argc, char **argv) {
 
         status.host_connected = at < 0.55f || at >= 0.8f;
         status.usb = at >= 0.8f;
-        status.charging[0] = at >= 0.8f; /* the left half plugged in too: a flashing bolt by its level */
+        status.charging[0] = at >= 0.8f; /* the left half plugged in too: its bolt, solid at 100 */
         status.bolt_off[0] = status.charging[0] && status.battery[0] < 100 && (int)(f * 1000 / fps) % 1000 >= 600;
         status.profile_connected = at >= 0.8f && at < 0.88f;
         status.profile = at < 0.3f ? 1 : at < 0.88f ? 2 : 3;

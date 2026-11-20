@@ -245,10 +245,8 @@ static void draw_battery(const struct area *area, int x, int y, uint8_t percent,
     }
 }
 
-/* A battery level, "-" when its half isn't connected or hasn't said. In the
- * ink colour while the half is on USB power (its bolt flashes, not a low
- * level). */
-static uint8_t level_text(char *p, uint8_t percent, bool connected, bool charging) {
+/* A battery level, "-" when its half isn't connected or hasn't said. */
+static uint8_t level_text(char *p, uint8_t percent, bool connected) {
     if (!connected || percent == 0) {
         strcpy(p, "-");
         return INK;
@@ -262,8 +260,7 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected, bool chargin
     }
     *p++ = '0' + percent % 10;
     *p = '\0';
-    return charging                    ? INK
-           : percent <= FX_LOW_BATTERY  ? LOW
+    return percent <= FX_LOW_BATTERY    ? LOW
            : percent <= FX_WARN_BATTERY ? WARN
                                         : INK;
 }
@@ -279,19 +276,25 @@ static void render(const struct fx_status *status) {
     const lv_font_t *font = &FR_Regular_36;
     const int top = foot - (font->line_height - font->base_line);
     const int pixel_top = foot - 6 * PIXEL_SCALE; /* the digits leave the 7th row empty */
-    /* the bolt, in the pixel letters (a size up beside the Field font): to
-     * the right of the level, which stays where it is whether the bolt is
-     * there or not, so the right half's level leaves room for it at the
-     * edge. "100" and the bolt fit the area in the pixel letters, which every
-     * screen with numbers uses; beside the Field font's "100" the bolt would
-     * be cut short. */
+    /* a half on USB power has a bolt in the place of its level, in the pixel
+     * letters (a size up beside the Field font), flashing until 100 */
     const int bolt_scale = pixel_font ? PIXEL_SCALE : PIXEL_SCALE + 1;
-    const int bolt_gap = bolt_scale, bolt_room = bolt_gap + 5 * bolt_scale; /* its dots fill all 5 columns */
     char level[4];
     for (int half = 0; half < 2; half++) {
         const struct area *area = half ? &right : &left;
         const bool charging = status->half_connected[half] && status->charging[half];
-        const uint8_t color = level_text(level, status->battery[half], status->half_connected[half], charging);
+        const uint8_t color = level_text(level, status->battery[half], status->half_connected[half]);
+        if (charging) {
+            /* on a screensaver, the size of its low battery, where that would be */
+            const int scale = dots ? 2 : bolt_scale, wide = 5 * scale;
+            const int top = dots ? foot - (pixel_font ? 9 : 12) - 7 * scale / 2 : foot - 6 * scale;
+            if (!status->bolt_off[half]) {
+                draw_pixel_text(area, FX_BOLT, half ? PANEL_W - SIDE - inset - wide : SIDE + inset, top, scale, INK,
+                                true);
+                add_shadow(area);
+            }
+            continue;
+        }
         if (dots) {
             /* where the level's outer digit would be, at half its height */
             if (color != INK) {
@@ -303,14 +306,11 @@ static void render(const struct fx_status *status) {
         }
         const int wide = pixel_font ? draw_pixel_text(area, level, 0, 0, PIXEL_SCALE, 0, false)
                                     : draw_text(area, font, level, 0, 0, -1, 0, false);
-        const int x = half ? PANEL_W - SIDE - inset - bolt_room - wide : SIDE + inset;
+        const int x = half ? PANEL_W - SIDE - inset - wide : SIDE + inset;
         if (pixel_font) {
             draw_pixel_text(area, level, x, pixel_top, PIXEL_SCALE, color, true);
         } else {
             draw_text(area, font, level, x, top, -1, color, true);
-        }
-        if (charging && !status->bolt_off[half]) {
-            draw_pixel_text(area, FX_BOLT, x + wide + bolt_gap, foot - 6 * bolt_scale, bolt_scale, INK, true);
         }
         add_shadow(area);
     }
