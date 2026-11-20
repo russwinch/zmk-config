@@ -10,7 +10,6 @@ target_sources_ifdef(CONFIG_HALF_TX_POWER app PRIVATE src/half_tx_power.c)
 target_sources_ifdef(CONFIG_HALF_VOLTAGE app PRIVATE src/half_voltage.c)
 target_sources_ifdef(CONFIG_BATTERY_REFRESH_ON_UNPLUG app PRIVATE src/battery_refresh.c)
 target_sources_ifdef(CONFIG_DONGLE_HALF_INFO app PRIVATE src/dongle_half_info.c)
-target_sources_ifdef(CONFIG_DONGLE_CLEAN_START app PRIVATE src/dongle_clean_start.c)
 # The Debug screen's USB report counts: ZMK's two send functions are wrapped
 # at link time (src/dongle_usb_count.c).
 if(CONFIG_DONGLE_SCREEN_FX AND CONFIG_ZMK_USB)
