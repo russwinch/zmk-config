@@ -15,8 +15,16 @@
  * types nothing. So this starts only once ZMK is done with that half (its
  * first battery reading has come, the last thing ZMK asks for, and two
  * seconds more; or 12 s after it connected, if no reading comes), and has at
- * most one request out at a time, for both halves together: the read, or the
- * subscription and the finding of its CCC.
+ * most one request out at a time, for both halves together: the read, then
+ * the subscription.
+ *
+ * No discovery. The read by UUID gives the value's handle, and the CCC is
+ * the attribute after it: Zephyr's battery service (subsys/bluetooth/
+ * services/bas/bas.c, on every half) declares the characteristic and then
+ * its CCC, and a characteristic is two attributes, its declaration and its
+ * value. So the subscription is one write. Letting Zephyr find the CCC
+ * instead starts a descriptor discovery, the thing that collided with ZMK's
+ * own in zmkfirmware/zmk#3156 and left a half connected but not typing.
  *
  * A request with no answer within REQUEST_TIMEOUT_S leaves that half alone
  * until it next connects (Zephyr owns the request's parameters until it
@@ -81,7 +89,6 @@ enum stage {
 struct half {
     struct bt_gatt_read_params read;
     struct bt_gatt_subscribe_params sub;
-    struct bt_gatt_discover_params disc; // for the subscription to find the CCC
 };
 
 static struct half halves[2];
@@ -213,8 +220,8 @@ static uint8_t notify_cb(struct bt_conn *conn, struct bt_gatt_subscribe_params *
         return BT_GATT_ITER_STOP;
     }
     if (data == NULL) {
-        // not subscribed (no CCC found, or writing it failed), or no longer:
-        // the link has gone (the subscription is volatile)
+        // not subscribed (writing the CCC failed), or no longer: the link
+        // has gone (the subscription is volatile)
         params->value_handle = 0;
         if (atomic_get(&inflight) == half) {
             note_err(half, -ENOENT);
@@ -243,9 +250,7 @@ static void subscribe(struct bt_conn *conn, int half, uint16_t value_handle) {
     h->sub.subscribe = subscribed_cb;
     h->sub.value = BT_GATT_CCC_NOTIFY;
     h->sub.value_handle = value_handle;
-    h->sub.ccc_handle = 0; // found by Zephyr, from the value on
-    h->sub.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
-    h->sub.disc_params = &h->disc;
+    h->sub.ccc_handle = value_handle + 1; // the attribute after the value (see the top)
     atomic_set_bit(h->sub.flags, BT_GATT_SUBSCRIBE_FLAG_VOLATILE); // gone with the link
     atomic_set(&stage[half], SUBSCRIBING);
     k_work_reschedule(&timeout_work, K_SECONDS(REQUEST_TIMEOUT_S)); // a new request: its own time
@@ -256,7 +261,7 @@ static void subscribe(struct bt_conn *conn, int half, uint16_t value_handle) {
         note_err(half, err);
         finish(half, FAILED, true);
     }
-    // else subscribed_cb, or notify_cb with no data, says how it went
+    // else subscribed_cb says how the write went
 }
 
 // Called once: with the value (and its handle in by_uuid), or with no data

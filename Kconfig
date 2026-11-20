@@ -96,10 +96,11 @@ config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power"
     default y
     depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
-    depends on BT_GATT_AUTO_DISCOVER_CCC && ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
+    depends on ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     help
       Read once a half is connected and ZMK is done setting it up, one
-      request at a time, then subscribed to (the half sends only changes).
+      request at a time, then subscribed to (the half sends only changes),
+      with no discovery: see src/dongle_half_info.c.
       The dongle's screens then show a bolt beside a charging half's level.
 
 config BATTERY_REFRESH_ON_UNPLUG
