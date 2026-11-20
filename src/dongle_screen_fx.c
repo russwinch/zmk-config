@@ -323,6 +323,7 @@ static void saver_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(saver_work, saver_cb);
 
 #define SPIN_FRAME_MS 150
+#define BOLT_FLASH_MS 1000 /* a charging half's bolt: on three fifths of this, off the rest */
 
 static void read_status(void) {
     for (int half = 0; half < 2; half++) {
@@ -334,6 +335,9 @@ static void read_status(void) {
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         status.charging[half] = dongle_half_charging(half);
+        /* the bolt beside it flashes until the level reads 100 */
+        status.bolt_off[half] = status.charging[half] && level > 0 && level < 100 &&
+                                k_uptime_get_32() % BOLT_FLASH_MS >= BOLT_FLASH_MS * 3 / 5;
         /* a spinner frame every SPIN_FRAME_MS while just unplugged */
         status.settling[half] =
             dongle_half_settling(half) ? (uint8_t)(1 + k_uptime_get_32() / SPIN_FRAME_MS % FX_SPIN_FRAMES) : 0;

@@ -55,7 +55,9 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
-    bool charging[2];       /* left, right: on USB power, its level not worth showing */
+    bool charging[2];       /* left, right: on USB power: a bolt beside its level (which reads high
+                             * while charging: the charging voltage) */
+    bool bolt_off[2];       /* left, right: charging, below 100, and the bolt in the off half of its flash */
     uint8_t settling[2];    /* left, right: just unplugged, its level still the charger's:
                              * a spinner frame (FX_SPIN_FRAMES), 0 when not */
     bool host_connected;    /* the computer */
@@ -200,9 +202,9 @@ const struct fx_theme *fx_theme(int fx);
  * in bit 4), or NULL if there is none. */
 const uint8_t *fx_glyph_rows(char c);
 
-/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown for a
- * half on USB power in place of its battery level, which then reads near 100
- * whatever the charge. */
+/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown beside
+ * the level of a half on USB power: flashing while under 100, solid at 100
+ * (fx_status.bolt_off), and alone while no level is known. */
 #define FX_GLYPH_BOLT '\x7f'
 #define FX_BOLT "\x7f"
 

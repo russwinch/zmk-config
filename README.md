@@ -379,9 +379,11 @@ all of them, the screensavers too, they sit low in the bottom corners, clear
 of the panel's rounding (on Tracker, under the line across the bottom); and Tracker
 adds a gauge for each battery up the sides.
 
-A half on USB power shows a bolt instead of its level, on every screen
-(Tracker's gauge for it goes empty): while it charges, its reading is the
-charger's voltage, near 100 whatever the charge. Each half says so through
+A half on USB power shows a bolt beside its level, on every screen with
+text: flashing while the level is under 100, solid at 100 (the bolt alone
+until a level is known). While it charges the level reads high, from the
+charging voltage, so take it as rough; Tracker's gauge shows it too. Each
+half says it is on USB power through
 the Battery Level Status of Bluetooth's standard battery service
 (`src/half_charging.c`). The dongle reads it once a half has connected and
 ZMK has finished setting the link up, then subscribes (`src/dongle_half_info.c`),
@@ -395,7 +397,7 @@ every 5 minutes and sent only when it moves by a degree, and so does the
 power its radio transmits at, as the standard Tx Power Service
 (`src/half_tx_power.c`), read once as it is fixed when the half is built. The bolt means
 plugged in, not still charging: a half can't tell when its charger has
-finished. A second after it is unplugged (and again at 10 and 30), every half reads
+finished, so the solid bolt at 100 is only the reading reaching the top. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
 once-a-minute reading; until that reading reaches the dongle (3 seconds at
 most) a spinner stands in for the level, which is still the charger's. A half on older firmware just
