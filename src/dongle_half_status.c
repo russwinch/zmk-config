@@ -1,9 +1,11 @@
 /*
  * Prospector dongle: tell the halves the active Bluetooth profile and the
- * other half's battery, for the left half's nice!view (src/half_status.h).
+ * other half's battery (and whether it is on USB power), for the left half's
+ * nice!view (src/half_status.h).
  *
  * Sent shortly after anything relevant changes (profile, output, either
- * half's battery, which also fires when a half connects), and again every
+ * half's battery, which also fires when a half connects, or whether a half
+ * is charging, from src/dongle_half_info.c), and again every
  * WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S as a catch-all (e.g. a write that
  * went out before a just-connected half was ready for it).
  */
@@ -22,6 +24,9 @@
 #include <zmk/split/central.h>
 
 #include "half_status.h"
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+#include "dongle_half_info.h"
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -37,6 +42,14 @@ static uint8_t other_battery(uint8_t source) {
         return HALF_STATUS_OTHER_BATTERY_UNKNOWN;
     }
     return level;
+}
+
+static bool other_charging(uint8_t source) {
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+    return dongle_half_charging(source ^ 1);
+#else
+    return false;
+#endif
 }
 
 static uint32_t profiles_param(void) {
@@ -62,7 +75,8 @@ static void send_status(struct k_work *work) {
     for (uint8_t source = 0; source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; source++) {
         struct zmk_behavior_binding binding = {
             .behavior_dev = HALF_STATUS_BEHAVIOR_NAME,
-            .param1 = common | FIELD_PREP(HALF_STATUS_OTHER_BATTERY_MASK, other_battery(source)),
+            .param1 = common | FIELD_PREP(HALF_STATUS_OTHER_BATTERY_MASK, other_battery(source)) |
+                      (other_charging(source) ? HALF_STATUS_OTHER_CHARGING : 0),
             .param2 = param2,
         };
         struct zmk_behavior_binding_event event = {
@@ -80,10 +94,12 @@ static void send_status(struct k_work *work) {
     k_work_schedule(&send_work, K_SECONDS(CONFIG_WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S));
 }
 
+// short delay: batches bursts of events and gives a half that has just
+// connected a moment to finish setting up the split link
+void dongle_half_status_send_soon(void) { k_work_reschedule(&send_work, K_MSEC(1000)); }
+
 static int half_status_listener(const zmk_event_t *eh) {
-    // short delay: batches bursts of events and gives a half that has just
-    // connected a moment to finish setting up the split link
-    k_work_reschedule(&send_work, K_MSEC(1000));
+    dongle_half_status_send_soon();
     return ZMK_EV_EVENT_BUBBLE;
 }
 

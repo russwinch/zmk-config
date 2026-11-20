@@ -245,38 +245,10 @@ static void draw_battery(const struct area *area, int x, int y, uint8_t percent,
     }
 }
 
-/* A battery level, "-" when its half isn't connected or hasn't said, a
- * spinner when just unplugged. On USB power, the level and a bolt on its
- * inner side (`bolt_first` for the right half), a space for the bolt in the
- * off half of its flash; the bolt alone while no level is known. */
-static uint8_t level_text(char *p, uint8_t percent, bool connected, bool charging, bool bolt_off, bool bolt_first,
-                          uint8_t settling) {
-    if (connected && charging) {
-        const char bolt = bolt_off ? ' ' : FX_GLYPH_BOLT;
-        if (percent == 0) {
-            strcpy(p, FX_BOLT);
-            return INK;
-        }
-        if (bolt_first) {
-            *p++ = bolt;
-        }
-        if (percent >= 100) {
-            *p++ = '1';
-            *p++ = '0';
-        } else if (percent >= 10) {
-            *p++ = '0' + percent / 10;
-        }
-        *p++ = '0' + percent % 10;
-        if (!bolt_first) {
-            *p++ = bolt;
-        }
-        *p = '\0';
-        return INK;
-    }
-    if (connected && settling) {
-        fx_spin_text(p, settling); /* still the charger's, until read again */
-        return INK;
-    }
+/* A battery level, "-" when its half isn't connected or hasn't said. In the
+ * ink colour while the half is on USB power (its bolt flashes, not a low
+ * level). */
+static uint8_t level_text(char *p, uint8_t percent, bool connected, bool charging) {
     if (!connected || percent == 0) {
         strcpy(p, "-");
         return INK;
@@ -290,7 +262,10 @@ static uint8_t level_text(char *p, uint8_t percent, bool connected, bool chargin
     }
     *p++ = '0' + percent % 10;
     *p = '\0';
-    return percent <= FX_LOW_BATTERY ? LOW : percent <= FX_WARN_BATTERY ? WARN : INK;
+    return charging                    ? INK
+           : percent <= FX_LOW_BATTERY  ? LOW
+           : percent <= FX_WARN_BATTERY ? WARN
+                                        : INK;
 }
 
 /* Work the masks out. */
@@ -304,13 +279,19 @@ static void render(const struct fx_status *status) {
     const lv_font_t *font = &FR_Regular_36;
     const int top = foot - (font->line_height - font->base_line);
     const int pixel_top = foot - 6 * PIXEL_SCALE; /* the digits leave the 7th row empty */
-    char level[5];
+    /* the bolt, in the pixel letters (a size up beside the Field font): to
+     * the right of the level, which stays where it is whether the bolt is
+     * there or not, so the right half's level leaves room for it at the
+     * edge. "100" and the bolt fit the area in the pixel letters, which every
+     * screen with numbers uses; beside the Field font's "100" the bolt would
+     * be cut short. */
+    const int bolt_scale = pixel_font ? PIXEL_SCALE : PIXEL_SCALE + 1;
+    const int bolt_gap = bolt_scale, bolt_room = bolt_gap + 5 * bolt_scale; /* its dots fill all 5 columns */
+    char level[4];
     for (int half = 0; half < 2; half++) {
         const struct area *area = half ? &right : &left;
-        const uint8_t color =
-            level_text(level, status->battery[half], status->half_connected[half], status->charging[half],
-                       status->bolt_off[half], half == 1, status->settling[half]);
-        const bool bolted = status->half_connected[half] && status->charging[half];
+        const bool charging = status->half_connected[half] && status->charging[half];
+        const uint8_t color = level_text(level, status->battery[half], status->half_connected[half], charging);
         if (dots) {
             /* where the level's outer digit would be, at half its height */
             if (color != INK) {
@@ -320,18 +301,16 @@ static void render(const struct fx_status *status) {
             }
             continue;
         }
-        /* the bolt is only in the pixel letters: a size up for the Field
-         * font when alone; a level with a bolt is all pixel letters, at the
-         * size that fits "100" and the bolt in the area */
-        const bool pixels = pixel_font || bolted || fx_glyph_is_symbol(level[0]);
-        const int scale = pixel_font || (bolted && level[1] != '\0') ? PIXEL_SCALE : PIXEL_SCALE + 1;
-        const int wide = pixels ? draw_pixel_text(area, level, 0, 0, scale, 0, false)
-                                : draw_text(area, font, level, 0, 0, -1, 0, false);
-        const int x = half ? PANEL_W - SIDE - inset - wide : SIDE + inset;
-        if (pixels) {
-            draw_pixel_text(area, level, x, foot - 6 * scale, scale, color, true);
+        const int wide = pixel_font ? draw_pixel_text(area, level, 0, 0, PIXEL_SCALE, 0, false)
+                                    : draw_text(area, font, level, 0, 0, -1, 0, false);
+        const int x = half ? PANEL_W - SIDE - inset - bolt_room - wide : SIDE + inset;
+        if (pixel_font) {
+            draw_pixel_text(area, level, x, pixel_top, PIXEL_SCALE, color, true);
         } else {
             draw_text(area, font, level, x, top, -1, color, true);
+        }
+        if (charging && !status->bolt_off[half]) {
+            draw_pixel_text(area, FX_BOLT, x + wide + bolt_gap, foot - 6 * bolt_scale, bolt_scale, INK, true);
         }
         add_shadow(area);
     }
@@ -382,8 +361,6 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
         drawn.charging[1] = status->charging[1];
         drawn.bolt_off[0] = status->bolt_off[0];
         drawn.bolt_off[1] = status->bolt_off[1];
-        drawn.settling[0] = status->settling[0];
-        drawn.settling[1] = status->settling[1];
         drawn.host_connected = status->host_connected;
         drawn.usb = status->usb;
         drawn.host_open = status->host_open;
@@ -404,7 +381,7 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
     uint8_t now[OVERLAY_AREAS];
     for (int half = 0; half < 2; half++) {
         /* a low battery flashes, a flat one fast */
-        const bool off = drawn.half_connected[half] && !drawn.charging[half] && !drawn.settling[half] &&
+        const bool off = drawn.half_connected[half] && !drawn.charging[half] &&
                          fx_battery_flash_off(drawn.battery[half], ms);
         now[half ? OVERLAY_RIGHT : OVERLAY_LEFT] = off ? 0 : FULL;
     }

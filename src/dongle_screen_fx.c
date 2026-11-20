@@ -59,7 +59,10 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
+#include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/drivers/sensor.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc-v2.h> /* NRF_SAADC_VDD */
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
@@ -319,7 +322,6 @@ static K_WORK_DELAYABLE_DEFINE(frame_work, frame_cb);
 static void saver_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(saver_work, saver_cb);
 
-#define SPIN_FRAME_MS 150
 #define BOLT_FLASH_MS 1000 /* a charging half's bolt: on three fifths of this, off the rest */
 
 static void read_status(void) {
@@ -335,9 +337,6 @@ static void read_status(void) {
         /* the bolt beside it flashes until the level reads 100 */
         status.bolt_off[half] = status.charging[half] && level > 0 && level < 100 &&
                                 k_uptime_get_32() % BOLT_FLASH_MS >= BOLT_FLASH_MS * 3 / 5;
-        /* a spinner frame every SPIN_FRAME_MS while just unplugged */
-        status.settling[half] =
-            dongle_half_settling(half) ? (uint8_t)(1 + k_uptime_get_32() / SPIN_FRAME_MS % FX_SPIN_FRAMES) : 0;
 #endif
     }
 
@@ -512,6 +511,101 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) 
     k_fatal_halt(reason);
 }
 
+/* The dongle's own supply, for the Debug screen: the XIAO's 3.3 V regulator,
+ * read by the SAADC on its VDD input (channel 6, which nothing else in this
+ * firmware sets up). The USB 5 V isn't wired to anything the chip can
+ * measure, only detected. */
+#if IS_ENABLED(CONFIG_ADC) && DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
+#define VDD_CHANNEL 6
+static uint16_t read_vdd_mv(void) {
+    static const struct device *const adc = DEVICE_DT_GET(DT_NODELABEL(adc));
+    static bool set_up;
+    if (!device_is_ready(adc)) {
+        return 0;
+    }
+    if (!set_up) {
+        const struct adc_channel_cfg cfg = {
+            .gain = ADC_GAIN_1_6,
+            .reference = ADC_REF_INTERNAL,
+            .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
+            .channel_id = VDD_CHANNEL,
+            .input_positive = NRF_SAADC_VDD,
+        };
+        if (adc_channel_setup(adc, &cfg) != 0) {
+            return 0;
+        }
+        set_up = true;
+    }
+    int16_t raw = 0;
+    const struct adc_sequence seq = {
+        .channels = BIT(VDD_CHANNEL),
+        .buffer = &raw,
+        .buffer_size = sizeof(raw),
+        .resolution = 12,
+    };
+    if (adc_read(adc, &seq) != 0) {
+        return 0;
+    }
+    int32_t mv = raw;
+    if (adc_raw_to_millivolts(adc_ref_internal(adc), ADC_GAIN_1_6, 12, &mv) != 0 || mv <= 0) {
+        return 0;
+    }
+    return (uint16_t)mv;
+}
+#else
+static uint16_t read_vdd_mv(void) { return 0; }
+#endif
+
+/* The dongle's own chip temperature, for the Debug screen. */
+#if IS_ENABLED(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_NODELABEL(temp), okay)
+static bool read_temp(int8_t *celsius) {
+    static const struct device *const temp = DEVICE_DT_GET(DT_NODELABEL(temp));
+    struct sensor_value v;
+    if (!device_is_ready(temp) || sensor_sample_fetch(temp) != 0 ||
+        sensor_channel_get(temp, SENSOR_CHAN_DIE_TEMP, &v) != 0) {
+        return false;
+    }
+    *celsius = (int8_t)CLAMP(v.val1, INT8_MIN, INT8_MAX);
+    return true;
+}
+#else
+static bool read_temp(int8_t *celsius) { return false; }
+#endif
+
+/*
+ * The dongle's own supply and temperature, for the Debug screen, on a thread
+ * of their own: once these were read with the readings below, and a read
+ * that never came back was the likeliest thing to have stuck them all after
+ * a flash (build 210 took them out). Here a stuck one blanks only these two.
+ * Every few seconds while the readings are wanted.
+ */
+#define DONGLE_READINGS_EVERY_MS 5000
+#define DONGLE_READINGS_STACK 1536
+
+static struct {
+    uint16_t mv;
+    bool temp_known;
+    int8_t temp_c;
+} dongle_readings; /* under debug_lock */
+static atomic_t dongle_read_at; /* uptime ms of the last reading, 0 before the first */
+
+static K_THREAD_STACK_DEFINE(dongle_readings_stack, DONGLE_READINGS_STACK);
+static struct k_work_q dongle_readings_q;
+static void dongle_readings_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(dongle_readings_work, dongle_readings_cb);
+
+static void dongle_readings_cb(struct k_work *work) {
+    int8_t temp_c = 0;
+    const bool temp_known = read_temp(&temp_c);
+    const uint16_t mv = read_vdd_mv();
+    K_SPINLOCK(&debug_lock) {
+        dongle_readings.mv = mv;
+        dongle_readings.temp_known = temp_known;
+        dongle_readings.temp_c = temp_c;
+    }
+    atomic_set(&dongle_read_at, (atomic_val_t)MAX(k_uptime_get_32(), 1));
+}
+
 /*
  * The readings that ask something else and wait for the answer: each link's
  * signal strength (a command to the radio), and how far the dongle has got
@@ -569,6 +663,13 @@ static void readings_cb(struct k_work *work) {
 static void readings_wanted(void) {
     atomic_set(&readings_until, (atomic_val_t)(k_uptime_get_32() + 2 * READINGS_EVERY_MS));
     k_work_schedule_for_queue(&readings_q, &readings_work, K_NO_WAIT); /* no change if already due */
+    /* the dongle's own: the first at once, then every few seconds (no change if already due) */
+    const uint32_t read_at = (uint32_t)atomic_get(&dongle_read_at);
+    const uint32_t since = k_uptime_get_32() - read_at;
+    k_work_schedule_for_queue(&dongle_readings_q, &dongle_readings_work,
+                              read_at == 0 || since >= DONGLE_READINGS_EVERY_MS
+                                  ? K_NO_WAIT
+                                  : K_MSEC(DONGLE_READINGS_EVERY_MS - since));
 }
 
 /* A link as read, over what the Debug screen keeps of it (its drops and their reason). */
@@ -622,6 +723,9 @@ static void read_debug(void) {
         d->host = mix_link(d->host, readings.link[2]);
         memcpy(d->half_reads, readings.half_reads, sizeof(d->half_reads));
         memcpy(d->half_err, readings.half_err, sizeof(d->half_err));
+        d->dongle_mv = dongle_readings.mv;
+        d->dongle_temp_known = dongle_readings.temp_known;
+        d->dongle_temp_c = dongle_readings.temp_c;
     }
     readings_wanted();
 #if IS_ENABLED(CONFIG_ZMK_USB)
@@ -1801,6 +1905,8 @@ static int screen_fx_init(void) {
 #endif
     k_work_queue_start(&readings_q, readings_stack, K_THREAD_STACK_SIZEOF(readings_stack),
                        K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_read"});
+    k_work_queue_start(&dongle_readings_q, dongle_readings_stack, K_THREAD_STACK_SIZEOF(dongle_readings_stack),
+                       K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_dongle"});
     /* after the module's screen has drawn itself once, and ZMK has loaded
      * the settings (the saved screen among them) */
     k_work_schedule(&start_work, K_MSEC(1500));

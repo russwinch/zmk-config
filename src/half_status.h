@@ -2,7 +2,7 @@
  * Status the Prospector dongle sends to the halves (Waterfowl, Aurora
  * Corne), so the left
  * half's nice!view can show the dongle's Bluetooth profile and the other
- * half's battery.
+ * half's battery, and whether that half is on USB power.
  *
  * It rides on ZMK's normal "run this behavior on the peripheral" message:
  * the dongle invokes the behavior named HALF_STATUS_BEHAVIOR_NAME on each
@@ -27,6 +27,8 @@
 #define HALF_STATUS_OTHER_BATTERY_MASK GENMASK(7, 0)  // other half's battery %, 0xFF = unknown
 #define HALF_STATUS_PROFILE_MASK GENMASK(11, 8)       // active BLE profile index
 #define HALF_STATUS_OUTPUT_USB BIT(12)                // dongle is typing over USB
+#define HALF_STATUS_OTHER_CHARGING BIT(13)            // other half is on USB power (left 0 by
+                                                      // dongles from before it: not charging)
 #define HALF_STATUS_OTHER_BATTERY_UNKNOWN 0xFF
 
 // param2
@@ -36,3 +38,12 @@
 #define HALF_STATUS_VERSION 1
 
 #define HALF_STATUS_PROFILE_COUNT 5
+
+// The dongle: send the halves their status soon (src/dongle_half_status.c),
+// e.g. when a half's charging state changes (src/dongle_half_info.c).
+void dongle_half_status_send_soon(void);
+
+// A left half's nice!view: draw it again soon, from the display thread
+// (src/half_status_screen.c), e.g. when the right half's charging state
+// changes.
+void half_status_screen_redraw(void);

@@ -8,10 +8,6 @@
 // On USB power, as last heard. False when not known.
 bool dongle_half_charging(int half);
 
-// Unplugged a moment ago, with no battery reading since: the level held is
-// still the charger's, near 100.
-bool dongle_half_settling(int half);
-
 // Where the dongle has got to with the half's charging state, for the Debug
 // screen: up to two letters in `code` ("" when the half isn't connected):
 //   WT  waiting for ZMK to finish setting the half's link up

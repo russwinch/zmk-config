@@ -7,6 +7,8 @@
  *
  * Left battery bottom left, right battery bottom right. A level is red at
  * FX_LOW_BATTERY or under, and flashes at FX_FLAT_BATTERY or under.
+ * A half on USB power has a bolt to the right of its level (flashing until
+ * 100, fx_status.bolt_off); the level doesn't move for it.
  *
  * In the bottom middle, the wireless symbol, with the Bluetooth profile
  * number to its right:

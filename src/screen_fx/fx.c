@@ -308,20 +308,9 @@ static const uint8_t mod_glyphs[4][7] = {
     {0x1b, 0x1f, 0x0a, 0x1f, 0x1b, 0x00, 0x00},
 };
 
-/* | / - \ as FX_GLYPH_SPIN on: the spinner turning */
-static const uint8_t spin_glyphs[FX_SPIN_FRAMES][7] = {
-    {0x00, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00},
-    {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x00},
-    {0x00, 0x00, 0x00, 0x1f, 0x00, 0x00, 0x00},
-    {0x00, 0x10, 0x08, 0x04, 0x02, 0x01, 0x00},
-};
-
 const uint8_t *fx_glyph_rows(char c) {
     if (c == FX_GLYPH_BOLT) {
         return bolt;
-    }
-    if (c >= FX_GLYPH_SPIN && c < FX_GLYPH_SPIN + FX_SPIN_FRAMES) {
-        return spin_glyphs[c - FX_GLYPH_SPIN];
     }
     if (c >= FX_GLYPH_CTRL && c <= FX_GLYPH_GUI) {
         return mod_glyphs[c - FX_GLYPH_CTRL];
@@ -1288,11 +1277,9 @@ static void tracker_frame(uint8_t *fb, const struct fx_input *in) {
     glyph(fb, FX_W - 18, 13, 'm', TRACK_TEXT);
 
     if (in->status) {
-        /* empty just after unplugging: the level then is still the charger's */
         const struct fx_status *s = in->status;
-        side_battery(fb, 5, s->settling[0] ? 0 : s->battery[0], s->half_connected[0], TRACK_LINE, TRACK_TEXT, 0);
-        side_battery(fb, FX_W - 10, s->settling[1] ? 0 : s->battery[1], s->half_connected[1], TRACK_LINE,
-                     TRACK_TEXT, 0);
+        side_battery(fb, 5, s->battery[0], s->half_connected[0], TRACK_LINE, TRACK_TEXT, 0);
+        side_battery(fb, FX_W - 10, s->battery[1], s->half_connected[1], TRACK_LINE, TRACK_TEXT, 0);
     }
 }
 
@@ -1606,18 +1593,21 @@ static void count_text(char *buf, size_t size, uint32_t n) {
     }
 }
 
-/* A charging half's level with its bolt: "82" then `unit`, and the bolt
- * after (or before, `bolt_first`), a space in place of it in the off half of
- * its flash; the bolt alone while no level is known. */
-static void charging_text(char *buf, size_t size, uint8_t level, const char *unit, bool bolt_off, bool bolt_first) {
-    const char *bolt = bolt_off ? " " : FX_BOLT;
-    if (level == 0) {
-        snprintf(buf, size, "%s", FX_BOLT);
-    } else if (bolt_first) {
-        snprintf(buf, size, "%s%u%s", bolt, level, unit);
-    } else {
-        snprintf(buf, size, "%u%s%s", level, unit, bolt);
+/* A charging half's bolt, at (x, y): shown unless in the off half of its flash. */
+static void charging_bolt(uint8_t *fb, int x, int y, const struct fx_status *status, int half) {
+    if (status && status->charging[half] && !status->bolt_off[half]) {
+        put(fb, x, y, FX_BOLT, DBG_TEXT);
     }
+}
+
+/* The dongle's supply: volts to two places, "-.--V" when not known. */
+static void dongle_volts(char *buf, size_t size, uint16_t mv) {
+    if (mv == 0) {
+        snprintf(buf, size, "-.--V");
+        return;
+    }
+    mv = (uint16_t)(mv + 5 > 9999 ? 9999 : mv + 5); /* to the nearest hundredth */
+    snprintf(buf, size, "%u.%02uV", mv / 1000, mv % 1000 / 10);
 }
 
 /* The colour of a battery level, as the BAT column has it. */
@@ -1774,26 +1764,27 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, DBG_COL_CHARGE, 23, "CH", DBG_LABEL);
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
-        const bool charging = in->status && in->status->charging[half];
-        const uint8_t spin = in->status && !charging ? in->status->settling[half] : 0;
-        if (charging) {
-            /* the level and a bolt after it, flashing until 100 (a space
-             * keeps the level where it is) */
-            charging_text(buf, sizeof(buf), level, "", in->status->bolt_off[half], false);
-        } else if (spin) {
-            fx_spin_text(buf, spin);
-        } else if (level) {
+        if (level) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
             strcpy(buf, "--");
         }
-        debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf,
-                   spin || (charging && level == 0) ? DBG_TEXT : level == 0 ? DBG_LABEL : battery_color(level),
+        debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf, level == 0 ? DBG_LABEL : battery_color(level),
                    d->half_reads[half], d->half_err[half]);
+        /* charging: a bolt just right of the level, which stays where it is */
+        charging_bolt(fb, DBG_COL_LEVEL + 1, 31 + half * 8, in->status, half);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
     debug_link(fb, 47, 'H', &d->host, usb_out ? "USB" : buf, usb_out ? DBG_LABEL : DBG_TEXT, NULL, 0);
+    /* the dongle's own chip temperature where the halves have their CH, amber from 60 */
+    if (d->dongle_temp_known) {
+        const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
+        snprintf(buf, sizeof(buf), "%dC", c);
+        put_right(fb, DBG_COL_CHARGE, 47, buf, c >= 60 ? DBG_WARN : DBG_TEXT);
+    } else {
+        put_right(fb, DBG_COL_CHARGE, 47, "--C", DBG_LABEL);
+    }
     rule(fb, 56);
 
     /* the profiles, then USB: its state, the reports sent over it and those
@@ -1858,6 +1849,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         x = put(fb, x, 76, buf, tenths == FX_DRAIN_UNKNOWN ? DBG_LABEL : DBG_TEXT) + 4;
     }
     put(fb, x - 2, 76, "%/H", DBG_LABEL);
+    dongle_volts(buf, sizeof(buf), d->dongle_mv);
+    put(fb, mods_x, 76, buf, d->dongle_mv ? DBG_TEXT : DBG_LABEL);
     count_text(buf + 1, sizeof(buf) - 1, d->presses);
     buf[0] = 'N';
     put_right(fb, FX_W - 4, 76, buf, DBG_TEXT);
@@ -2062,31 +2055,28 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
      * everything in the three is */
     for (int half = 0; half < 2; half++) {
         const bool charging = in->status && in->status->charging[half];
-        const uint8_t spin = in->status && !charging ? in->status->settling[half] : 0;
         /* while charging: the level (reading high, the charging voltage)
-         * and a bolt after it, flashing until 100; just unplugged, a
-         * spinner until the battery is read again */
-        const uint8_t level = in->status && !spin ? in->status->battery[half] : 0;
-        const uint8_t color = spin || (charging && level == 0) ? DBG_TEXT
-                              : level == 0                     ? DBG_LABEL
-                              : level <= FX_LOW_BATTERY        ? DBG_BAD
-                              : level <= FX_WARN_BATTERY       ? DBG_WARN
-                                                               : DBG_TEXT;
-        if (charging) {
-            charging_text(buf, sizeof(buf), level, "%", in->status->bolt_off[half], false);
-        } else if (spin) {
-            fx_spin_text(buf, spin);
-        } else if (level == 0) {
+         * and a bolt to its right, flashing until 100 */
+        const uint8_t level = in->status ? in->status->battery[half] : 0;
+        const uint8_t color = level == 0                 ? DBG_LABEL
+                              : level <= FX_LOW_BATTERY  ? DBG_BAD
+                              : level <= FX_WARN_BATTERY ? DBG_WARN
+                                                         : DBG_TEXT;
+        if (level == 0) {
             strcpy(buf, "--");
         } else {
             snprintf(buf, sizeof(buf), "%u%%", level);
         }
+        /* centred with room for the bolt, so the level stays put whether
+         * it is there or not */
+        const int wide = 10 + 3 + 5 * (int)strlen(buf), bolt_room = 2 + 5;
+        const int left = keys_block_x(half * 2) + (SIGNAL_W - wide - bolt_room) / 2;
         /* a low battery flashes, unless it is charging (its bolt does) */
         if (charging || !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
-            const int wide = 10 + 3 + 5 * (int)strlen(buf), left = keys_block_x(half * 2) + (SIGNAL_W - wide) / 2;
             battery_icon(fb, left, 6, level, color);
             put(fb, left + 13, 6, buf, color);
         }
+        charging_bolt(fb, left + wide + 2, 6, in->status, half);
         keys_link(fb, half * 2, links[half * 2]);
     }
     /* the computer */

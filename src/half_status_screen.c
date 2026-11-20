@@ -4,7 +4,9 @@
  * active Bluetooth profile), in place of ZMK's stock picture.
  *
  * On its own the left half is the central and knows all of it: its own
- * battery, the right half's (which it fetches) and its own output. Behind
+ * battery, the right half's (which it fetches), whether the right half is on
+ * USB power (read as the dongle does, src/dongle_half_info.c) and its own
+ * output. Behind
  * the Prospector dongle it is a peripheral, and what it can't know itself
  * comes from the dongle through the `half_status` behavior
  * (src/half_status.h, sent by src/dongle_half_status.c).
@@ -44,6 +46,9 @@
 
 #include "half_status.h"
 #include "half_status_draw.h"
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+#include "dongle_half_info.h"
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -56,6 +61,7 @@ BUILD_ASSERT(HALF_STATUS_OTHER_BATTERY_UNKNOWN == HALF_STATUS_DRAW_UNKNOWN);
 struct remote_state {
     bool valid; // false until the dongle has sent something, and after a disconnect
     uint8_t other_battery;
+    bool other_charging;
     uint8_t profile;
     bool usb;
     uint8_t connected; // bit per profile
@@ -73,6 +79,9 @@ static void request_redraw(void) {
         k_work_submit_to_queue(zmk_display_work_q(), &redraw_work);
     }
 }
+
+// e.g. the right half's charging state changed (src/dongle_half_info.c)
+void half_status_screen_redraw(void) { request_redraw(); }
 
 static void set_remote(const struct remote_state *next) {
     k_mutex_lock(&remote_mutex, K_FOREVER);
@@ -113,6 +122,7 @@ static int half_status_pressed(struct zmk_behavior_binding *binding,
     memset(&next, 0, sizeof(next)); // padding too, for the memcmp in set_remote()
     next.valid = true;
     next.other_battery = FIELD_GET(HALF_STATUS_OTHER_BATTERY_MASK, binding->param1);
+    next.other_charging = (binding->param1 & HALF_STATUS_OTHER_CHARGING) != 0;
     next.profile = FIELD_GET(HALF_STATUS_PROFILE_MASK, binding->param1);
     next.usb = (binding->param1 & HALF_STATUS_OUTPUT_USB) != 0;
     next.connected = FIELD_GET(HALF_STATUS_CONNECTED_MASK, binding->param2);
@@ -219,6 +229,9 @@ static struct half_status_view current_view(void) {
     zmk_split_central_get_peripheral_battery_level(0, &level);
 #endif
     v.other_battery = level > 0 ? level : HALF_STATUS_DRAW_UNKNOWN; // 0: not heard from yet
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+    v.other_charging = dongle_half_charging(0); // the right half: ZMK's only peripheral here
+#endif
     v.usb = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
     v.profile = zmk_ble_active_profile_index();
     v.profile_connected = zmk_ble_active_profile_is_connected();
@@ -230,6 +243,7 @@ static struct half_status_view current_view(void) {
     v.valid = r.valid;
     if (r.valid) {
         v.other_battery = r.other_battery;
+        v.other_charging = r.other_charging;
         v.usb = r.usb;
         v.profile = r.profile;
         v.profile_connected = (r.connected & BIT(r.profile)) != 0;

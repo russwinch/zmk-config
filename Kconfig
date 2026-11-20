@@ -53,7 +53,8 @@ config WATERFOWL_DONGLE_HALF_STATUS
     help
       Not the Forager's or Urchin's dongles: their halves have no display. The dongle tells each half the active profile (and which profiles are
       connected/paired), whether it is typing over USB, and the other half's
-      battery. Used by WATERFOWL_HALF_STATUS_SCREEN on the left half.
+      battery and whether it is charging. Used by WATERFOWL_HALF_STATUS_SCREEN
+      on the left half.
 
 config WATERFOWL_DONGLE_HALF_STATUS_REFRESH_S
     int "Seconds between repeat sends, as a catch-all"
@@ -95,13 +96,17 @@ config HALF_CHARGING_STATUS
 config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power"
     default y
-    depends on SHIELD_PROSPECTOR_ADAPTER && ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
+    depends on SHIELD_PROSPECTOR_ADAPTER || WATERFOWL_HALF_STATUS_SCREEN
+    depends on ZMK_SPLIT_ROLE_CENTRAL && BT_GATT_CLIENT
     depends on ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     help
       Read once a half is connected and ZMK is done setting it up, one
       request at a time, then subscribed to (the half sends only changes),
       with no discovery: see src/dongle_half_info.c.
-      The dongle's screens then show a bolt beside a charging half's level.
+      The dongle's screens then show a bolt beside a charging half's level,
+      and the dongle tells the left half's nice!view when the right half is
+      charging. Also on a left half with a nice!view that is the central
+      itself (no dongle), for the right half's bolt on its screen.
 
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"
@@ -122,6 +127,8 @@ config DONGLE_SCREEN_FX
     select HWINFO
     select SYS_HEAP_RUNTIME_STATS
     imply BT_CTLR_CONN_RSSI
+    imply ADC
+    imply SENSOR
     help
       The &scr_next key steps through the animations in
       src/screen_fx/fx.c (those that aren't screensavers) and round again;

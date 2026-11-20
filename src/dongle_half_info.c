@@ -1,11 +1,15 @@
 /*
  * Prospector dongle: whether each half is on USB power, beyond what ZMK hears.
+ * (Also a left half with a nice!view that is the central itself, without
+ * the dongle, for its screen: there the right half is "half" 0, ZMK's only
+ * peripheral slot.)
  *
  * Each half sets the battery service's Battery Level Status to "charging"
  * while on USB power (src/half_charging.c). Once a half is set up, the
  * dongle reads that characteristic and subscribes to it, so the half sends it
  * again only when it changes, in a connection event it wakes for anyway:
- * nothing is polled. The screens then show a bolt beside that half's level.
+ * nothing is polled. The screens then show a bolt beside that half's level
+ * (on a left half's nice!view, in place of the right half's).
  *
  * Keeping out of ZMK's way. ZMK sets each half's link up (finds the split
  * service, subscribes to the keys, the knobs and the battery) with requests
@@ -31,11 +35,6 @@
  * answers or the link goes, so they can't be used again before), and the
  * other half's goes on. Where each half got to stays on the Debug screen
  * (dongle_half_info_progress), so a half that never shows a bolt says why.
- *
- * After a half is unplugged its next battery reading is a second or so
- * away, and the level until then is the charger's, near 100: for up to
- * SETTLE_MS, or until that reading comes, dongle_half_settling() says so and
- * the screens show a spinner in place of the level.
  */
 
 #include <string.h>
@@ -56,6 +55,7 @@
 #include <zmk/events/battery_state_changed.h>
 
 #include "dongle_half_info.h"
+#include "half_status.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -71,7 +71,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define RETRY_S 5               // a failed read or subscription, again after this
 #define RETRIES 5
 #define REQUEST_TIMEOUT_S 10 // a request with no answer by then: that half is left alone
-#define SETTLE_MS 3000       // after unplugging, a fresh battery reading within this
 
 // Where a half has got to (the Debug screen shows it).
 enum stage {
@@ -99,18 +98,11 @@ static atomic_t tries[2];
 static atomic_t last_err[2];   // ATT error, or 0x80 | errno; 0 for none
 static atomic_t not_before[2]; // uptime ms: a retry waits until then
 static atomic_t charging;      // bit per half
-static atomic_t settling;      // bit per half: unplugged, no battery reading since
-static atomic_t unplugged_at[2];
 #define IDLE (-1)
 static atomic_t inflight = ATOMIC_INIT(IDLE); // the half whose request is out, or IDLE
 
 bool dongle_half_charging(int half) {
     return half >= 0 && half < 2 && atomic_test_bit(&charging, half);
-}
-
-bool dongle_half_settling(int half) {
-    return half >= 0 && half < 2 && atomic_test_bit(&settling, half) &&
-           k_uptime_get_32() - (uint32_t)atomic_get(&unplugged_at[half]) < SETTLE_MS;
 }
 
 void dongle_half_info_progress(int half, char code[3], uint8_t *err) {
@@ -196,6 +188,16 @@ static void timeout_cb(struct k_work *work) {
     step_soon();
 }
 
+// A half's charging state has changed: what shows it elsewhere hears at once.
+static void charging_changed(void) {
+#if IS_ENABLED(CONFIG_WATERFOWL_DONGLE_HALF_STATUS)
+    dongle_half_status_send_soon(); // the dongle: to the other half's nice!view
+#endif
+#if IS_ENABLED(CONFIG_WATERFOWL_HALF_STATUS_SCREEN)
+    half_status_screen_redraw(); // a left half on its own: its own nice!view
+#endif
+}
+
 // A value, read or notified; NULL when there is none.
 static void take(int half, const void *data, uint16_t length) {
     bool on = false;
@@ -205,11 +207,8 @@ static void take(int half, const void *data, uint16_t length) {
     }
     const bool was = atomic_test_bit(&charging, half);
     atomic_set_bit_to(&charging, half, on);
-    if (was && !on) {
-        atomic_set(&unplugged_at[half], (atomic_val_t)k_uptime_get_32());
-        atomic_set_bit(&settling, half);
-    } else if (on) {
-        atomic_clear_bit(&settling, half);
+    if (was != on) {
+        charging_changed();
     }
 }
 
@@ -349,8 +348,6 @@ static int half_info_listener(const zmk_event_t *eh) {
     if (ev == NULL || ev->source >= 2) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-    // a fresh reading: no longer the charger's
-    atomic_clear_bit(&settling, ev->source);
     // ZMK's first reading of a half: it is done with it. ZMK's source and
     // our half both come from ZMK's peripheral slots, so they agree; if they
     // ever didn't, READY_AT_MOST_S still starts the other.
@@ -395,8 +392,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     }
     k_work_cancel_delayable(&ready_work[half]);
     atomic_set(&stage[half], NOT_CONNECTED);
-    atomic_clear_bit(&charging, half);
-    atomic_clear_bit(&settling, half);
+    if (atomic_test_and_clear_bit(&charging, half)) {
+        charging_changed();
+    }
     // a request out to it won't be answered: let the other half's go
     if (atomic_cas(&inflight, half, IDLE)) {
         k_work_cancel_delayable(&timeout_work);

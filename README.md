@@ -179,7 +179,7 @@ shows a small status screen in place of ZMK's stock picture
 | Part | Shows |
 | --- | --- |
 | Top: `L` | this half's battery, as a big number with a small `%` and a bar (100 a size smaller, to fit). On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
-| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it |
+| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it. A big bolt in its place while the right half is on USB power: on its own the left half reads that from the right half as the dongle does (`src/dongle_half_info.c`); behind the dongle, the dongle passes it on (a dongle on older firmware never does) |
 | Bottom | the output (the keyboard's own, or the dongle's): the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
 On its own the left half is the central and knows all of this itself. Behind
@@ -379,9 +379,10 @@ all of them, the screensavers too, they sit low in the bottom corners, clear
 of the panel's rounding (on Tracker, under the line across the bottom); and Tracker
 adds a gauge for each battery up the sides.
 
-A half on USB power shows a bolt beside its level, on every screen with
-text: flashing while the level is under 100, solid at 100 (the bolt alone
-until a level is known). While it charges the level reads high, from the
+A half on USB power shows a bolt to the right of its level, on every screen
+with text, the level staying where it is with or without it (on the
+animations the right half's level leaves room for it at the edge): flashing
+while the level is under 100, solid at 100. While it charges the level reads high, from the
 charging voltage, so take it as rough; Tracker's gauge shows it too. Each
 half says it is on USB power through
 the Battery Level Status of Bluetooth's standard battery service
@@ -398,8 +399,7 @@ went. The bolt means
 plugged in, not still charging: a half can't tell when its charger has
 finished, so the solid bolt at 100 is only the reading reaching the top. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
-once-a-minute reading; until that reading reaches the dongle (3 seconds at
-most) a spinner stands in for the level, which is still the charger's. A half on older firmware just
+once-a-minute reading, so the charger's level doesn't stay up for long. A half on older firmware just
 never shows the bolt. The screensavers show none of
 this: only a small battery in the corner of a half at 15% or under, with the
 same colours and flashing. The screen to start on
@@ -430,7 +430,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
 | profile circles, `USB`, `RPT`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
 | `L3 NAV 0009  ⌃⌥⇧⌘  51WPM` | the highest active layer and its name (shortened to fit), a bit for every active layer (hex); the modifiers as the Mac's symbols, lit while held (either side); typing speed |
-| `L0.6 R1.3%/H  N29` | each half's average battery draw in percent an hour (below); key presses since the dongle started |
+| `L0.6 R1.3%/H 3.31V N29` | each half's average battery draw in percent an hour (below); under the modifiers, the dongle's supply, its own 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it; `-.--V` until read), read with its temperature every 5 s on a thread of their own, so a read that sticks blanks only those two; key presses since the dongle started |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
@@ -445,7 +445,7 @@ The link rows' columns:
 | `BAT` | battery percent; for the computer, the output (`BT1`, `USB`) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
-| `CH` | for a half, where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows beside the level while it is plugged in; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
+| `CH` | on the `H` row, the dongle's own chip temperature in °C (amber from 60). For a half, where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows beside the level while it is plugged in; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
 
 The `%/H` figures are each half's average draw since the dongle started or the half was
 last charged, to compare boards and settings. A half reports its level when it

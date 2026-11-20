@@ -55,11 +55,9 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
-    bool charging[2];       /* left, right: on USB power: a bolt beside its level (which reads high
-                             * while charging: the charging voltage) */
+    bool charging[2];       /* left, right: on USB power: a bolt to the right of its level (which
+                             * reads high while charging: the charging voltage) */
     bool bolt_off[2];       /* left, right: charging, below 100, and the bolt in the off half of its flash */
-    uint8_t settling[2];    /* left, right: just unplugged, its level still the charger's:
-                             * a spinner frame (FX_SPIN_FRAMES), 0 when not */
     bool host_connected;    /* the computer */
     bool usb;               /* typing over USB, not Bluetooth */
     bool host_open;         /* Bluetooth: nothing paired on this profile */
@@ -161,6 +159,9 @@ struct fx_debug {
     char half_reads[2][3]; /* left, right: where the dongle has got with its charging state (see
                             * dongle_half_info_progress), "" when not connected */
     uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
+    uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
+    bool dongle_temp_known;
+    int8_t dongle_temp_c;  /* the dongle's chip temperature */
     struct fx_event log[FX_DEBUG_LOG]; /* the newest last */
     uint8_t n_log;
 };
@@ -199,9 +200,9 @@ const struct fx_theme *fx_theme(int fx);
  * in bit 4), or NULL if there is none. */
 const uint8_t *fx_glyph_rows(char c);
 
-/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown beside
- * the level of a half on USB power: flashing while under 100, solid at 100
- * (fx_status.bolt_off), and alone while no level is known. */
+/* In fx_glyph_rows (as "\x7f" in a string): a lightning bolt, shown to the
+ * right of the level of a half on USB power, the level staying where it is:
+ * flashing while under 100, solid at 100 (fx_status.bolt_off). */
 #define FX_GLYPH_BOLT '\x7f'
 #define FX_BOLT "\x7f"
 
@@ -212,22 +213,6 @@ const uint8_t *fx_glyph_rows(char c);
 #define FX_GLYPH_SHIFT '\x03'
 #define FX_GLYPH_GUI '\x04'
 
-/* Also in fx_glyph_rows: a spinner's frames (| / - \\), shown for a half
- * just unplugged until its battery is read again (fx_status.settling counts
- * 1 to FX_SPIN_FRAMES). */
-#define FX_GLYPH_SPIN '\x05'
-#define FX_SPIN_FRAMES 4
-
-/* A battery level's text for fx_status.settling's frame (1 on). */
-static inline void fx_spin_text(char *p, uint8_t frame) {
-    p[0] = (char)(FX_GLYPH_SPIN + (frame - 1) % FX_SPIN_FRAMES);
-    p[1] = '\0';
-}
-
-/* A character only the pixel letters have: the bolt, the spinner. */
-static inline bool fx_glyph_is_symbol(char c) {
-    return c == FX_GLYPH_BOLT || (c >= FX_GLYPH_SPIN && c < FX_GLYPH_SPIN + FX_SPIN_FRAMES);
-}
 
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text over it. */

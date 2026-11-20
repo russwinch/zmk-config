@@ -5,7 +5,7 @@
  *   │    85%   │  this half's battery, big (the % half the size)
  *   │ L [████ ]│  and as a bar; just a big bolt on USB power
  *   │    60%   │  other half's battery, from the dongle (-- = unknown)
- *   │ R [███  ]│
+ *   │ R [███  ]│  (a big bolt while it is on USB power)
  *   ├──────────┤
  *   │  ᛒ (2)   │  dongle's output: Bluetooth and its active profile
  *   └──────────┘  (filled = connected, dashed = paired, plain = free),
@@ -193,9 +193,9 @@ void half_status_draw(lv_obj_t *canvas, const struct half_status_view *view, lv_
     lv_canvas_fill_bg(canvas, bg, LV_OPA_COVER);
 
     battery(canvas, 0, "L", view->own_battery, view->charging);
-    battery(canvas, BATTERY_H, "R", view->linked && view->valid ? view->other_battery
-                                                                : HALF_STATUS_DRAW_UNKNOWN,
-            false);
+    const bool other = view->linked && view->valid;
+    battery(canvas, BATTERY_H, "R", other ? view->other_battery : HALF_STATUS_DRAW_UNKNOWN,
+            other && view->other_charging);
 
     rect(canvas, 0, DIVIDER_Y, W, 2, fg);
     output(canvas, view);
