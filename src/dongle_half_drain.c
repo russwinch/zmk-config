@@ -12,22 +12,34 @@
  * reading's noise and the dips while typing.
  *
  * It is an estimate: the cell's real curve differs a little from the
- * typical one, and through the middle of the charge the voltage moves only
- * a few millivolts for each percent. So nothing shows until it has an hour
- * of readings, and it is steadier the longer it runs. For the same reason
- * the first SETTLE_MIN after unplugging aren't used: the voltage is still
- * coming down from the charger's.
+ * typical one, through the middle of the charge the voltage moves only a
+ * few millivolts for each percent, and a half sends it only when it has
+ * moved by STEP_MV. So it is steadier the longer it runs. It shows after
+ * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
+ * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
+ * by one STEP_MV over the time it spans, whichever is more.
+ *
+ * After unplugging (and when the dongle starts, not knowing) the voltage is
+ * still coming down from the charger's, much faster than any half draws. So
+ * while it has fallen by SETTLE_FALL_MV or more in the last SETTLE_MIN the
+ * line starts again from there, and the figure is rough; it is settled once
+ * it falls less than that.
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
 #include <zephyr/sys/util.h>
 
+#include <math.h>
+
 #include "dongle_half_info.h"
 
 #define SAMPLE_EVERY_S 60
-#define SETTLE_MIN 20       // after unplugging, before readings count
-#define SHOW_AFTER_MIN 60   // of readings, before there is a figure
+#define SHOW_AFTER_MIN 15   // of readings, before there is a figure
+#define ROUGH_PERCENT 25    // rough while it may be out by more than this
+#define STEP_MV 4           // a half sends its voltage when it moves by this (src/half_charging.c)
+#define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
+#define SETTLE_FALL_MV 8
 #define NOMINAL_MV 3700     // to turn mAh into mWh
 #define TREND_N 240         // the last four hours of readings, for the Status screen
 
@@ -59,15 +71,17 @@ static double energy_mwh(uint16_t mv) {
     return percent / 100.0 * CONFIG_HALF_BATTERY_MAH * NOMINAL_MV / 1000.0;
 }
 
-// A least-squares line through (hours, mWh), as running sums.
+// A least-squares line through (hours, mWh from the first), as running sums.
 struct fit {
     uint32_t n;
     uint32_t start_ms, last_ms; // uptime of the first and last readings
-    double t, e, tt, te;
+    double e0;                  // the first reading's mWh
+    double t, e, tt, te, ee;
+    uint16_t last_mv;
 };
 
 static struct fit fits[2];          // under lock
-static uint32_t settle_until[2];    // uptime ms: readings count from then
+static bool settling[2] = {true, true}; // until the voltage stops coming down from the charger's
 static bool was_charging[2];
 static uint16_t trend[2][TREND_N]; // under lock: a reading a minute, trend_at the next to write
 static int trend_at;
@@ -91,23 +105,35 @@ static void sample_cb(struct k_work *work) {
             if (was_charging[half] && mv != 0) {
                 // unplugged (heard as a voltage with no charging)
                 was_charging[half] = false;
-                settle_until[half] = now + SETTLE_MIN * 60 * 1000;
+                settling[half] = true;
             }
-            if (mv == 0 || (int32_t)(now - settle_until[half]) < 0) {
-                K_SPINLOCK_BREAK; // not connected, or settling
+            if (mv == 0) {
+                K_SPINLOCK_BREAK; // not connected
             }
             struct fit *f = &fits[half];
+            if (settling[half]) {
+                // still coming down from the charger's: start again from here
+                const uint16_t before = trend[half][(trend_at - SETTLE_MIN + TREND_N) % TREND_N];
+                if (before != 0 && before < mv + SETTLE_FALL_MV) {
+                    settling[half] = false;
+                } else if (before != 0) {
+                    *f = (struct fit){0};
+                }
+            }
             if (f->n == 0) {
                 f->start_ms = now;
+                f->e0 = energy_mwh(mv);
             }
             const double t = (now - f->start_ms) / 3600000.0;
-            const double e = energy_mwh(mv);
+            const double e = energy_mwh(mv) - f->e0;
             f->n++;
             f->last_ms = now;
+            f->last_mv = mv;
             f->t += t;
             f->e += e;
             f->tt += t * t;
             f->te += t * e;
+            f->ee += e * e;
         }
     }
     K_SPINLOCK(&lock) {
@@ -126,22 +152,32 @@ void dongle_half_trend(int half, uint16_t *mv, int n, int every_min) {
     }
 }
 
-int dongle_half_drain_hundredths_mw(int half) {
+int dongle_half_drain_hundredths_mw(int half, bool *rough) {
+    *rough = true;
     if (half < 0 || half >= 2) {
         return -1;
     }
     int hundredths = -1;
     K_SPINLOCK(&lock) {
         const struct fit *f = &fits[half];
-        if (f->n < 2 || f->last_ms - f->start_ms < SHOW_AFTER_MIN * 60 * 1000) {
+        if (f->n < 3 || f->last_ms - f->start_ms < SHOW_AFTER_MIN * 60 * 1000) {
             K_SPINLOCK_BREAK;
         }
-        const double denom = f->n * f->tt - f->t * f->t;
-        if (denom <= 0) {
+        const double sxx = f->tt - f->t * f->t / f->n; // hours²
+        if (sxx <= 0) {
             K_SPINLOCK_BREAK;
         }
-        const double mw = -(f->n * f->te - f->t * f->e) / denom; // mWh lost an hour
+        const double sxy = f->te - f->t * f->e / f->n;
+        const double syy = f->ee - f->e * f->e / f->n;
+        const double mw = -sxy / sxx; // mWh lost an hour
         hundredths = (int)CLAMP(mw * 100 + 0.5, 0, 99999);
+
+        // how far out it may be: the line's scatter, or one step over its span
+        const double sse = MAX(syy - sxy * sxy / sxx, 0);
+        const double scatter = sqrt(sse / (f->n - 2) / sxx);
+        const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
+        const double step = (energy_mwh(f->last_mv + STEP_MV / 2) - energy_mwh(f->last_mv - STEP_MV / 2)) / span_h;
+        *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * mw;
     }
     return hundredths;
 }

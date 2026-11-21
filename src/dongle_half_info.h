@@ -15,8 +15,9 @@ uint16_t dongle_half_millivolts(int half);
 
 // The half's average draw in hundredths of a milliwatt, from its voltage since it
 // was last unplugged (or the dongle started), or -1 until there is enough
-// of it. src/dongle_half_drain.c.
-int dongle_half_drain_hundredths_mw(int half);
+// of it; `rough` while it may still be well out (or settling after unplugging).
+// src/dongle_half_drain.c.
+int dongle_half_drain_hundredths_mw(int half, bool *rough);
 
 // The half's battery millivolts every `every_min` minutes, the newest last
 // in `mv[0..n-1]`, 0 where not known (not connected, or not that long

@@ -432,7 +432,7 @@ racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | the row of lights along the top | the typing speed, a light for every 8 words a minute: green, then red, then violet from 88 to 120. A white light stays at the fastest of the last 94 seconds |
-| top left, top right | each half: its letter (red when its link is down), a bolt while it is on USB power, its battery percent and a bar of ten, coloured as [below](#battery-warnings); `V` its battery in volts to the millivolt (dim while charging: it is the charger's then); `mW` its average draw (as on Debug, `--` for the first hour); and under them its volts over the last four hours, a point every 6 minutes, from the lowest to the highest (30 mV at least, so noise stays flat), blank where the dongle wasn't hearing it |
+| top left, top right | each half: its letter (red when its link is down), a bolt while it is on USB power, its battery percent and a bar of ten, coloured as [below](#battery-warnings); `V` its battery in volts to the millivolt (dim while charging: it is the charger's then); `mW` its average draw (as on Debug: `--` for the first 15 minutes, then a flashing amber `~` before it while rough); and under them its volts over the last four hours, a point every 6 minutes, from the lowest to the highest (30 mV at least, so noise stays flat), blank where the dongle wasn't hearing it |
 | middle | the highest active layer, big, its name under it; the typing speed; ⌃⌥⇧⌘, each filled while held (either side) |
 | the graph | each link's signal over the last 94 seconds, a point a second, from -40 dBm at the top to -100 at the bottom: the left half's line white, the right's dim, the computer's light blue. The dotted lines are -75 (green above) and -85 (red below); a red mark across the top is a second the link was down. Beside it each link's latest, coloured as on Keys, `--` in red when down, and `USB` for the computer when typing over it. The dongle keeps this, and the speed for the white light, whichever screen is showing (since it started), so it is already there when the screen is turned to |
 | the boxes | the output: `BT` and the profile (green when the computer is connected) or `USB` (green when it is listening); `DR` the drops on all three links since the dongle started (amber when any); the dongle's supply in volts; its temperature (amber from 60 °C); then the worst trouble there is, filled red: `HANG` or `CRSH` the last start hung or crashed, `B` and milliseconds a switch bouncing (under 30 ms), `CH` a half's charging state failed; or amber `UE` and a count, USB reports the computer didn't take. `OK` in green when there is none. The Debug screen says more about each |
@@ -451,7 +451,7 @@ everything on it that the dongle can get at. Top to bottom:
 | `L`, `R`, `H` rows | the Bluetooth links to the left half, the right half and the computer (the active profile); the letter is red when the link is down |
 | profile circles, `USB`, `RPT`, `E` | the five Bluetooth profiles (filled: connected, ring: paired, dot: free; the active one underlined); USB `--`, `PWR` powered or `HID` ready to type (green when typing over it); keyboard and media reports sent over USB since the dongle started (`12K` is 12,000) and how many failed, amber when any did: the computer didn't take them (its port asleep or busy). The output in use is in the `H` row |
 | `L3 NAV 0009  ⌃⌥⇧⌘  51WPM` | the highest active layer and its name (shortened to fit), a bit for every active layer (hex); the modifiers as the Mac's symbols, lit while held (either side); typing speed (right-aligned, so the modifiers don't move as it changes) |
-| `DRAW L1.42 R0.93mW  31C` | each half's average draw in milliwatts (below); at the right, the dongle's chip temperature in °C (amber from 60). The dongle's own readings (this and its supply in the `V` column) are read every 5 s, each on a thread of its own, so one that sticks blanks only itself. When one isn't known, amber and why: `WT` not read yet, `TO` a read 2 s in and not back (the temperature, after some flashes, until the dongle is unplugged), `NB` not built in; for the supply `E1` the ADC isn't ready, `E2` setting up its channel failed, `E3` the read failed, `E4` the result didn't convert; for the temperature `E1` the sensor isn't ready, `E2` measuring failed, `E3` getting the value failed |
+| `DRAW L1.42 R~0.9mW  31C` | each half's average draw in milliwatts, a flashing amber `~` before it while rough (below); at the right, the dongle's chip temperature in °C (amber from 60). The dongle's own readings (this and its supply in the `V` column) are read every 5 s, each on a thread of its own, so one that sticks blanks only itself. When one isn't known, amber and why: `WT` not read yet, `TO` a read 2 s in and not back (the temperature, after some flashes, until the dongle is unplugged), `NB` not built in; for the supply `E1` the ADC isn't ready, `E2` setting up its channel failed, `E3` the read failed, `E4` the result didn't convert; for the temperature `E1` the sensor isn't ready, `E2` measuring failed, `E3` getting the value failed |
 | three event lines | the last raw events, newest at the bottom, each with the milliseconds since the one before: `P27v R` key position 27 down (`^` up) from the right half; `K7:08v 00` the keycode sent (HID usage page:id, then modifier bits); `E0 +1` encoder 0 turned |
 | key map | every key position of the keyboard the dongle is built for, laid out by its matrix transform: white while held, glowing for two seconds after. A key that doesn't light isn't reaching the dongle. Encoders are [knobs](#encoder-knobs) |
 | `BNC 18MS P23` | the shortest time any key has gone up and come back down, and which key; red under 30 ms, which no finger does: a bouncing switch |
@@ -477,11 +477,17 @@ left, from a typical LiPo cell's curve and the battery's capacity
 (`CONFIG_HALF_BATTERY_MAH` in each `config/<keyboard>.conf`: Waterfowl, Urchin
 and Aurora Corne 200, Forager 120 mAh), and fits a straight line
 through those since the half was last unplugged (or the dongle started). It
-is `--` for the first hour, and readings from the first 20 minutes after
-unplugging don't count, while the voltage comes down from the charger's. It
-is an estimate: the voltage moves only a few millivolts for each percent
-through the middle of the charge, so it is steadier the longer it runs, and
-best for comparing halves over an evening or a day. Key timings are taken when an event reaches the
+is `--` for the first 15 minutes of readings. After that it shows, with a
+flashing amber `~` in front and one place fewer while it is rough: while it
+may be out by more than a quarter, from the line's scatter or one 4 mV step
+over the time the line spans, whichever is more, and while the half is still
+settling. After unplugging (and when the dongle starts) the voltage comes
+down from the charger's much faster than any half draws, so while it falls
+8 mV or more in 20 minutes the line starts again from there; it has settled
+once it falls less. It is an estimate: the voltage moves only a few
+millivolts for each percent through the middle of the charge, and a half
+only sends it when it has moved 4 mV, so at a milliwatt or so it can stay
+rough for many hours. Best for comparing halves over a day or more. Key timings are taken when an event reaches the
 dongle, and a half sends at most once per connection interval, so a bounce
 shorter than that (7.5 ms) can't be seen from here. The counts and the draw start again
 when the dongle restarts.

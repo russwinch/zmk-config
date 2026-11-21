@@ -162,6 +162,7 @@ struct fx_debug {
     uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
     uint16_t half_mv[2];   /* left, right: the battery's millivolts; 0 when not known */
     int32_t drain_hundredths_mw[2]; /* and its average draw, hundredths of a milliwatt; -1 until known */
+    bool drain_rough[2];            /* and whether that may still be well out */
     /* each link's signal each second, kept whichever screen shows: dBm,
      * the newest last; left, right, the computer; 0 not known (and the
      * computer's while typing over USB), FX_SIGNAL_DOWN down */

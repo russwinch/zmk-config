@@ -1717,6 +1717,29 @@ static const char *reset_name(uint32_t cause) {
     return cause ? "?" : "POR";
 }
 
+/* A half's draw: "--" not known; hundredths of a mW (tenths from 10), or
+ * while rough one place fewer, after a space for the flashing ~ in front. */
+static void drain_text(char *buf, size_t size, int hundredths, bool rough) {
+    if (hundredths < 0) {
+        snprintf(buf, size, "--");
+    } else if (rough) {
+        const int tenths = (hundredths + 5) / 10;
+        if (tenths < 100) {
+            snprintf(buf, size, " %d.%d", tenths / 10, tenths % 10);
+        } else {
+            snprintf(buf, size, " %d", (tenths + 5) / 10);
+        }
+    } else if (hundredths < 1000) {
+        snprintf(buf, size, "%d.%02d", hundredths / 100, hundredths % 100);
+    } else {
+        snprintf(buf, size, "%d.%d", hundredths / 100, hundredths / 10 % 10);
+    }
+}
+
+/* the ~ before a rough draw: on for 0.6 s, off 0.4 s */
+static float drain_clock; /* 30ths of a second */
+static bool drain_flash_off(void) { return (int)drain_clock % 30 >= 18; }
+
 static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     static const struct fx_debug none;
     const struct fx_debug *d = in->debug ? in->debug : &none;
@@ -1858,13 +1881,11 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     x = put(fb, 5, 76, "DRAW", DBG_LABEL) + 3;
     for (int half = 0; half < 2; half++) {
         const int hundredths = d->drain_hundredths_mw[half];
+        const bool rough = hundredths >= 0 && d->drain_rough[half];
         x = put(fb, x, 76, half ? "R" : "L", DBG_LABEL) + 1;
-        if (hundredths < 0) {
-            strcpy(buf, "--");
-        } else if (hundredths < 1000) {
-            snprintf(buf, sizeof(buf), "%d.%02d", hundredths / 100, hundredths % 100);
-        } else {
-            snprintf(buf, sizeof(buf), "%d.%d", hundredths / 100, hundredths / 10 % 10);
+        drain_text(buf, sizeof(buf), hundredths, rough);
+        if (rough && !drain_flash_off()) {
+            put(fb, x, 76, "~", DBG_WARN);
         }
         x = put(fb, x, 76, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT) + 3;
     }
@@ -2283,12 +2304,10 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x)
     put_right(fb, right + 1, 28, buf, mv && !charging ? DBG_TEXT : DBG_LABEL);
     put(fb, x, 36, "mW", DBG_LABEL);
     const int hundredths = d->drain_hundredths_mw[half];
-    if (hundredths < 0) {
-        strcpy(buf, "--");
-    } else if (hundredths < 1000) {
-        snprintf(buf, sizeof(buf), "%d.%02d", hundredths / 100, hundredths % 100);
-    } else {
-        snprintf(buf, sizeof(buf), "%d.%d", hundredths / 100, hundredths / 10 % 10);
+    const bool rough = hundredths >= 0 && d->drain_rough[half];
+    drain_text(buf, sizeof(buf), hundredths, rough);
+    if (rough && !drain_flash_off()) {
+        put(fb, right + 1 - 5 * (int)strlen(buf), 36, "~", DBG_WARN); /* in the space before it */
     }
     put_right(fb, right + 1, 36, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT);
 
@@ -2579,6 +2598,7 @@ void fx_start(int fx, uint16_t *palette) {
 }
 
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
+    drain_clock = fmodf(drain_clock + in->step, 30 * 60);
     if (fx >= 0 && fx < FX_COUNT) {
         effects[fx].frame(fb, in);
     }
