@@ -1969,19 +1969,15 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 #define METER_HOLD 1.2f   /* seconds the mark stays up */
 #define METER_MARK_FALL 0.3f
 
-static uint8_t keys_signal[3][SIGNAL_W];     /* heights, the newest last: left, the computer, right */
-static uint8_t keys_speed[SIGNAL_W];         /* words a minute, the same way, 255 at most */
 static float meter_level[METER_COLS], meter_mark[METER_COLS], meter_held[METER_COLS];
-static float keys_time, keys_second;         /* 30ths of a second */
+static float keys_time; /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
-    memset(keys_signal, 0, sizeof(keys_signal));
-    memset(keys_speed, 0, sizeof(keys_speed));
     memset(meter_level, 0, sizeof(meter_level));
     memset(meter_mark, 0, sizeof(meter_mark));
     memset(meter_held, 0, sizeof(meter_held));
-    keys_time = keys_second = 0;
+    keys_time = 0;
 }
 
 /* A row of values as columns `high` at most (15 or under), on a line: each
@@ -2001,11 +1997,6 @@ static void spark(uint8_t *fb, int x, int y, const uint8_t *values, int count, i
             plot(fb, x + i, y + high - 1 - up, trouble || up == v - 1 ? top : DBG_DIM);
         }
     }
-}
-
-static void history_add(uint8_t *values, int count, uint8_t value) {
-    memmove(values, values + 1, count - 1);
-    values[count - 1] = value;
 }
 
 static int keys_block_x(int place) {
@@ -2035,9 +2026,10 @@ static void battery_icon(uint8_t *fb, int x, int y, int level, uint8_t color) {
 #define KEYS_ICON_X 7  /* the battery, and the bars: after the bolt (5) and a gap */
 #define KEYS_TEXT_X 20 /* the level, and the dBm: after the battery (10) and a gap */
 
-/* One of the three blocks' signal: the bars, the dBm and the history.
- * `place` 0 on the left, 1 in the middle, 2 on the right. */
-static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
+/* One of the three blocks' signal: the bars, the dBm and the last SIGNAL_W
+ * seconds of `log` (fx_debug's signal_log). `place` 0 on the left, 1 in the
+ * middle, 2 on the right. */
+static void keys_link(uint8_t *fb, int place, const struct fx_link *link, const int8_t *log) {
     char dbm[8] = "";
     uint8_t dbm_color = DBG_LABEL;
     if (!link->up) {
@@ -2050,7 +2042,19 @@ static void keys_link(uint8_t *fb, int place, const struct fx_link *link) {
     const int left = keys_block_x(place);
     signal_bars(fb, left + KEYS_ICON_X, 15, link);
     put(fb, left + KEYS_TEXT_X, 15, dbm, dbm_color);
-    spark(fb, keys_block_x(place), 24, keys_signal[place], SIGNAL_W, SIGNAL_H, DBG_TEXT);
+    /* -95 dBm and under is one row, -40 and over all of them; a second of
+     * weak signal keeps its colour in the history */
+    uint8_t high[SIGNAL_W];
+    for (int i = 0; i < SIGNAL_W; i++) {
+        const int dbm = log[FX_HISTORY - SIGNAL_W + i];
+        high[i] = 0;
+        if (dbm != 0 && dbm != FX_SIGNAL_DOWN) {
+            const int h = 1 + (dbm + 95) * (SIGNAL_H - 1) / 55;
+            high[i] = (uint8_t)(h < 1 ? 1 : h > SIGNAL_H ? SIGNAL_H : h);
+            high[i] |= dbm > SIGNAL_GOOD_DBM ? 0 : dbm > SIGNAL_WARN_DBM ? SPARK_WARN : SPARK_RED;
+        }
+    }
+    spark(fb, keys_block_x(place), 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -2059,29 +2063,9 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         return;
     }
     const struct fx_debug *d = in->debug;
-    const struct fx_link *links[3] = {&d->half[0], &d->host, &d->half[1]};
     char buf[32];
 
-    /* the histories move on a place a second */
     keys_time += in->step;
-    keys_second += in->step;
-    if (keys_second >= 30) {
-        keys_second = keys_second >= 60 ? 0 : keys_second - 30;
-        for (int i = 0; i < 3; i++) {
-            /* -95 dBm and under is one row, -40 and over all of them */
-            int high = 0;
-            if (links[i]->up && links[i]->rssi_known) {
-                high = 1 + (links[i]->rssi + 95) * (SIGNAL_H - 1) / 55;
-                high = high < 1 ? 1 : high > SIGNAL_H ? SIGNAL_H : high;
-            }
-            /* a second of weak signal keeps its colour in the history */
-            if (high > 0 && signal_color(links[i]) != DBG_GOOD) {
-                high |= signal_color(links[i]) == DBG_BAD ? SPARK_RED : SPARK_WARN;
-            }
-            history_add(keys_signal[i], SIGNAL_W, (uint8_t)high);
-        }
-        history_add(keys_speed, SIGNAL_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
-    }
 
     /* the halves: a battery and its level, in their places in the block */
     for (int half = 0; half < 2; half++) {
@@ -2105,7 +2089,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             put(fb, left + KEYS_TEXT_X, 6, buf, color);
         }
         charging_bolt(fb, left, 6, in->status, half);
-        keys_link(fb, half * 2, links[half * 2]);
+        keys_link(fb, half * 2, &d->half[half], d->signal_log[half]);
     }
     /* the computer */
     if (in->status && in->status->usb) {
@@ -2119,19 +2103,20 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         const int wpm_x = (FX_W - (15 + 1 + 15)) / 2 + 15 + 1;
         put_right(fb, wpm_x - 1, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
         put(fb, wpm_x, 15, "WPM", DBG_LABEL);
+        const uint8_t *speed = d->wpm_log + FX_HISTORY - SIGNAL_W;
         int full = SPEED_FULL;
         for (int i = 0; i < SIGNAL_W; i++) {
-            full = keys_speed[i] > full ? keys_speed[i] : full;
+            full = speed[i] > full ? speed[i] : full;
         }
         uint8_t high[SIGNAL_W];
         for (int i = 0; i < SIGNAL_W; i++) {
-            high[i] = (uint8_t)((keys_speed[i] * SIGNAL_H + full - 1) / full);
+            high[i] = (uint8_t)((speed[i] * SIGNAL_H + full - 1) / full);
         }
         spark(fb, keys_block_x(1), 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
     } else {
         /* the Bluetooth profiles as the Debug screen draws them, and the link */
         profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 6);
-        keys_link(fb, 1, &d->host);
+        keys_link(fb, 1, &d->host, d->signal_log[2]);
     }
     rule(fb, 35);
 
@@ -2199,14 +2184,14 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * and graphs rather than columns of numbers. Top to bottom:
  *
  *   the typing speed as a row of lights, green then red then violet, with a
- *   mark at the fastest of the last STATUS_GRAPH_W seconds;
+ *   mark at the fastest of the last FX_HISTORY seconds;
  *
  *   each half at its side: its battery's level, as a figure and a bar, its
  *   volts to the millivolt, its average draw, and a graph of its volts over
  *   the last four hours; in the middle the layer, big, its name, the speed
  *   and the modifiers, lit while held;
  *
- *   each link's signal over the last STATUS_GRAPH_W seconds, the three in
+ *   each link's signal over the last FX_HISTORY seconds, the three in
  *   one graph (left white, right dim, the computer's light), with the
  *   amber and red bands' edges dotted and a red mark where a link was down,
  *   and the latest of each beside it;
@@ -2221,23 +2206,12 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 #define STATUS_LIGHTS 15
 #define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
-#define STATUS_GRAPH_W 94
 #define STATUS_GRAPH_TOP 58
 #define STATUS_GRAPH_H 24
 #define STATUS_DBM_TOP -40
 #define STATUS_DBM_FLOOR -100
-#define STATUS_DOWN -128 /* a second the link was down */
 
-static int8_t status_signal[3][STATUS_GRAPH_W]; /* dBm each second, the newest last: left, right, the computer; 0 not known */
-static uint8_t status_speed[STATUS_GRAPH_W];
-static float status_second;
-
-static void status_start(uint16_t *palette) {
-    debug_start(palette);
-    memset(status_signal, 0, sizeof(status_signal));
-    memset(status_speed, 0, sizeof(status_speed));
-    status_second = 0;
-}
+static void status_start(uint16_t *palette) { debug_start(palette); }
 
 /* Text `scale` times the size. */
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale) {
@@ -2358,24 +2332,10 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const bool usb_out = in->status && in->status->usb;
     char buf[16];
 
-    /* the histories move on a place a second */
-    status_second += in->step;
-    if (status_second >= 30) {
-        status_second = status_second >= 60 ? 0 : status_second - 30;
-        for (int i = 0; i < 3; i++) {
-            memmove(status_signal[i], status_signal[i] + 1, STATUS_GRAPH_W - 1);
-            status_signal[i][STATUS_GRAPH_W - 1] = i == 2 && usb_out         ? 0
-                                                   : !links[i]->up          ? STATUS_DOWN
-                                                   : links[i]->rssi_known   ? (int8_t)(links[i]->rssi < -127 ? -127 : links[i]->rssi > -1 ? -1 : links[i]->rssi)
-                                                                            : 0;
-        }
-        history_add(status_speed, STATUS_GRAPH_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
-    }
-
     /* the lights: the speed, and a mark at the fastest lately */
     int fastest = d->wpm;
-    for (int i = 0; i < STATUS_GRAPH_W; i++) {
-        fastest = status_speed[i] > fastest ? status_speed[i] : fastest;
+    for (int i = 0; i < FX_HISTORY; i++) {
+        fastest = d->wpm_log[i] > fastest ? d->wpm_log[i] : fastest;
     }
     const int lights_x = (FX_W - (STATUS_LIGHTS * 7 - 2)) / 2;
     for (int i = 0; i < STATUS_LIGHTS; i++) {
@@ -2420,16 +2380,16 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     /* the signal: the bands' edges dotted, then each link, the computer's
      * first so the halves' are on top */
     const int gx = 4;
-    for (int x = gx; x < gx + STATUS_GRAPH_W; x += 2) {
+    for (int x = gx; x < gx + FX_HISTORY; x += 2) {
         plot(fb, x, status_dbm_y(SIGNAL_GOOD_DBM), DBG_DIM);
         plot(fb, x, status_dbm_y(SIGNAL_WARN_DBM), DBG_WARN);
     }
     static const uint8_t trace[3] = {DBG_BRIGHT, DBG_LABEL, DBG_TEXT};
     for (int link = 2; link >= 0; link--) {
         int prev = -1;
-        for (int i = 0; i < STATUS_GRAPH_W; i++) {
-            const int v = status_signal[link][i];
-            if (v == STATUS_DOWN) {
+        for (int i = 0; i < FX_HISTORY; i++) {
+            const int v = d->signal_log[link][i];
+            if (v == FX_SIGNAL_DOWN) {
                 line(fb, gx + i, STATUS_GRAPH_TOP - 2, gx + i, STATUS_GRAPH_TOP - 1, DBG_BAD);
                 prev = -1;
                 continue;

@@ -223,6 +223,13 @@ int main(int argc, char **argv) {
         debug.half_trend[0][i] = (uint16_t)(3990 - i * 2 + (i * 7 % 5));
         debug.half_trend[1][i] = i < 12 ? 0 : (uint16_t)(3930 - (i - 12) * 2 + (i * 3 % 4));
     }
+    /* the signal and speed histories the dongle keeps, already full when a screen is turned to */
+    for (int i = 0; i < FX_HISTORY; i++) {
+        debug.signal_log[0][i] = (int8_t)(-52 + (i * 3 % 7) - 3);
+        debug.signal_log[1][i] = (int8_t)(-72 + (i * 5 % 13) - 6);
+        debug.signal_log[2][i] = i >= 30 && i < 34 ? FX_SIGNAL_DOWN : (int8_t)(-50 + (i * 3 % 5) - 2);
+        debug.wpm_log[i] = (uint8_t)(i < 20 ? 0 : 40 + (i * 11 % 30));
+    }
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);
@@ -328,6 +335,16 @@ int main(int argc, char **argv) {
             debug.half[0].rssi = (int8_t)(-52 + (int)((key_seed >> 8) % 7) - 3);
             debug.half[1].rssi = (int8_t)(-71 + (int)((key_seed >> 12) % 13) - 6);
             debug.host.rssi = (int8_t)(-48 + (int)((key_seed >> 20) % 5) - 2);
+            /* and a second more of history, as the dongle's readings thread adds */
+            const struct fx_link *links[3] = {&debug.half[0], &debug.half[1], &debug.host};
+            for (int i = 0; i < 3; i++) {
+                memmove(debug.signal_log[i], debug.signal_log[i] + 1, FX_HISTORY - 1);
+                debug.signal_log[i][FX_HISTORY - 1] = i == 2 && status.usb ? 0
+                                                      : !links[i]->up      ? FX_SIGNAL_DOWN
+                                                                           : links[i]->rssi;
+            }
+            memmove(debug.wpm_log, debug.wpm_log + 1, FX_HISTORY - 1);
+            debug.wpm_log[FX_HISTORY - 1] = (uint8_t)(wpm > 255 ? 255 : wpm);
         }
         in.debug = &debug;
         fx_frame(fx, fb, &in);

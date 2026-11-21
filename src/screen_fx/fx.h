@@ -88,6 +88,8 @@ struct fx_theme {
 
 #define FX_DEBUG_LOG 3
 #define FX_DEBUG_PROFILES 5
+#define FX_HISTORY 94      /* seconds of each link's signal and the typing speed kept */
+#define FX_SIGNAL_DOWN (-128) /* in the signal history: a second the link was down */
 #define FX_TREND 40     /* readings in each half's battery history */
 #define FX_TREND_MIN 6  /* minutes apart: four hours of it */
 #define FX_MAX_ENCODERS 4
@@ -160,6 +162,11 @@ struct fx_debug {
     uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
     uint16_t half_mv[2];   /* left, right: the battery's millivolts; 0 when not known */
     int32_t drain_hundredths_mw[2]; /* and its average draw, hundredths of a milliwatt; -1 until known */
+    /* each link's signal each second, kept whichever screen shows: dBm,
+     * the newest last; left, right, the computer; 0 not known (and the
+     * computer's while typing over USB), FX_SIGNAL_DOWN down */
+    int8_t signal_log[3][FX_HISTORY];
+    uint8_t wpm_log[FX_HISTORY]; /* and the typing speed, 255 at most */
     uint16_t half_trend[2][FX_TREND]; /* and its millivolts every FX_TREND_MIN minutes, the newest last;
                                        * 0 where not known */
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */

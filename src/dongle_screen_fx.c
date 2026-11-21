@@ -605,9 +605,11 @@ static void dongle_readings_cb(struct k_work *work) {
  * The readings that ask something else and wait for the answer: each link's
  * signal strength (a command to the radio), and how far the dongle has got
  * with each half's charging state. Taken once a second on a
- * thread of their own, only while the Debug or Keys screen is showing, so a
- * slow or stuck answer can't hold up a frame on the display queue (a frame
- * drawn after a stuck one would never come, leaving the screen blank).
+ * thread of their own, so a slow or stuck answer can't hold up a frame on
+ * the display queue (a frame drawn after a stuck one would never come,
+ * leaving the screen blank). Always, whichever screen shows, so that the
+ * signal and the typing speed have a history (FX_HISTORY seconds) when the
+ * Keys or Status screen is turned to.
  */
 #define READINGS_EVERY_MS 1000
 #define READINGS_STACK 3072
@@ -616,8 +618,9 @@ static struct {
     struct fx_link link[3]; /* left, right, the computer: up, rssi_known, rssi */
     char half_reads[2][3];
     uint8_t half_err[2];
+    int8_t signal_log[3][FX_HISTORY];
+    uint8_t wpm_log[FX_HISTORY];
 } readings; /* under debug_lock */
-static atomic_t readings_until; /* uptime ms: wanted until then */
 
 static K_THREAD_STACK_DEFINE(readings_stack, READINGS_STACK);
 static struct k_work_q readings_q;
@@ -643,21 +646,27 @@ static void readings_cb(struct k_work *work) {
     dongle_half_info_progress(0, half_reads[0], &half_err[0]);
     dongle_half_info_progress(1, half_reads[1], &half_err[1]);
 #endif
+    const bool usb_out = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
         memcpy(readings.half_reads, half_reads, sizeof(half_reads));
         memcpy(readings.half_err, half_err, sizeof(half_err));
+        /* this second in the histories */
+        for (int i = 0; i < 3; i++) {
+            memmove(readings.signal_log[i], readings.signal_log[i] + 1, FX_HISTORY - 1);
+            readings.signal_log[i][FX_HISTORY - 1] = i == 2 && usb_out ? 0
+                                                     : !link[i].up     ? FX_SIGNAL_DOWN
+                                                     : link[i].rssi_known ? (int8_t)CLAMP(link[i].rssi, -127, -1)
+                                                                          : 0;
+        }
+        memmove(readings.wpm_log, readings.wpm_log + 1, FX_HISTORY - 1);
+        readings.wpm_log[FX_HISTORY - 1] = (uint8_t)MIN(atomic_get(&wpm), 255);
     }
-    /* again while a screen still wants them */
-    if ((int32_t)((uint32_t)atomic_get(&readings_until) - k_uptime_get_32()) > 0) {
-        k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
-    }
+    k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
 }
 
-/* Each Debug or Keys frame: keep the readings coming for a while yet. */
+/* Each Debug, Keys or Status frame: keep the dongle's own readings coming. */
 static void readings_wanted(void) {
-    atomic_set(&readings_until, (atomic_val_t)(k_uptime_get_32() + 2 * READINGS_EVERY_MS));
-    k_work_schedule_for_queue(&readings_q, &readings_work, K_NO_WAIT); /* no change if already due */
     /* the dongle's own: the first at once, then every few seconds (no change if already due) */
     for (int i = 0; i < DONGLE_READINGS; i++) {
         const uint32_t read_at = (uint32_t)atomic_get(&dongle_read_at[i]);
@@ -735,6 +744,8 @@ static void read_debug(void) {
         d->host = mix_link(d->host, readings.link[2]);
         memcpy(d->half_reads, readings.half_reads, sizeof(d->half_reads));
         memcpy(d->half_err, readings.half_err, sizeof(d->half_err));
+        memcpy(d->signal_log, readings.signal_log, sizeof(d->signal_log));
+        memcpy(d->wpm_log, readings.wpm_log, sizeof(d->wpm_log));
         d->dongle_mv = dongle_readings.mv;
         d->dongle_temp_known = dongle_readings.temp_known;
         d->dongle_temp_c = dongle_readings.temp_c;
@@ -1913,6 +1924,7 @@ static int screen_fx_init(void) {
 #endif
     k_work_queue_start(&readings_q, readings_stack, K_THREAD_STACK_SIZEOF(readings_stack),
                        K_LOWEST_APPLICATION_THREAD_PRIO, &(struct k_work_queue_config){.name = "screen_fx_read"});
+    k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
     static const char *const dongle_q_names[DONGLE_READINGS] = {"screen_fx_mv", "screen_fx_temp"};
     for (int i = 0; i < DONGLE_READINGS; i++) {
         k_work_init_delayable(&dongle_readings_work[i], dongle_readings_cb);
