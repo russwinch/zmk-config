@@ -202,23 +202,24 @@ layout line there picks Classic, Radii or Field instead.
 #### Animated screens
 
 The **Screen next** key on the Config layer (the U key) steps the dongle
-through the Keys screen, the [Debug screen](#debug-screen) and three
+through the Keys screen, the [Status screen](#status-screen), the [Debug screen](#debug-screen) and three
 full-screen animations, and round again; **Screen prev** (the Y key)
 goes the other way. It starts on Keys. The screen you leave it on is
 remembered: once it has been showing for 30 seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
 
 The **Theme next** key (the O key) steps through the [colour
-themes](#colour-themes) of Keys, Debug, Tracker and Terminal; **Theme prev**
+themes](#colour-themes) of Keys, Status, Debug, Tracker and Terminal; **Theme prev**
 (the I key) goes the other way.
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
 | 1 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for two seconds after; orange while it is holding a modifier down, violet while it is holding a layer on (the ICE theme's colours: each [theme](#colour-themes) has its own) |
-| 2 | Debug | a page of readings: [see below](#debug-screen) | |
-| 3 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
-| 4 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
-| 5 | Terminal | a blinking cursor | what you type, in the theme's colour (green in PHOSPHOR), fading out over about 10 seconds |
+| 2 | Status | the batteries, the signal and the keys, as a racing car's steering wheel display shows a car's: [see below](#status-screen) | the keys light as on Keys; the modifiers light while held, and the typing speed lights a row of lights along the top |
+| 3 | Debug | a page of readings: [see below](#debug-screen) | |
+| 4 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
+| 5 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
+| 6 | Terminal | a blinking cursor | what you type, in the theme's colour (green in PHOSPHOR), fading out over about 10 seconds |
 
 Three more animations are screensavers, not screens to choose. After 15
 minutes without a key (or an encoder turn), or when the Lower layer's
@@ -256,7 +257,7 @@ remembered as the screen and the theme are, after the same 30 seconds.
 
 #### Colour themes
 
-Keys, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
+Keys, Status, Debug, Tracker and Terminal are drawn in the colours of a theme, which the
 Config layer's **Theme next** key (the O key) steps through, and round
 again (**Theme prev**, the I key, goes back). The screen showing changes colour as it is, and the theme's name
 and its place in the list (`PHOSPHOR 2/25`) show in the middle of the screen
@@ -324,7 +325,7 @@ Nothing on it moves as the readings change: each block has a place for the bolt,
 
 ##### Encoder knobs
 
-On the Keys and Debug screens, a key position that is an encoder's push is
+On the Keys, Status and Debug screens, a key position that is an encoder's push is
 drawn as a round knob instead of a square: on the Waterfowl both rollers and
 both dials, on the Aurora Corne the outer thumb keys. Pushed, it fills like a
 key (white, then glowing for two seconds). Turned, its ring glows for two seconds and
@@ -413,7 +414,7 @@ before one has been chosen and the typing speed that counts as flat out are set 
 
 #### Battery warnings
 
-Wherever the dongle shows a half's battery (the Keys and Debug screens, the
+Wherever the dongle shows a half's battery (the Keys, Status and Debug screens, the
 levels over the animations, the screensavers' corner batteries):
 
 | Level | Shown |
@@ -421,6 +422,21 @@ levels over the animations, the screensavers' corner batteries):
 | 15% or under | amber |
 | 10% or under | red, flashing slowly: a second on, a second off (not on Debug, which doesn't flash) |
 | 5% or under | red, flashing fast: twice a second |
+
+#### Status screen
+
+Between Keys and Debug: more than Keys shows of the batteries and the
+links, as bars and graphs, and none of Debug's raw codes. Laid out like a
+racing car's steering wheel display.
+
+| Part | Shows |
+| --- | --- |
+| the row of lights along the top | the typing speed, a light for every 8 words a minute: green, then red, then violet from 88 to 120. A white light stays at the fastest of the last 94 seconds |
+| top left, top right | each half: its letter (red when its link is down), a bolt while it is on USB power, its battery percent and a bar of ten, coloured as [below](#battery-warnings); `V` its battery in volts to the millivolt (dim while charging: it is the charger's then); `mW` its average draw (as on Debug, `--` for the first hour); and under them its volts over the last four hours, a point every 6 minutes, from the lowest to the highest (30 mV at least, so noise stays flat), blank where the dongle wasn't hearing it |
+| middle | the highest active layer, big, its name under it; the typing speed; ⌃⌥⇧⌘, each filled while held (either side) |
+| the graph | each link's signal over the last 94 seconds, a point a second, from -40 dBm at the top to -100 at the bottom: the left half's line white, the right's dim, the computer's light blue. The dotted lines are -75 (green above) and -85 (red below); a red mark across the top is a second the link was down. Beside it each link's latest, coloured as on Keys, `--` in red when down, and `USB` for the computer when typing over it. It starts empty each time the screen is turned to |
+| the boxes | the output: `BT` and the profile (green when the computer is connected) or `USB` (green when it is listening); `DR` the drops on all three links since the dongle started (amber when any); the dongle's supply in volts; its temperature (amber from 60 °C); then the worst trouble there is, filled red: `HANG` or `CRSH` the last start hung or crashed, `B` and milliseconds a switch bouncing (under 30 ms), `CH` a half's charging state failed; or amber `UE` and a count, USB reports the computer didn't take. `OK` in green when there is none. The Debug screen says more about each |
+| the keys | the board as on Keys (white while held, orange holding a modifier, violet holding a layer, glowing after; encoders as [knobs](#encoder-knobs)), and either side the key presses from that half since the dongle started |
 
 #### Debug screen
 

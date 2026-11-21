@@ -88,6 +88,8 @@ struct fx_theme {
 
 #define FX_DEBUG_LOG 3
 #define FX_DEBUG_PROFILES 5
+#define FX_TREND 40     /* readings in each half's battery history */
+#define FX_TREND_MIN 6  /* minutes apart: four hours of it */
 #define FX_MAX_ENCODERS 4
 
 #define FX_CRASH_HANG 1
@@ -158,6 +160,8 @@ struct fx_debug {
     uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
     uint16_t half_mv[2];   /* left, right: the battery's millivolts; 0 when not known */
     int32_t drain_hundredths_mw[2]; /* and its average draw, hundredths of a milliwatt; -1 until known */
+    uint16_t half_trend[2][FX_TREND]; /* and its millivolts every FX_TREND_MIN minutes, the newest last;
+                                       * 0 where not known */
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
     bool dongle_temp_known;
     int8_t dongle_temp_c;  /* the dongle's chip temperature */

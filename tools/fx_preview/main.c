@@ -218,6 +218,11 @@ int main(int argc, char **argv) {
         .half_reads = {"OK", "E"}, .half_err = {0, 0x85}, .half_mv = {3912, 3874}, .drain_hundredths_mw = {142, 93}, .dongle_mv = 3312, .dongle_temp_known = true, .dongle_temp_c = 31, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };
+    /* four hours of each half's volts going down, the right half's since it was plugged in */
+    for (int i = 0; i < FX_TREND; i++) {
+        debug.half_trend[0][i] = (uint16_t)(3990 - i * 2 + (i * 7 % 5));
+        debug.half_trend[1][i] = i < 12 ? 0 : (uint16_t)(3930 - (i - 12) * 2 + (i * 3 % 4));
+    }
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);

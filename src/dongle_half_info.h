@@ -18,6 +18,11 @@ uint16_t dongle_half_millivolts(int half);
 // of it. src/dongle_half_drain.c.
 int dongle_half_drain_hundredths_mw(int half);
 
+// The half's battery millivolts every `every_min` minutes, the newest last
+// in `mv[0..n-1]`, 0 where not known (not connected, or not that long
+// since the dongle started). src/dongle_half_drain.c.
+void dongle_half_trend(int half, uint16_t *mv, int n, int every_min);
+
 // Where the dongle has got to with the half's charging state, for the Debug
 // screen: up to two letters in `code` ("" when the half isn't connected):
 //   WT  waiting for ZMK to finish setting the half's link up

@@ -28,7 +28,7 @@
  *
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below). So is the
- * colour theme, which the &scr_theme key steps through: the Keys, Debug,
+ * colour theme, which the &scr_theme key steps through: the Keys, Status, Debug,
  * Tracker and Terminal screens are drawn in its colours (colors.h has the list), and its
  * name shows for a moment when it is turned to.
  *
@@ -747,6 +747,7 @@ static void read_debug(void) {
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         d->half_mv[half] = dongle_half_millivolts(half);
         d->drain_hundredths_mw[half] = dongle_half_drain_hundredths_mw(half);
+        dongle_half_trend(half, d->half_trend[half], FX_TREND, FX_TREND_MIN);
 #else
         d->drain_hundredths_mw[half] = -1;
 #endif

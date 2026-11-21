@@ -29,6 +29,7 @@
 #define SETTLE_MIN 20       // after unplugging, before readings count
 #define SHOW_AFTER_MIN 60   // of readings, before there is a figure
 #define NOMINAL_MV 3700     // to turn mAh into mWh
+#define TREND_N 240         // the last four hours of readings, for the Status screen
 
 // A typical lithium polymer cell resting: millivolts, and the percent of its
 // charge left there. Above the first, full; below the last, empty.
@@ -68,6 +69,8 @@ struct fit {
 static struct fit fits[2];          // under lock
 static uint32_t settle_until[2];    // uptime ms: readings count from then
 static bool was_charging[2];
+static uint16_t trend[2][TREND_N]; // under lock: a reading a minute, trend_at the next to write
+static int trend_at;
 static struct k_spinlock lock;
 
 static void sample_cb(struct k_work *work);
@@ -79,6 +82,7 @@ static void sample_cb(struct k_work *work) {
         const bool charging = dongle_half_charging(half);
         const uint16_t mv = dongle_half_millivolts(half);
         K_SPINLOCK(&lock) {
+            trend[half][trend_at] = mv;
             if (charging) {
                 fits[half] = (struct fit){0}; // starts again once unplugged
                 was_charging[half] = true;
@@ -106,7 +110,20 @@ static void sample_cb(struct k_work *work) {
             f->te += t * e;
         }
     }
+    K_SPINLOCK(&lock) {
+        trend_at = (trend_at + 1) % TREND_N;
+    }
     k_work_schedule(&sample_work, K_SECONDS(SAMPLE_EVERY_S));
+}
+
+void dongle_half_trend(int half, uint16_t *mv, int n, int every_min) {
+    K_SPINLOCK(&lock) {
+        for (int i = 0; i < n; i++) {
+            // the newest is the one before trend_at; each before it every_min older
+            const int ago = (n - 1 - i) * every_min + 1;
+            mv[i] = half >= 0 && half < 2 && ago <= TREND_N ? trend[half][(trend_at - ago + TREND_N) % TREND_N] : 0;
+        }
+    }
 }
 
 int dongle_half_drain_hundredths_mw(int half) {

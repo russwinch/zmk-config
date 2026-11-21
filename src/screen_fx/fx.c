@@ -2191,6 +2191,346 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
+/* --- status: halfway between Keys and Debug ---------------------------------- */
+
+/*
+ * The readings worth glancing at, set out like a racing car's steering
+ * wheel display: lights across the top, the big figure in the middle, bars
+ * and graphs rather than columns of numbers. Top to bottom:
+ *
+ *   the typing speed as a row of lights, green then red then violet, with a
+ *   mark at the fastest of the last STATUS_GRAPH_W seconds;
+ *
+ *   each half at its side: its battery's level, as a figure and a bar, its
+ *   volts to the millivolt, its average draw, and a graph of its volts over
+ *   the last four hours; in the middle the layer, big, its name, the speed
+ *   and the modifiers, lit while held;
+ *
+ *   each link's signal over the last STATUS_GRAPH_W seconds, the three in
+ *   one graph (left white, right dim, the computer's light), with the
+ *   amber and red bands' edges dotted and a red mark where a link was down,
+ *   and the latest of each beside it;
+ *
+ *   a row of boxes: the output, the drops, the dongle's supply and
+ *   temperature, and the worst of what has gone wrong (filled red or amber);
+ *
+ *   the board, and each half's key presses.
+ *
+ * It takes the whole screen, so the status text isn't drawn over it.
+ */
+
+#define STATUS_LIGHTS 15
+#define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
+#define STATUS_GRAPH_W 94
+#define STATUS_GRAPH_TOP 58
+#define STATUS_GRAPH_H 24
+#define STATUS_DBM_TOP -40
+#define STATUS_DBM_FLOOR -100
+#define STATUS_DOWN -128 /* a second the link was down */
+
+static int8_t status_signal[3][STATUS_GRAPH_W]; /* dBm each second, the newest last: left, right, the computer; 0 not known */
+static uint8_t status_speed[STATUS_GRAPH_W];
+static float status_second;
+
+static void status_start(uint16_t *palette) {
+    debug_start(palette);
+    memset(status_signal, 0, sizeof(status_signal));
+    memset(status_speed, 0, sizeof(status_speed));
+    status_second = 0;
+}
+
+/* Text `scale` times the size. */
+static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale) {
+    for (; *s; s++, x += 5 * scale) {
+        const uint8_t *rows = fx_glyph_rows(*s);
+        for (int row = 0; rows && row < 7; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (rows[row] & (0x10 >> col)) {
+                    for (int dy = 0; dy < scale; dy++) {
+                        line(fb, x + col * scale, y + row * scale + dy, x + col * scale + scale - 1,
+                             y + row * scale + dy, color);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void fill(uint8_t *fb, int x, int y, int wide, int high, uint8_t color) {
+    for (int dy = 0; dy < high; dy++) {
+        line(fb, x, y + dy, x + wide - 1, y + dy, color);
+    }
+}
+
+/* A box `wide` across at (x, y), 9 high, with `text` in the middle: an
+ * outline when `fill_color` is DBG_BG, else filled and the text dark. */
+static void status_box(uint8_t *fb, int x, int y, int wide, const char *text, uint8_t color, uint8_t fill_color) {
+    if (fill_color != DBG_BG) {
+        fill(fb, x, y, wide, 9, fill_color);
+        color = DBG_BG;
+    } else {
+        line(fb, x, y, x + wide - 1, y, DBG_DIM);
+        line(fb, x, y + 8, x + wide - 1, y + 8, DBG_DIM);
+        line(fb, x, y, x, y + 8, DBG_DIM);
+        line(fb, x + wide - 1, y, x + wide - 1, y + 8, DBG_DIM);
+    }
+    put(fb, x + (wide - (5 * (int)strlen(text) - 1)) / 2, y + 1, text, color);
+}
+
+/* A half at its side, from x: level, bar, volts, draw, and the volts' history. */
+static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x) {
+    const struct fx_debug *d = in->debug;
+    const int right = x + 41;
+    char buf[12];
+    const uint8_t level = in->status ? in->status->battery[half] : 0;
+    const bool charging = in->status && in->status->charging[half];
+    put(fb, x, 11, half ? "R" : "L", d->half[half].up ? DBG_BRIGHT : DBG_BAD);
+    charging_bolt(fb, x + 6, 11, in->status, half);
+    if (level) {
+        snprintf(buf, sizeof(buf), "%u%%", level);
+    } else {
+        strcpy(buf, "--");
+    }
+    put_right(fb, right + 1, 11, buf, level ? battery_color(level) : DBG_LABEL);
+    for (int step = 0; step < 10; step++) {
+        const bool on = level && (step == 0 || step < (level + 5) / 10);
+        fill(fb, x + 1 + step * 4, 20, 3, 5,
+             !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
+    }
+
+    /* the volts to the millivolt (the charger's while charging, so dim then) */
+    const unsigned mv = d->half_mv[half] > 9999 ? 9999 : d->half_mv[half];
+    put(fb, x, 28, "V", DBG_LABEL);
+    if (mv) {
+        snprintf(buf, sizeof(buf), "%u.%03u", mv / 1000, mv % 1000);
+    } else {
+        strcpy(buf, "--");
+    }
+    put_right(fb, right + 1, 28, buf, mv && !charging ? DBG_TEXT : DBG_LABEL);
+    put(fb, x, 36, "mW", DBG_LABEL);
+    const int hundredths = d->drain_hundredths_mw[half];
+    if (hundredths < 0) {
+        strcpy(buf, "--");
+    } else if (hundredths < 1000) {
+        snprintf(buf, sizeof(buf), "%d.%02d", hundredths / 100, hundredths % 100);
+    } else {
+        snprintf(buf, sizeof(buf), "%d.%d", hundredths / 100, hundredths / 10 % 10);
+    }
+    put_right(fb, right + 1, 36, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT);
+
+    /* the volts over four hours, 7 high: from the lowest to the highest, or
+     * 30 mV at least so the reading's noise stays flat */
+    int lo = 9999, hi = 0;
+    for (int i = 0; i < FX_TREND; i++) {
+        const int v = d->half_trend[half][i];
+        if (v) {
+            lo = v < lo ? v : lo;
+            hi = v > hi ? v : hi;
+        }
+    }
+    if (hi - lo < 30) {
+        lo = (lo + hi) / 2 - 15;
+        hi = lo + 30;
+    }
+    for (int i = 0; i < FX_TREND; i++) {
+        const int v = d->half_trend[half][i], gx = x + 1 + i;
+        plot(fb, gx, 51, DBG_DIM);
+        if (v) {
+            const int top = 51 - (v - lo) * 6 / (hi - lo);
+            line(fb, gx, top + 1, gx, 51, DBG_DIM);
+            plot(fb, gx, top, DBG_TEXT);
+        }
+    }
+}
+
+static int status_dbm_y(int dbm) {
+    dbm = dbm > STATUS_DBM_TOP ? STATUS_DBM_TOP : dbm < STATUS_DBM_FLOOR ? STATUS_DBM_FLOOR : dbm;
+    return STATUS_GRAPH_TOP + (STATUS_DBM_TOP - dbm) * (STATUS_GRAPH_H - 1) / (STATUS_DBM_TOP - STATUS_DBM_FLOOR);
+}
+
+static void status_frame(uint8_t *fb, const struct fx_input *in) {
+    memset(fb, DBG_BG, PIXELS);
+    if (in->debug == NULL) {
+        return;
+    }
+    const struct fx_debug *d = in->debug;
+    const struct fx_link *links[3] = {&d->half[0], &d->half[1], &d->host};
+    const bool usb_out = in->status && in->status->usb;
+    char buf[16];
+
+    /* the histories move on a place a second */
+    status_second += in->step;
+    if (status_second >= 30) {
+        status_second = status_second >= 60 ? 0 : status_second - 30;
+        for (int i = 0; i < 3; i++) {
+            memmove(status_signal[i], status_signal[i] + 1, STATUS_GRAPH_W - 1);
+            status_signal[i][STATUS_GRAPH_W - 1] = i == 2 && usb_out         ? 0
+                                                   : !links[i]->up          ? STATUS_DOWN
+                                                   : links[i]->rssi_known   ? (int8_t)(links[i]->rssi < -127 ? -127 : links[i]->rssi > -1 ? -1 : links[i]->rssi)
+                                                                            : 0;
+        }
+        history_add(status_speed, STATUS_GRAPH_W, (uint8_t)(d->wpm > 255 ? 255 : d->wpm));
+    }
+
+    /* the lights: the speed, and a mark at the fastest lately */
+    int fastest = d->wpm;
+    for (int i = 0; i < STATUS_GRAPH_W; i++) {
+        fastest = status_speed[i] > fastest ? status_speed[i] : fastest;
+    }
+    const int lights_x = (FX_W - (STATUS_LIGHTS * 7 - 2)) / 2;
+    for (int i = 0; i < STATUS_LIGHTS; i++) {
+        const int at = (i + 1) * STATUS_LIGHT_WPM;
+        const uint8_t on = i < 5 ? DBG_GOOD : i < 10 ? DBG_BAD : DBG_LAYER;
+        const uint8_t color = d->wpm >= at ? on
+                              : fastest >= at && fastest < at + STATUS_LIGHT_WPM ? DBG_BRIGHT
+                                                                                 : DBG_DIM;
+        fill(fb, lights_x + i * 7, 3, 5, 4, color);
+    }
+
+    status_half(fb, in, 0, 4);
+    status_half(fb, in, 1, FX_W - 4 - 41);
+
+    /* the middle: the layer big, the speed beside it, the name and modifiers under */
+    snprintf(buf, sizeof(buf), "%u", d->layer > 99 ? 99 : d->layer);
+    const int big_right = d->layer > 9 ? 76 : 69;
+    put_big(fb, big_right - 15 * (int)strlen(buf) + 3, 10, buf, DBG_BRIGHT, 3);
+    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+    put(fb, big_right + 4, 12, buf, d->wpm ? DBG_TEXT : DBG_LABEL);
+    put(fb, big_right + 4, 20, "WPM", DBG_LABEL);
+    if (d->layer_name) {
+        snprintf(buf, sizeof(buf), "%.8s", d->layer_name);
+        for (char *c = buf; *c; c++) {
+            *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c;
+        }
+        put(fb, (FX_W - (5 * (int)strlen(buf) - 1)) / 2, 34, buf, DBG_TEXT);
+    }
+    static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
+    static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
+    for (int i = 0; i < 4; i++) {
+        const bool on = (d->mods & mod_bit[i]) != 0;
+        const int gx = FX_W / 2 - 19 + i * 10;
+        if (on) {
+            fill(fb, gx - 1, 43, 8, 9, DBG_MOD);
+        }
+        const char g[2] = {mod_glyph[i], '\0'};
+        put(fb, gx + 1, 44, g, on ? DBG_BG : DBG_LABEL);
+    }
+    rule(fb, 55);
+
+    /* the signal: the bands' edges dotted, then each link, the computer's
+     * first so the halves' are on top */
+    const int gx = 4;
+    for (int x = gx; x < gx + STATUS_GRAPH_W; x += 2) {
+        plot(fb, x, status_dbm_y(SIGNAL_GOOD_DBM), DBG_DIM);
+        plot(fb, x, status_dbm_y(SIGNAL_WARN_DBM), DBG_WARN);
+    }
+    static const uint8_t trace[3] = {DBG_BRIGHT, DBG_LABEL, DBG_TEXT};
+    for (int link = 2; link >= 0; link--) {
+        int prev = -1;
+        for (int i = 0; i < STATUS_GRAPH_W; i++) {
+            const int v = status_signal[link][i];
+            if (v == STATUS_DOWN) {
+                line(fb, gx + i, STATUS_GRAPH_TOP - 2, gx + i, STATUS_GRAPH_TOP - 1, DBG_BAD);
+                prev = -1;
+                continue;
+            }
+            if (v == 0) {
+                prev = -1;
+                continue;
+            }
+            const int y = status_dbm_y(v);
+            line(fb, gx + i, prev < 0 ? y : prev, gx + i, y, trace[link]);
+            prev = y;
+        }
+    }
+    static const char names[3] = {'L', 'R', 'H'};
+    for (int link = 0; link < 3; link++) {
+        const int y = STATUS_GRAPH_TOP + link * 8;
+        const char name[2] = {names[link], '\0'};
+        put(fb, 104, y, name, trace[link]);
+        if (link == 2 && usb_out) {
+            put_right(fb, 137, y, "USB", DBG_LABEL);
+        } else if (!links[link]->up) {
+            put_right(fb, 137, y, "--", DBG_BAD);
+        } else if (links[link]->rssi_known) {
+            snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
+            put_right(fb, 137, y, buf, signal_color(links[link]));
+        }
+    }
+    rule(fb, 83);
+
+    /* the boxes: the output, the drops, the dongle's supply and temperature,
+     * then the worst trouble there is, if any */
+    int x = 4;
+    if (usb_out) {
+        status_box(fb, x, 86, 19, "USB", in->status->host_connected ? DBG_GOOD : DBG_WARN, DBG_BG);
+    } else {
+        snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
+        status_box(fb, x, 86, 19, buf, d->host.up ? DBG_GOOD : DBG_TEXT, DBG_BG);
+    }
+    x += 21;
+    const int drops = d->half[0].drops + d->half[1].drops + d->host.drops;
+    snprintf(buf, sizeof(buf), "DR%d", drops > 99 ? 99 : drops);
+    status_box(fb, x, 86, 24, buf, DBG_LABEL, drops ? DBG_WARN : DBG_BG);
+    x += 26;
+    if (d->dongle_mv) {
+        const unsigned mv = d->dongle_mv > 9999 ? 9999 : d->dongle_mv;
+        snprintf(buf, sizeof(buf), "%u.%03uV", mv / 1000, mv % 1000);
+    } else {
+        snprintf(buf, sizeof(buf), "%sV", d->dongle_mv_why[0] ? d->dongle_mv_why : "--");
+    }
+    status_box(fb, x, 86, 34, buf, d->dongle_mv ? DBG_TEXT : DBG_LABEL, DBG_BG);
+    x += 36;
+    if (d->dongle_temp_known) {
+        const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
+        snprintf(buf, sizeof(buf), "%dC", c);
+        status_box(fb, x, 86, 19, buf, DBG_TEXT, c >= 60 ? DBG_WARN : DBG_BG);
+    } else {
+        status_box(fb, x, 86, 19, "--C", DBG_LABEL, DBG_BG);
+    }
+    x += 21;
+    /* the worst: a restart that hung or crashed, a bouncing switch, a half's
+     * charging state that failed, USB reports the computer didn't take */
+    const char *trouble = NULL;
+    uint8_t trouble_color = DBG_BAD;
+    if (d->crash == FX_CRASH_HANG) {
+        trouble = "HANG";
+    } else if (d->crash == FX_CRASH_FAULT) {
+        trouble = "CRSH";
+    } else if (d->bounce_ms && d->bounce_ms < 30) {
+        snprintf(buf, sizeof(buf), "B%u", d->bounce_ms);
+        trouble = buf;
+    } else if (d->half_reads[0][0] == 'E' || d->half_reads[0][0] == 'T' || d->half_reads[1][0] == 'E' ||
+               d->half_reads[1][0] == 'T') {
+        trouble = "CH";
+    } else if (d->usb_errors) {
+        snprintf(buf, sizeof(buf), "UE%u", d->usb_errors > 9 ? 9 : d->usb_errors);
+        trouble = buf;
+        trouble_color = DBG_WARN;
+    }
+    status_box(fb, x, 86, FX_W - 4 - x, trouble ? trouble : "OK", trouble ? DBG_BG : DBG_GOOD,
+               trouble ? trouble_color : DBG_BG);
+
+    /* the board, and each half's presses */
+    int rows = 1;
+    for (int key = 0; key < key_count; key++) {
+        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
+        rows = row > rows ? row : rows;
+    }
+    const int split = 4, gap = 1, pitch = board_cols > 10 ? 6 : 7;
+    const int high = (20 + gap) / rows - gap;
+    const int left = (FX_W - (board_cols * pitch - gap + split)) / 2;
+    board(fb, in, left, 97, pitch, high > 4 ? 4 : high, gap, split);
+    for (int half = 0; half < 2; half++) {
+        count_text(buf, sizeof(buf), d->presses[half]);
+        if (half) {
+            put_right(fb, FX_W - 5, 102, buf, d->presses[1] ? DBG_TEXT : DBG_LABEL);
+        } else {
+            put(fb, 6, 102, buf, d->presses[0] ? DBG_TEXT : DBG_LABEL);
+        }
+    }
+}
+
 /* --- the list --------------------------------------------------------------- */
 
 /* How far down the status text sits: in the bottom corners, clear of their
@@ -2212,6 +2552,7 @@ static const struct {
     uint8_t saver;         /* can be the screensaver: the way into it (FX_TR_*) */
 } effects[] = {
     {"KEYS", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
+    {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
     {"DEBUG", debug_start, debug_frame, debug_colors, NULL, {0}, .debug = true},
     {"THERMAL", thermal_start, thermal_frame, NULL, &thermal_text, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
     {"TRACKER", tracker_start, tracker_frame, tracker_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
