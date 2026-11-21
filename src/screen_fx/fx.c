@@ -2207,28 +2207,37 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  *   the typing speed as a row of lights, green then red then violet, with a
  *   mark at the fastest of the last FX_HISTORY seconds;
  *
- *   each half at its side: its battery's level, as a figure and a bar, its
- *   volts to the millivolt, its average draw, and a graph of its volts over
- *   the last four hours; in the middle the layer, big, its name, the speed
- *   and the modifiers, lit while held;
- *
- *   each link's signal over the last FX_HISTORY seconds, the three in
- *   one graph (left white, right dim, the computer's light), with the
- *   amber and red bands' edges dotted and a red mark where a link was down,
- *   and the latest of each beside it;
+ *   the keys first: each half of the board at its side, the speed big
+ *   between them; under each half its presses, and between them the
+ *   layer's name and the modifiers, lit while held; then the speed over the
+ *   last FX_HISTORY seconds;
  *
  *   a row of boxes: the output, the drops, the dongle's supply and
  *   temperature, and the worst of what has gone wrong (filled red or amber);
  *
- *   the board, and each half's key presses.
+ *   each link's signal, its latest and a small graph of the last
+ *   FX_HISTORY seconds, red where it was down;
+ *
+ *   each half's battery at its side: its level, big, and a bar, its volts
+ *   to the millivolt, its average draw, and a graph of its volts over the
+ *   last four hours.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
 #define STATUS_LIGHTS 15
 #define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
-#define STATUS_GRAPH_TOP 58
-#define STATUS_GRAPH_H 24
+#define STATUS_KEYS_TOP 8  /* the halves, the speed big between them */
+#define STATUS_KEYS_H 20
+#define STATUS_MID_Y 30    /* the presses, the layer's name and the modifiers */
+#define STATUS_WPM_FOOT 49 /* the speed's graph, 10 high */
+#define STATUS_WPM_H 10
+#define STATUS_WPM_MAX 120
+#define STATUS_BOX_Y 52
+#define STATUS_SIGNAL_Y 63 /* each link's name and latest, its graph under */
+#define STATUS_SIGNAL_W 42
+#define STATUS_BATTERY_Y 79
+#define STATUS_BATTERY_W 61
 #define STATUS_DBM_TOP -40
 #define STATUS_DBM_FLOOR -100
 
@@ -2272,47 +2281,56 @@ static void status_box(uint8_t *fb, int x, int y, int wide, const char *text, ui
     put(fb, x + (wide - (5 * (int)strlen(text) - 1)) / 2, y + 1, text, color);
 }
 
-/* A half at its side, from x: level, bar, volts, draw, and the volts' history. */
-static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x) {
+/* A small graph, 7 high with its foot at `foot`: a dim column up to each
+ * point, the point itself in `color`. */
+static void status_spark(uint8_t *fb, int x, int foot, int high, uint8_t color) {
+    line(fb, x, foot - high + 1, x, foot, DBG_DIM);
+    plot(fb, x, foot - high, color);
+}
+
+/* A half's battery, STATUS_BATTERY_W across from (x, y): its level, big
+ * at its own side with the bolt inside it, a bar, its volts and draw, and
+ * the volts' history. */
+static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x, int y) {
     const struct fx_debug *d = in->debug;
-    const int right = x + 41;
+    const int right = x + STATUS_BATTERY_W;
     char buf[12];
     const uint8_t level = in->status ? in->status->battery[half] : 0;
     const bool charging = in->status && in->status->charging[half];
-    put(fb, x, 11, half ? "R" : "L", d->half[half].up ? DBG_BRIGHT : DBG_BAD);
-    charging_bolt(fb, x + 6, 11, in->status, half);
     if (level) {
         snprintf(buf, sizeof(buf), "%u%%", level);
     } else {
         strcpy(buf, "--");
     }
-    put_right(fb, right + 1, 11, buf, level ? battery_color(level) : DBG_LABEL);
+    const int level_w = 10 * (int)strlen(buf) - 2, level_x = half ? right - level_w : x;
+    put_big(fb, level_x, y, buf, level ? battery_color(level) : DBG_LABEL, 2);
+    charging_bolt(fb, half ? level_x - 8 : level_x + level_w + 3, y + 4, in->status, half);
     for (int step = 0; step < 10; step++) {
         const bool on = level && (step == 0 || step < (level + 5) / 10);
-        fill(fb, x + 1 + step * 4, 20, 3, 5,
+        fill(fb, x + 1 + step * 6, y + 15, 5, 3,
              !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
     }
 
-    /* the volts to the millivolt (the charger's while charging, so dim then) */
+    /* the volts to the millivolt (the charger's while charging, so dim then), and the draw */
     const unsigned mv = d->half_mv[half] > 9999 ? 9999 : d->half_mv[half];
-    put(fb, x, 28, "V", DBG_LABEL);
     if (mv) {
         snprintf(buf, sizeof(buf), "%u.%03u", mv / 1000, mv % 1000);
     } else {
         strcpy(buf, "--");
     }
-    put_right(fb, right + 1, 28, buf, mv && !charging ? DBG_TEXT : DBG_LABEL);
-    put(fb, x, 36, "mW", DBG_LABEL);
+    put(fb, x, y + 20, buf, mv && !charging ? DBG_TEXT : DBG_LABEL);
+    put(fb, x + 5 * (int)strlen(buf), y + 20, "V", DBG_LABEL);
     const int hundredths = d->drain_hundredths_mw[half];
     const bool rough = hundredths >= 0 && d->drain_rough[half];
     drain_text(buf, sizeof(buf), hundredths, rough);
     if (rough && !drain_flash_off()) {
-        put(fb, right + 1 - 5 * (int)strlen(buf), 36, "~", DBG_WARN); /* in the space before it */
+        put(fb, right - 10 - 5 * (int)strlen(buf), y + 20, "~", DBG_WARN); /* in the space before it */
     }
-    put_right(fb, right + 1, 36, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT);
+    put_right(fb, right - 10, y + 20, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT);
+    put_right(fb, right, y + 20, "mW", DBG_LABEL);
 
-    /* the volts over four hours, 7 high: from the lowest to the highest, or
-     * 30 mV at least so the reading's noise stays flat */
+    /* the volts over four hours, stretched across: from the lowest to the
+     * highest, or 30 mV at least so the reading's noise stays flat */
     int lo = 9999, hi = 0;
     for (int i = 0; i < FX_TREND; i++) {
         const int v = d->half_trend[half][i];
@@ -2325,20 +2343,15 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x)
         lo = (lo + hi) / 2 - 15;
         hi = lo + 30;
     }
-    for (int i = 0; i < FX_TREND; i++) {
-        const int v = d->half_trend[half][i], gx = x + 1 + i;
-        plot(fb, gx, 51, DBG_DIM);
+    /* in at the outer end, clear of the panel's rounded corner */
+    const int foot = y + 33, wide = STATUS_BATTERY_W - 4, gx = half ? x : x + 4;
+    for (int px = 0; px < wide; px++) {
+        const int v = d->half_trend[half][px * FX_TREND / wide];
+        plot(fb, gx + px, foot, DBG_DIM);
         if (v) {
-            const int top = 51 - (v - lo) * 6 / (hi - lo);
-            line(fb, gx, top + 1, gx, 51, DBG_DIM);
-            plot(fb, gx, top, DBG_TEXT);
+            status_spark(fb, gx + px, foot, (v - lo) * 6 / (hi - lo), DBG_TEXT);
         }
     }
-}
-
-static int status_dbm_y(int dbm) {
-    dbm = dbm > STATUS_DBM_TOP ? STATUS_DBM_TOP : dbm < STATUS_DBM_FLOOR ? STATUS_DBM_FLOOR : dbm;
-    return STATUS_GRAPH_TOP + (STATUS_DBM_TOP - dbm) * (STATUS_GRAPH_H - 1) / (STATUS_DBM_TOP - STATUS_DBM_FLOOR);
 }
 
 static void status_frame(uint8_t *fb, const struct fx_input *in) {
@@ -2366,91 +2379,82 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         fill(fb, lights_x + i * 7, 3, 5, 4, color);
     }
 
-    status_half(fb, in, 0, 4);
-    status_half(fb, in, 1, FX_W - 4 - 41);
-
-    /* the middle: the layer big, the speed beside it, the name and modifiers under */
-    snprintf(buf, sizeof(buf), "%u", d->layer > 99 ? 99 : d->layer);
-    const int big_right = d->layer > 9 ? 76 : 69;
-    put_big(fb, big_right - 15 * (int)strlen(buf) + 3, 10, buf, DBG_BRIGHT, 3);
+    /* the halves at the sides, the speed big between them */
+    int rows = 1;
+    for (int key = 0; key < key_count; key++) {
+        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
+        rows = row > rows ? row : rows;
+    }
+    const int gap = 1, pitch = board_cols > 10 ? 6 : 7;
+    const int high = (STATUS_KEYS_H + gap) / rows - gap;
+    /* in from the sides, clear of the panel's rounded corners */
+    board(fb, in, 9, STATUS_KEYS_TOP, pitch, high > 4 ? 4 : high, gap, FX_W - 18 - (board_cols * pitch - gap));
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    put(fb, big_right + 4, 12, buf, d->wpm ? DBG_TEXT : DBG_LABEL);
-    put(fb, big_right + 4, 20, "WPM", DBG_LABEL);
+    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, STATUS_KEYS_TOP - 1, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
+
+    /* under them: each half's presses at its side, the layer's name and the modifiers between */
+    for (int half = 0; half < 2; half++) {
+        count_text(buf, sizeof(buf), d->presses[half]);
+        if (half) {
+            put_right(fb, FX_W - 4, STATUS_MID_Y, buf, d->presses[1] ? DBG_TEXT : DBG_LABEL);
+        } else {
+            put(fb, 4, STATUS_MID_Y, buf, d->presses[0] ? DBG_TEXT : DBG_LABEL);
+        }
+    }
     if (d->layer_name) {
         snprintf(buf, sizeof(buf), "%.8s", d->layer_name);
         for (char *c = buf; *c; c++) {
             *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c;
         }
-        put(fb, (FX_W - (5 * (int)strlen(buf) - 1)) / 2, 34, buf, DBG_TEXT);
+    } else {
+        snprintf(buf, sizeof(buf), "L%u", d->layer > 99 ? 99 : d->layer);
     }
+    const int name_w = 5 * (int)strlen(buf) - 1, mods_x = (FX_W - (name_w + 5 + 38)) / 2 + name_w + 5;
+    put(fb, mods_x - name_w - 5, STATUS_MID_Y, buf, DBG_TEXT);
     static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
     static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
     for (int i = 0; i < 4; i++) {
         const bool on = (d->mods & mod_bit[i]) != 0;
-        const int gx = FX_W / 2 - 19 + i * 10;
+        const int gx = mods_x + 1 + i * 10;
         if (on) {
-            fill(fb, gx - 1, 43, 8, 9, DBG_MOD);
+            fill(fb, gx - 1, STATUS_MID_Y - 1, 8, 9, DBG_MOD);
         }
         const char g[2] = {mod_glyph[i], '\0'};
-        put(fb, gx + 1, 44, g, on ? DBG_BG : DBG_LABEL);
+        put(fb, gx + 1, STATUS_MID_Y, g, on ? DBG_BG : DBG_LABEL);
     }
-    rule(fb, 55);
 
-    /* the signal: the bands' edges dotted, then each link, the computer's
-     * first so the halves' are on top */
-    const int gx = 4;
-    for (int x = gx; x < gx + FX_HISTORY; x += 2) {
-        plot(fb, x, status_dbm_y(SIGNAL_GOOD_DBM), DBG_DIM);
-        plot(fb, x, status_dbm_y(SIGNAL_WARN_DBM), DBG_WARN);
+    /* the speed over the last FX_HISTORY seconds, after its label, the
+     * lights' colour changes dotted */
+    const int graph_x = 22, graph_w = FX_W - 4 - graph_x;
+    put(fb, 4, STATUS_WPM_FOOT - 7, "WPM", DBG_LABEL);
+    for (int x = graph_x; x < graph_x + graph_w; x += 2) {
+        plot(fb, x, STATUS_WPM_FOOT - 5 * STATUS_LIGHT_WPM * (STATUS_WPM_H - 1) / STATUS_WPM_MAX, DBG_DIM);
+        plot(fb, x, STATUS_WPM_FOOT - 10 * STATUS_LIGHT_WPM * (STATUS_WPM_H - 1) / STATUS_WPM_MAX, DBG_DIM);
     }
-    static const uint8_t trace[3] = {DBG_BRIGHT, DBG_LABEL, DBG_TEXT};
-    for (int link = 2; link >= 0; link--) {
-        int prev = -1;
-        for (int i = 0; i < FX_HISTORY; i++) {
-            const int v = d->signal_log[link][i];
-            if (v == FX_SIGNAL_DOWN) {
-                line(fb, gx + i, STATUS_GRAPH_TOP - 2, gx + i, STATUS_GRAPH_TOP - 1, DBG_BAD);
-                prev = -1;
-                continue;
-            }
-            if (v == 0) {
-                prev = -1;
-                continue;
-            }
-            const int y = status_dbm_y(v);
-            line(fb, gx + i, prev < 0 ? y : prev, gx + i, y, trace[link]);
-            prev = y;
+    int prev = -1;
+    for (int px = 0; px < graph_w; px++) {
+        const int v = d->wpm_log[px * (FX_HISTORY - 1) / (graph_w - 1)];
+        const int y = STATUS_WPM_FOOT - (v > STATUS_WPM_MAX ? STATUS_WPM_MAX : v) * (STATUS_WPM_H - 1) / STATUS_WPM_MAX;
+        if (y < STATUS_WPM_FOOT) {
+            line(fb, graph_x + px, y + 1, graph_x + px, STATUS_WPM_FOOT, DBG_DIM);
         }
+        line(fb, graph_x + px, prev < 0 ? y : prev, graph_x + px, y, DBG_TEXT);
+        prev = y;
     }
-    static const char names[3] = {'L', 'R', 'H'};
-    for (int link = 0; link < 3; link++) {
-        const int y = STATUS_GRAPH_TOP + link * 8;
-        const char name[2] = {names[link], '\0'};
-        put(fb, 104, y, name, trace[link]);
-        if (link == 2 && usb_out) {
-            put_right(fb, 137, y, "USB", DBG_LABEL);
-        } else if (!links[link]->up) {
-            put_right(fb, 137, y, "--", DBG_BAD);
-        } else if (links[link]->rssi_known) {
-            snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
-            put_right(fb, 137, y, buf, signal_color(links[link]));
-        }
-    }
-    rule(fb, 83);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
      * then the worst trouble there is, if any */
     int x = 4;
     if (usb_out) {
-        status_box(fb, x, 86, 19, "USB", in->status->host_connected ? DBG_GOOD : DBG_WARN, DBG_BG);
+        status_box(fb, x, STATUS_BOX_Y, 19, "USB", in->status->host_connected ? DBG_GOOD : DBG_WARN, DBG_BG);
     } else {
         snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-        status_box(fb, x, 86, 19, buf, d->host.up ? DBG_GOOD : DBG_TEXT, DBG_BG);
+        status_box(fb, x, STATUS_BOX_Y, 19, buf, d->host.up ? DBG_GOOD : DBG_TEXT, DBG_BG);
     }
     x += 21;
     const int drops = d->half[0].drops + d->half[1].drops + d->host.drops;
     snprintf(buf, sizeof(buf), "DR%d", drops > 99 ? 99 : drops);
-    status_box(fb, x, 86, 24, buf, DBG_LABEL, drops ? DBG_WARN : DBG_BG);
+    status_box(fb, x, STATUS_BOX_Y, 24, buf, DBG_LABEL, drops ? DBG_WARN : DBG_BG);
     x += 26;
     if (d->dongle_mv) {
         const unsigned mv = d->dongle_mv > 9999 ? 9999 : d->dongle_mv;
@@ -2458,14 +2462,14 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     } else {
         snprintf(buf, sizeof(buf), "%sV", d->dongle_mv_why[0] ? d->dongle_mv_why : "--");
     }
-    status_box(fb, x, 86, 34, buf, d->dongle_mv ? DBG_TEXT : DBG_LABEL, DBG_BG);
+    status_box(fb, x, STATUS_BOX_Y, 34, buf, d->dongle_mv ? DBG_TEXT : DBG_LABEL, DBG_BG);
     x += 36;
     if (d->dongle_temp_known) {
         const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
         snprintf(buf, sizeof(buf), "%dC", c);
-        status_box(fb, x, 86, 19, buf, DBG_TEXT, c >= 60 ? DBG_WARN : DBG_BG);
+        status_box(fb, x, STATUS_BOX_Y, 19, buf, DBG_TEXT, c >= 60 ? DBG_WARN : DBG_BG);
     } else {
-        status_box(fb, x, 86, 19, "--C", DBG_LABEL, DBG_BG);
+        status_box(fb, x, STATUS_BOX_Y, 19, "--C", DBG_LABEL, DBG_BG);
     }
     x += 21;
     /* the worst: a restart that hung or crashed, a bouncing switch, a half's
@@ -2487,27 +2491,48 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         trouble = buf;
         trouble_color = DBG_WARN;
     }
-    status_box(fb, x, 86, FX_W - 4 - x, trouble ? trouble : "OK", trouble ? DBG_BG : DBG_GOOD,
+    status_box(fb, x, STATUS_BOX_Y, FX_W - 4 - x, trouble ? trouble : "OK", trouble ? DBG_BG : DBG_GOOD,
                trouble ? trouble_color : DBG_BG);
 
-    /* the board, and each half's presses */
-    int rows = 1;
-    for (int key = 0; key < key_count; key++) {
-        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
-        rows = row > rows ? row : rows;
-    }
-    const int split = 4, gap = 1, pitch = board_cols > 10 ? 6 : 7;
-    const int high = (20 + gap) / rows - gap;
-    const int left = (FX_W - (board_cols * pitch - gap + split)) / 2;
-    board(fb, in, left, 97, pitch, high > 4 ? 4 : high, gap, split);
-    for (int half = 0; half < 2; half++) {
-        count_text(buf, sizeof(buf), d->presses[half]);
-        if (half) {
-            put_right(fb, FX_W - 5, 102, buf, d->presses[1] ? DBG_TEXT : DBG_LABEL);
-        } else {
-            put(fb, 6, 102, buf, d->presses[0] ? DBG_TEXT : DBG_LABEL);
+    /* each link's signal: its name and latest, and under them the last
+     * FX_HISTORY seconds from -40 dBm to -100, the worst in each column,
+     * coloured as the latest is, red full height where it was down */
+    static const char names[3] = {'L', 'R', 'H'};
+    for (int link = 0; link < 3; link++) {
+        const int sx = 4 + link * (STATUS_SIGNAL_W + 3), foot = STATUS_SIGNAL_Y + 14;
+        const bool off = link == 2 && usb_out; /* down on purpose */
+        const char name[2] = {names[link], '\0'};
+        put(fb, sx, STATUS_SIGNAL_Y, name, links[link]->up || off ? DBG_TEXT : DBG_BAD);
+        if (off) {
+            put_right(fb, sx + STATUS_SIGNAL_W, STATUS_SIGNAL_Y, "USB", DBG_LABEL);
+        } else if (!links[link]->up) {
+            put_right(fb, sx + STATUS_SIGNAL_W, STATUS_SIGNAL_Y, "--", DBG_BAD);
+        } else if (links[link]->rssi_known) {
+            snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
+            put_right(fb, sx + STATUS_SIGNAL_W, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
+        }
+        for (int px = 0; px < STATUS_SIGNAL_W; px++) {
+            int worst = 0;
+            bool down = false;
+            for (int i = px * FX_HISTORY / STATUS_SIGNAL_W; i < (px + 1) * FX_HISTORY / STATUS_SIGNAL_W; i++) {
+                const int v = d->signal_log[link][i];
+                down |= v == FX_SIGNAL_DOWN;
+                worst = v != FX_SIGNAL_DOWN && v && (!worst || v < worst) ? v : worst;
+            }
+            plot(fb, sx + px, foot, DBG_DIM);
+            if (down && !off) {
+                line(fb, sx + px, foot - 6, sx + px, foot, DBG_BAD);
+            } else if (worst) {
+                const int dbm = worst > STATUS_DBM_TOP ? STATUS_DBM_TOP : worst < STATUS_DBM_FLOOR ? STATUS_DBM_FLOOR : worst;
+                status_spark(fb, sx + px, foot, (dbm - STATUS_DBM_FLOOR) * 6 / (STATUS_DBM_TOP - STATUS_DBM_FLOOR),
+                             dbm > SIGNAL_GOOD_DBM ? DBG_GOOD : dbm > SIGNAL_WARN_DBM ? DBG_WARN : DBG_BAD);
+            }
         }
     }
+
+    /* each half's battery */
+    status_half(fb, in, 0, 4, STATUS_BATTERY_Y);
+    status_half(fb, in, 1, FX_W - 4 - STATUS_BATTERY_W, STATUS_BATTERY_Y);
 }
 
 /* --- the list --------------------------------------------------------------- */
