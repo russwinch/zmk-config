@@ -35,7 +35,7 @@
 #include "dongle_half_info.h"
 
 #define SAMPLE_EVERY_S 60
-#define SHOW_AFTER_MIN 15   // of readings, before there is a figure
+#define SHOW_AFTER_MIN 1    // of readings, before there is a figure
 #define ROUGH_PERCENT 25    // rough while it may be out by more than this
 #define STEP_MV 4           // a half sends its voltage when it moves by this (src/half_charging.c)
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
@@ -160,7 +160,7 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
     int hundredths = -1;
     K_SPINLOCK(&lock) {
         const struct fit *f = &fits[half];
-        if (f->n < 3 || f->last_ms - f->start_ms < SHOW_AFTER_MIN * 60 * 1000) {
+        if (f->n < 2 || f->last_ms - f->start_ms < SHOW_AFTER_MIN * 60 * 1000) {
             K_SPINLOCK_BREAK;
         }
         const double sxx = f->tt - f->t * f->t / f->n; // hours²
@@ -174,7 +174,7 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
 
         // how far out it may be: the line's scatter, or one step over its span
         const double sse = MAX(syy - sxy * sxy / sxx, 0);
-        const double scatter = sqrt(sse / (f->n - 2) / sxx);
+        const double scatter = f->n > 2 ? sqrt(sse / (f->n - 2) / sxx) : INFINITY;
         const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
         const double step = (energy_mwh(f->last_mv + STEP_MV / 2) - energy_mwh(f->last_mv - STEP_MV / 2)) / span_h;
         *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * mw;

@@ -432,7 +432,7 @@ racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | the row of lights along the top | the typing speed, a light for every 8 words a minute: green, then red, then violet from 88 to 120. A white light stays at the fastest of the last 94 seconds |
-| top left, top right | each half: its letter (red when its link is down), a bolt while it is on USB power, its battery percent and a bar of ten, coloured as [below](#battery-warnings); `V` its battery in volts to the millivolt (dim while charging: it is the charger's then); `mW` its average draw (as on Debug: `--` for the first 15 minutes, then a flashing amber `~` before it while rough); and under them its volts over the last four hours, a point every 6 minutes, from the lowest to the highest (30 mV at least, so noise stays flat), blank where the dongle wasn't hearing it |
+| top left, top right | each half: its letter (red when its link is down), a bolt while it is on USB power, its battery percent and a bar of ten, coloured as [below](#battery-warnings); `V` its battery in volts to the millivolt (dim while charging: it is the charger's then); `mW` its average draw (as on Debug: `--` for its first minute, then a flashing amber `~` before it while rough); and under them its volts over the last four hours, a point every 6 minutes, from the lowest to the highest (30 mV at least, so noise stays flat), blank where the dongle wasn't hearing it |
 | middle | the highest active layer, big, its name under it; the typing speed; ⌃⌥⇧⌘, each filled while held (either side) |
 | the graph | each link's signal over the last 94 seconds, a point a second, from -40 dBm at the top to -100 at the bottom: the left half's line white, the right's dim, the computer's light blue. The dotted lines are -75 (green above) and -85 (red below); a red mark across the top is a second the link was down. Beside it each link's latest, coloured as on Keys, `--` in red when down, and `USB` for the computer when typing over it. The dongle keeps this, and the speed for the white light, whichever screen is showing (since it started), so it is already there when the screen is turned to |
 | the boxes | the output: `BT` and the profile (green when the computer is connected) or `USB` (green when it is listening); `DR` the drops on all three links since the dongle started (amber when any); the dongle's supply in volts; its temperature (amber from 60 °C); then the worst trouble there is, filled red: `HANG` or `CRSH` the last start hung or crashed, `B` and milliseconds a switch bouncing (under 30 ms), `CH` a half's charging state failed; or amber `UE` and a count, USB reports the computer didn't take. `OK` in green when there is none. The Debug screen says more about each |
@@ -477,7 +477,7 @@ left, from a typical LiPo cell's curve and the battery's capacity
 (`CONFIG_HALF_BATTERY_MAH` in each `config/<keyboard>.conf`: Waterfowl, Urchin
 and Aurora Corne 200, Forager 120 mAh), and fits a straight line
 through those since the half was last unplugged (or the dongle started). It
-is `--` for the first 15 minutes of readings. After that it shows, with a
+is `--` until it has two readings a minute apart. After that it shows, with a
 flashing amber `~` in front and one place fewer while it is rough: while it
 may be out by more than a quarter, from the line's scatter or one 4 mV step
 over the time the line spans, whichever is more, and while the half is still
