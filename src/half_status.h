@@ -47,3 +47,7 @@ void dongle_half_status_send_soon(void);
 // (src/half_status_screen.c), e.g. when the right half's charging state
 // changes.
 void half_status_screen_redraw(void);
+
+// A half: tell the dongle its charging state again (src/half_charging.c),
+// e.g. once the battery has been read after unplugging (src/battery_refresh.c).
+void half_charging_update(void);

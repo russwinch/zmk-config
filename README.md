@@ -401,7 +401,10 @@ went. The bolt means
 plugged in, not still charging: a half can't tell when its charger has
 finished, so the solid bolt at 100 is only the reading reaching the top. A second after it is unplugged (and again at 10 and 30), every half reads
 its battery again (`src/battery_refresh.c`), rather than at ZMK's next
-once-a-minute reading, so the charger's level doesn't stay up for long. A half on older firmware just
+once-a-minute reading, so the charger's level doesn't stay up for long. Until
+that first reading the half still says it is on USB power, so its nice!view and
+the dongle keep the bolt for that second, then both show the new level together
+(the dongle gets the level first, then the bolt goes). A half on older firmware just
 never shows the bolt. The screensavers show only that bolt, or a small
 battery in the corner of a half at 15% or under, with the same colours and
 flashing. The screen to start on

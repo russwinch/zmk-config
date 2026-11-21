@@ -8,7 +8,9 @@
  * battery service, which ZMK already runs on every half for its level: the
  * charge state "charging" on USB power, "discharging" off it. The dongle
  * reads it (src/dongle_half_info.c). A half doesn't know when its charger
- * has finished, so "charging" means only "plugged in".
+ * has finished, so "charging" means only "plugged in". After unplugging it
+ * stays "charging" until the battery has been read again
+ * (src/battery_refresh.c), so the dongle never shows the charger's reading.
  *
  * The same characteristic carries the battery's voltage, for the dongle's
  * figure of each half's draw (src/dongle_half_drain.c): in its optional
@@ -33,8 +35,15 @@
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/usb.h>
 
-static void update(void) {
+#include "battery_refresh.h"
+#include "half_status.h"
+
+void half_charging_update(void) {
+#if IS_ENABLED(CONFIG_BATTERY_REFRESH_ON_UNPLUG)
+    const bool usb = battery_refresh_shows_usb_power();
+#else
     const bool usb = zmk_usb_is_powered();
+#endif
     bt_bas_bls_set_battery_present(BT_BAS_BLS_BATTERY_PRESENT);
     bt_bas_bls_set_wired_external_power_source(usb ? BT_BAS_BLS_WIRED_POWER_CONNECTED
                                                    : BT_BAS_BLS_WIRED_POWER_NOT_CONNECTED);
@@ -43,7 +52,7 @@ static void update(void) {
 }
 
 static int half_charging_listener(const zmk_event_t *eh) {
-    update();
+    half_charging_update();
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -82,7 +91,7 @@ static void voltage_cb(struct k_work *work) {
 #endif
 
 static int half_charging_init(void) {
-    update();
+    half_charging_update();
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
     k_work_schedule(&voltage_work, K_SECONDS(5)); // after ZMK's first reading
 #endif

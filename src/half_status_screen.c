@@ -44,6 +44,7 @@
 #include <zmk/split/bluetooth/peripheral.h>
 #endif
 
+#include "battery_refresh.h"
 #include "half_status.h"
 #include "half_status_draw.h"
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
@@ -219,7 +220,11 @@ static struct half_status_view current_view(void) {
 
     v.own_battery = zmk_battery_state_of_charge();
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+#if IS_ENABLED(CONFIG_BATTERY_REFRESH_ON_UNPLUG)
+    v.charging = battery_refresh_shows_usb_power(); // until the battery is read after unplugging
+#else
     v.charging = zmk_usb_is_powered();
+#endif
 #endif
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     // on its own: everything is here
