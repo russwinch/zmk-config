@@ -208,6 +208,16 @@ goes the other way. It starts on Keys. The screen you leave it on is
 remembered: once it has been showing for 30 seconds it is saved, and the
 dongle starts on it after being unplugged. A settings reset forgets it.
 
+The typing speed the screens show and follow is the dongle's own, counted
+as a typing test counts it rather than as ZMK does: the characters typed
+(letters, figures, symbols, space, Tab and Enter, not Shift, Cmd or
+shortcuts), less one for each Backspace, five to a word, over the last 10
+seconds (from rest, over as long as the typing has been going, 3 seconds at
+least). It is worked out once a second. ZMK's own counts every key code,
+Backspace and the modifiers too, over a window that starts again every 5
+seconds, so it jumped and read high. The Prospector module's own screens get
+this figure too (`src/dongle_wpm.c`).
+
 The **Theme next** key (the O key) steps through the [colour
 themes](#colour-themes) of Keys, Status, Debug, Tracker and Terminal; **Theme prev**
 (the I key) goes the other way.
@@ -432,8 +442,8 @@ racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | the row of lights along the top | the typing speed, a light for every 8 words a minute: green, then red, then violet from 88 to 120. A white light stays at the fastest of the last 94 seconds |
-| top left, top right | each half of the board as on Keys (white while held, orange holding a modifier, violet holding a layer, glowing after; encoders as [knobs](#encoder-knobs)), and under it the key presses from that half since the dongle started |
-| middle | the typing speed, big; under it the highest active layer's name (or `L` and its number) and ⌃⌥⇧⌘, each filled while held (either side) |
+| top left, top right | each half of the board as on Keys (white while held, orange holding a modifier, violet holding a layer, glowing after; encoders as [knobs](#encoder-knobs)) |
+| middle | the typing speed, big; under it the highest active layer's name (or `L` and its number), ⌃⌥⇧⌘, each filled while held (either side), and the key presses from both halves since the dongle started |
 | `WPM` graph | the typing speed over the last 94 seconds, a point a second, up to 120 at the top; the dotted lines are where the lights turn red (40) and violet (80). The dongle keeps this, and each link's signal, whichever screen is showing (since it started), so they are already there when the screen is turned to |
 | the boxes | the output: `BT` and the profile (green when the computer is connected) or `USB` (green when it is listening); `DR` the drops on all three links since the dongle started (amber when any); the dongle's supply in volts; its temperature (amber from 60 °C); then the worst trouble there is, filled red: `HANG` or `CRSH` the last start hung or crashed, `B` and milliseconds a switch bouncing (under 30 ms), `CH` a half's charging state failed; or amber `UE` and a count, USB reports the computer didn't take. `OK` in green when there is none. The Debug screen says more about each |
 | `L` `R` `H` | each link's signal: its latest, coloured as on Keys, `--` in red when down (and its letter red), `USB` for the computer when typing over it; under it the last 94 seconds from -100 dBm at the foot to -40 at the top, the weakest in each column, green above -75, amber above -85, red below, and a red column where the link was down |

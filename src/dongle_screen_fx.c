@@ -90,6 +90,7 @@
 #include <zmk/usb.h>
 
 #include "dongle_backlight.h"
+#include "dongle_wpm.h"
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
 #include "dongle_half_info.h"
 #endif
@@ -1149,7 +1150,7 @@ static void frame_cb(struct k_work *work) {
     }
 
     /* energy: follows words per minute (quick up, slow down), and each key
-     * nudges it straight away, since ZMK only updates the WPM once a second */
+     * nudges it straight away, since the speed is only worked out once a second */
     const float target = MIN(1.0f, atomic_get(&wpm) / (float)CONFIG_DONGLE_SCREEN_FX_WPM_REFERENCE);
     const float rate = (target > energy ? 0.12f : 0.03f) * in.step;
     energy += (target - energy) * MIN(rate, 1.0f) + in.n_keys * 0.03f;
@@ -1792,8 +1793,12 @@ static int screen_fx_listener(const zmk_event_t *eh) {
             zmk_display_is_initialized()) {
             k_work_reschedule_for_queue(zmk_display_work_q(), &saver_work, K_NO_WAIT);
         }
+        const char typed = code->state ? typed_char(code) : 0;
+        if (typed != 0) {
+            dongle_wpm_typed(typed);
+        }
         /* only kept while an animation shows, and only until its next frame */
-        const char c = code->state && atomic_get(&wanted_screen) != 0 ? typed_char(code) : 0;
+        const char c = atomic_get(&wanted_screen) != 0 ? typed : 0;
         if (c != 0) {
             K_SPINLOCK(&keys_lock) {
                 if (n_chars < FX_MAX_CHARS) {

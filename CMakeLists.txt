@@ -17,6 +17,12 @@ if(CONFIG_DONGLE_SCREEN_FX AND CONFIG_ZMK_USB)
   target_sources(app PRIVATE src/dongle_usb_count.c)
   zephyr_ld_options(-Wl,--wrap=zmk_usb_hid_send_keyboard_report -Wl,--wrap=zmk_usb_hid_send_consumer_report)
 endif()
+# The typing speed: the dongle's own in place of ZMK's, which is wrapped at
+# link time so every reader gets it (src/dongle_wpm.c).
+if(CONFIG_DONGLE_SCREEN_FX)
+  target_sources(app PRIVATE src/dongle_wpm.c)
+  zephyr_ld_options(-Wl,--wrap=zmk_wpm_get_state -Wl,--wrap=raise_zmk_wpm_state_changed)
+endif()
 target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE
   src/half_status_screen.c src/half_status_draw.c)
 # status_overlay.c uses fonts from the Prospector module, which builds them

@@ -977,7 +977,7 @@ static void thermal_frame(uint8_t *fb, const struct fx_input *in) {
     thermal_time += in->step;
     thermal_frames++;
 
-    /* the fire: from THERMAL_FIRE_WPM, growing with speed. ZMK's figure
+    /* the fire: from THERMAL_FIRE_WPM, growing with speed. The figure
      * moves once a second, so it is eased in and out. */
     const float fire = in->wpm >= THERMAL_FIRE_WPM
                            ? clampf(0.35f + (in->wpm - THERMAL_FIRE_WPM) / 45.0f, 0.0f, 1.0f)
@@ -2208,8 +2208,8 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  *   mark at the fastest of the last FX_HISTORY seconds;
  *
  *   the keys first: each half of the board at its side, the speed big
- *   between them; under each half its presses, and between them the
- *   layer's name and the modifiers, lit while held; then the speed over the
+ *   between them, and under it the layer's name, the modifiers, lit while
+ *   held, and the key presses from both halves; then the speed over the
  *   last FX_HISTORY seconds;
  *
  *   a row of boxes: the output, the drops, the dongle's supply and
@@ -2229,7 +2229,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
 #define STATUS_KEYS_TOP 8  /* the halves, the speed big between them */
 #define STATUS_KEYS_H 20
-#define STATUS_MID_Y 30    /* the presses, the layer's name and the modifiers */
+#define STATUS_MID_Y 30    /* the layer's name, the modifiers and the presses */
 #define STATUS_WPM_FOOT 49 /* the speed's graph, 10 high */
 #define STATUS_WPM_H 10
 #define STATUS_WPM_MAX 120
@@ -2403,15 +2403,10 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
     put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, STATUS_KEYS_TOP - 1, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
 
-    /* under them: each half's presses at its side, the layer's name and the modifiers between */
-    for (int half = 0; half < 2; half++) {
-        count_text(buf, sizeof(buf), d->presses[half]);
-        if (half) {
-            put_right(fb, FX_W - 4, STATUS_MID_Y, buf, d->presses[1] ? DBG_TEXT : DBG_LABEL);
-        } else {
-            put(fb, 4, STATUS_MID_Y, buf, d->presses[0] ? DBG_TEXT : DBG_LABEL);
-        }
-    }
+    /* under the speed: the layer's name, the modifiers, lit while held, and
+     * the presses from both halves */
+    char total[8];
+    count_text(total, sizeof(total), d->presses[0] + d->presses[1]);
     if (d->layer_name) {
         snprintf(buf, sizeof(buf), "%.8s", d->layer_name);
         for (char *c = buf; *c; c++) {
@@ -2420,8 +2415,9 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     } else {
         snprintf(buf, sizeof(buf), "L%u", d->layer > 99 ? 99 : d->layer);
     }
-    const int name_w = 5 * (int)strlen(buf) - 1, mods_x = (FX_W - (name_w + 5 + 38)) / 2 + name_w + 5;
-    put(fb, mods_x - name_w - 5, STATUS_MID_Y, buf, DBG_TEXT);
+    const int name_w = 5 * (int)strlen(buf) - 1, total_w = 5 * (int)strlen(total) - 1;
+    const int name_x = (FX_W - (name_w + 6 + 38 + 6 + total_w)) / 2, mods_x = name_x + name_w + 6;
+    put(fb, name_x, STATUS_MID_Y, buf, DBG_TEXT);
     static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
     static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
     for (int i = 0; i < 4; i++) {
@@ -2433,6 +2429,7 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         const char g[2] = {mod_glyph[i], '\0'};
         put(fb, gx + 1, STATUS_MID_Y, g, on ? DBG_BG : DBG_LABEL);
     }
+    put(fb, mods_x + 38 + 6, STATUS_MID_Y, total, d->presses[0] + d->presses[1] ? DBG_TEXT : DBG_LABEL);
 
     /* the speed over the last FX_HISTORY seconds, after its label, the
      * lights' colour changes dotted */
