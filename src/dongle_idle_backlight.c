@@ -6,8 +6,9 @@
  * the eye (the pulse goes by the square of that). With the animated screens
  * (src/dongle_screen_fx.c) it waits FX_POWER_OFF_MS before going down to
  * nothing, while they close the picture, and at power-up it stays dark until
- * they have their first picture (dongle_backlight_on), so the Prospector
- * module's own screen isn't seen first.
+ * they have their first picture (dongle_backlight_on), with the panel off as
+ * well, so neither the Prospector module's own screen nor the change from it
+ * shows through the faint "dark" pulse.
  *
  * "0%" never really sets a 0% duty cycle: Zephyr's nRF PWM driver stops the
  * PWM hardware at 0% and has to restart it afterwards, and that once seemed
@@ -200,9 +201,10 @@ ZMK_SUBSCRIPTION(dongle_idle_backlight, zmk_activity_state_changed);
 /*
  * Power-up. With the animated screens taking the place of the module's own,
  * the backlight stays dark until their first picture is ready, which then
- * comes up with it. This runs after the module has set its fixed brightness
- * (both at APPLICATION level, that one at the default priority). Should no
- * picture come, the backlight comes up by itself.
+ * comes up with it, the panel switched back on first. This runs after the
+ * module has set its fixed brightness (both at APPLICATION level, that one at
+ * the default priority). Should no picture come, the backlight comes up by
+ * itself.
  */
 #define LIGHT_ANYWAY_MS 5000
 
@@ -246,9 +248,35 @@ static void light_anyway_cb(struct k_work *work) {
 
 static K_WORK_DELAYABLE_DEFINE(light_anyway_work, light_anyway_cb);
 
+// ZMK switches the panel on as it starts the display (display_blanking_off),
+// with the module's screen loaded but not yet drawn. Switched off again
+// straight after, on the display queue behind that start and before the first
+// draw, it stays off as it does after idle, until the first fade up.
+static void panel_off_cb(struct k_work *work) {
+    if (!panel_off && atomic_get(&target_percent) == 0 && device_is_ready(panel)) {
+        display_blanking_on(panel);
+        panel_off = true;
+    }
+}
+
+static K_WORK_DEFINE(panel_off_work, panel_off_cb);
+
+static void panel_off_wait_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(panel_off_wait_work, panel_off_wait_cb);
+
+// main() starts the display after loading the settings
+static void panel_off_wait_cb(struct k_work *work) {
+    if (!zmk_display_is_initialized()) {
+        k_work_schedule(&panel_off_wait_work, K_MSEC(1));
+        return;
+    }
+    k_work_submit_to_queue(zmk_display_work_q(), &panel_off_work);
+}
+
 static int dark_at_start(void) {
     set_backlight(0);
     level_now = 0;
+    k_work_schedule(&panel_off_wait_work, K_NO_WAIT);
     k_work_schedule(&light_anyway_work, K_MSEC(LIGHT_ANYWAY_MS));
     return 0;
 }
