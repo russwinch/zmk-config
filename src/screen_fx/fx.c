@@ -2207,16 +2207,15 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  *   the typing speed as a row of lights, green then red then violet, with a
  *   mark at the fastest of the last FX_HISTORY seconds;
  *
- *   the keys first: each half of the board at its side, the speed big
- *   between them, and under it the layer's name, the modifiers, lit while
- *   held, and the key presses from both halves; then the speed over the
- *   last FX_HISTORY seconds;
+ *   the speed over the last FX_HISTORY seconds; then each half of the
+ *   board at its side, the speed big between them;
  *
  *   a row of boxes: the output, the drops, the dongle's supply and
  *   temperature, and the worst of what has gone wrong (filled red or amber);
  *
- *   each link's signal, its latest and a small graph of the last
- *   FX_HISTORY seconds, red where it was down;
+ *   each link's signal, the halves' at their sides and the computer's
+ *   between: its latest and a small graph of the last FX_HISTORY seconds,
+ *   red where it was down;
  *
  *   each half's battery at its side: its level, big, and a bar, its volts
  *   to the millivolt, its average draw, and a graph of its volts over the
@@ -2227,11 +2226,10 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 #define STATUS_LIGHTS 15
 #define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
-#define STATUS_KEYS_TOP 8  /* the halves, the speed big between them */
-#define STATUS_KEYS_H 20
-#define STATUS_MID_Y 30    /* the layer's name, the modifiers and the presses */
-#define STATUS_WPM_FOOT 49 /* the speed's graph, 10 high */
+#define STATUS_WPM_FOOT 19 /* the speed's graph, 10 high, under the lights */
 #define STATUS_WPM_H 10
+#define STATUS_KEYS_TOP 23 /* the halves, the speed big between them */
+#define STATUS_KEYS_H 26
 #define STATUS_WPM_MAX 120
 #define STATUS_BOX_Y 52
 #define STATUS_SIGNAL_Y 63 /* each link's name and latest, its graph under */
@@ -2390,47 +2388,6 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         fill(fb, lights_x + i * 7, 3, 5, 4, color);
     }
 
-    /* the halves at the sides, the speed big between them */
-    int rows = 1;
-    for (int key = 0; key < key_count; key++) {
-        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
-        rows = row > rows ? row : rows;
-    }
-    const int gap = 1, pitch = board_cols > 10 ? 6 : 7;
-    const int high = (STATUS_KEYS_H + gap) / rows - gap;
-    /* in from the sides, clear of the panel's rounded corners */
-    board(fb, in, 9, STATUS_KEYS_TOP, pitch, high > 4 ? 4 : high, gap, FX_W - 18 - (board_cols * pitch - gap));
-    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, STATUS_KEYS_TOP - 1, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
-
-    /* under the speed: the layer's name, the modifiers, lit while held, and
-     * the presses from both halves */
-    char total[8];
-    count_text(total, sizeof(total), d->presses[0] + d->presses[1]);
-    if (d->layer_name) {
-        snprintf(buf, sizeof(buf), "%.8s", d->layer_name);
-        for (char *c = buf; *c; c++) {
-            *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c;
-        }
-    } else {
-        snprintf(buf, sizeof(buf), "L%u", d->layer > 99 ? 99 : d->layer);
-    }
-    const int name_w = 5 * (int)strlen(buf) - 1, total_w = 5 * (int)strlen(total) - 1;
-    const int name_x = (FX_W - (name_w + 6 + 38 + 6 + total_w)) / 2, mods_x = name_x + name_w + 6;
-    put(fb, name_x, STATUS_MID_Y, buf, DBG_TEXT);
-    static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
-    static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
-    for (int i = 0; i < 4; i++) {
-        const bool on = (d->mods & mod_bit[i]) != 0;
-        const int gx = mods_x + 1 + i * 10;
-        if (on) {
-            fill(fb, gx - 1, STATUS_MID_Y - 1, 8, 9, DBG_MOD);
-        }
-        const char g[2] = {mod_glyph[i], '\0'};
-        put(fb, gx + 1, STATUS_MID_Y, g, on ? DBG_BG : DBG_LABEL);
-    }
-    put(fb, mods_x + 38 + 6, STATUS_MID_Y, total, d->presses[0] + d->presses[1] ? DBG_TEXT : DBG_LABEL);
-
     /* the speed over the last FX_HISTORY seconds, after its label, the
      * lights' colour changes dotted */
     const int graph_x = 22, graph_w = FX_W - 4 - graph_x;
@@ -2449,6 +2406,19 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         line(fb, graph_x + px, prev < 0 ? y : prev, graph_x + px, y, DBG_TEXT);
         prev = y;
     }
+
+    /* the halves at the sides, the speed big between them */
+    int rows = 1;
+    for (int key = 0; key < key_count; key++) {
+        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
+        rows = row > rows ? row : rows;
+    }
+    const int gap = 1, pitch = board_cols > 10 ? 7 : 8;
+    const int high = (STATUS_KEYS_H + gap) / rows - gap;
+    board(fb, in, 4, STATUS_KEYS_TOP, pitch, high > 6 ? 6 : high, gap, FX_W - 8 - (board_cols * pitch - gap));
+    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, STATUS_KEYS_TOP + (STATUS_KEYS_H - 21) / 2, buf,
+            d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
      * then the worst trouble there is, if any */
@@ -2506,8 +2476,9 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
      * FX_HISTORY seconds from -40 dBm to -100, the worst in each column,
      * coloured as the latest is, red full height where it was down */
     static const char names[3] = {'L', 'R', 'H'};
+    static const int column[3] = {0, 2, 1}; /* the computer's between the halves' */
     for (int link = 0; link < 3; link++) {
-        const int sx = 4 + link * (STATUS_SIGNAL_W + 3), foot = STATUS_SIGNAL_Y + 14;
+        const int sx = 4 + column[link] * (STATUS_SIGNAL_W + 3), foot = STATUS_SIGNAL_Y + 14;
         const bool off = link == 2 && usb_out; /* down on purpose */
         const char name[2] = {names[link], '\0'};
         put(fb, sx, STATUS_SIGNAL_Y, name, links[link]->up || off ? DBG_TEXT : DBG_BAD);
@@ -2517,7 +2488,8 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
             put_right(fb, sx + STATUS_SIGNAL_W, STATUS_SIGNAL_Y, "--", DBG_BAD);
         } else if (links[link]->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
-            put_right(fb, sx + STATUS_SIGNAL_W, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
+            put_right(fb, sx + STATUS_SIGNAL_W - 15, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
+            put_right(fb, sx + STATUS_SIGNAL_W, STATUS_SIGNAL_Y, "dBm", DBG_LABEL);
         }
         for (int px = 0; px < STATUS_SIGNAL_W; px++) {
             int worst = 0;
