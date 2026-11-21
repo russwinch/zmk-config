@@ -1481,8 +1481,8 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
 /* Column right edges of the links table: the readings (signal, battery
  * percent and millivolts), then the link's troubles (drops, the reason for
  * the last, the charging-state reads), then the key presses. */
-#define DBG_COL_RSSI 27
-#define DBG_COL_LEVEL 46 /* and the charging bolt just right of it */
+#define DBG_COL_RSSI 26
+#define DBG_COL_LEVEL 43 /* and the charging bolt just right of it */
 #define DBG_COL_MV 76
 #define DBG_COL_DROPS 88
 #define DBG_COL_REASON 100
@@ -1614,7 +1614,7 @@ static uint8_t battery_color(int level) {
 }
 
 /* One row of the table: `level` is the battery percent, or the output for
- * the computer; `mv` its battery's millivolts (the dongle's supply for the
+ * the computer; `mv` its battery's volts, to the millivolt (the dongle's supply for the
  * computer's row); `presses` the key presses, from that half or (for the
  * computer) both. `off`: the link is down on purpose (the computer's, while
  * typing over USB), so it isn't shown as a fault. */
@@ -1764,7 +1764,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     /* the links */
     put_right(fb, DBG_COL_RSSI, 23, "DBM", DBG_LABEL);
     put_right(fb, DBG_COL_LEVEL, 23, "%", DBG_LABEL);
-    put_right(fb, DBG_COL_MV, 23, "MV", DBG_LABEL);
+    put_right(fb, DBG_COL_MV, 23, "V", DBG_LABEL);
     put_right(fb, DBG_COL_DROPS, 23, "DR", DBG_LABEL);
     put_right(fb, DBG_COL_REASON, 23, "RS", DBG_LABEL);
     put_right(fb, DBG_COL_PRESSES, 23, "KEY", DBG_LABEL);
@@ -1778,11 +1778,11 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         } else {
             strcpy(buf, "--");
         }
-        /* the half's millivolts, when its firmware sends them (the charger's
+        /* the half's volts, to the millivolt, when its firmware sends them (the charger's
          * while charging, so dim then) */
-        const unsigned mv = d->half_mv[half];
+        const unsigned mv = d->half_mv[half] > 9999 ? 9999 : d->half_mv[half];
         if (mv) {
-            snprintf(mv_buf, sizeof(mv_buf), "%u", mv > 9999 ? 9999 : mv);
+            snprintf(mv_buf, sizeof(mv_buf), "%u.%03u", mv / 1000, mv % 1000);
         } else {
             strcpy(mv_buf, "--");
         }
@@ -1795,9 +1795,10 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-    /* the dongle's own supply in the MV column: its 3.3 V regulator */
+    /* the dongle's own supply in the V column: its 3.3 V regulator */
     if (d->dongle_mv) {
-        snprintf(mv_buf, sizeof(mv_buf), "%u", d->dongle_mv > 9999 ? 9999 : d->dongle_mv);
+        const unsigned mv = d->dongle_mv > 9999 ? 9999 : d->dongle_mv;
+        snprintf(mv_buf, sizeof(mv_buf), "%u.%03u", mv / 1000, mv % 1000);
     } else {
         snprintf(mv_buf, sizeof(mv_buf), "%s", d->dongle_mv_why[0] ? d->dongle_mv_why : "--");
     }
