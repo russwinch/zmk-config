@@ -1482,11 +1482,11 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
  * percent and millivolts), then the link's troubles (drops, the reason for
  * the last, the charging-state reads), then the key presses. */
 #define DBG_COL_RSSI 27
-#define DBG_COL_LEVEL 47
-#define DBG_COL_MV 71
-#define DBG_COL_DROPS 84
-#define DBG_COL_REASON 97
-#define DBG_COL_CHARGE 115
+#define DBG_COL_LEVEL 46 /* and the charging bolt just right of it */
+#define DBG_COL_MV 76
+#define DBG_COL_DROPS 88
+#define DBG_COL_REASON 100
+#define DBG_COL_CHARGE 117
 #define DBG_COL_PRESSES 138
 
 /* A knob's mark turns this many times as far as the encoder does: one of the
@@ -1773,10 +1773,10 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     for (int half = 0; half < 2; half++) {
         const uint8_t level = in->status ? in->status->battery[half] : 0;
         const bool charging = in->status && in->status->charging[half];
-        if (level && !charging) {
+        if (level) {
             snprintf(buf, sizeof(buf), "%u", level);
         } else {
-            strcpy(buf, charging ? "" : "--"); /* charging: the bolt in its place */
+            strcpy(buf, "--");
         }
         /* the half's millivolts, when its firmware sends them (the charger's
          * while charging, so dim then) */
@@ -1789,8 +1789,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf, level == 0 ? DBG_LABEL : battery_color(level),
                    mv_buf, mv && !charging ? DBG_TEXT : DBG_LABEL, d->presses[half], d->half_reads[half],
                    d->half_err[half], false);
-        /* charging: a bolt in the level's place, flashing until 100 */
-        charging_bolt(fb, DBG_COL_LEVEL - 5, 31 + half * 8, in->status, half);
+        /* charging: a bolt just right of the level, flashing until 100, so
+         * the level can be watched going up against the millivolts */
+        charging_bolt(fb, DBG_COL_LEVEL + 1, 31 + half * 8, in->status, half);
     }
     const bool usb_out = in->status && in->status->usb;
     snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);

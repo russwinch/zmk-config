@@ -57,6 +57,7 @@
 #include <zephyr/fatal.h>
 #include <zephyr/linker/section_tags.h> /* __noinit */
 #include <zephyr/sys/reboot.h>
+#include <hal/nrf_power.h> /* NRF_POWER->GPREGRET2 */
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/sys/mem_stats.h>
 #include <zephyr/drivers/adc.h>
@@ -376,6 +377,11 @@ static uint32_t reset_cause;
  * screen, in case that screen is what stops it (the saved one stays saved).
  * After HANG_RESTARTS_MAX of them in a row without a picture it stops
  * trying, and the backlight comes up anyway (src/dongle_idle_backlight.c).
+ *
+ * The note is also kept in GPREGRET2, a register a restart keeps, as
+ * kind (2 bits), restarts in a row (2) and code (4, 15 for 15 and over):
+ * the restart goes through the bootloader, which can overwrite the RAM, and
+ * then the Debug screen said only SOFT. ZMK's boot mode uses GPREGRET.
  */
 #define FIRST_PICTURE_BY_MS 15000
 #define HANG_RESTARTS_MAX 3
@@ -391,10 +397,21 @@ static bool safe_start;                     /* that run never showed a picture *
 static atomic_t pictured;                   /* this run has shown one */
 
 static void boot_note_valid(void) {
-    if (boot_note.magic != BOOT_NOTE_MAGIC) { /* power-on: whatever RAM held */
+    if (boot_note.magic != BOOT_NOTE_MAGIC) { /* power-on, or the bootloader used the RAM */
         memset(&boot_note, 0, sizeof(boot_note));
         boot_note.magic = BOOT_NOTE_MAGIC;
+        /* what the register kept, if anything */
+        const uint8_t kept = (uint8_t)NRF_POWER->GPREGRET2;
+        boot_note.crash = kept >> 6;
+        boot_note.troubled = (kept >> 4) & 3;
+        boot_note.code = kept & 0xf;
     }
+}
+
+/* The note into the register too, before a restart. */
+static void boot_note_keep(void) {
+    NRF_POWER->GPREGRET2 = (uint32_t)((boot_note.crash & 3) << 6 | MIN(boot_note.troubled, 3) << 4 |
+                                      MIN(boot_note.code, 0xf));
 }
 
 static void boot_note_take(void) {
@@ -403,12 +420,14 @@ static void boot_note_take(void) {
     last_crash_code = boot_note.code;
     boot_note.crash = boot_note.code = 0;
     safe_start = boot_note.troubled > 0;
+    boot_note_keep(); /* just the restarts in a row, now */
 }
 
 /* The first picture is out (or the module's screen is showing instead). */
 static void first_picture(void) {
     if (!atomic_set(&pictured, 1)) {
         boot_note.troubled = 0;
+        boot_note_keep();
     }
 }
 
@@ -419,6 +438,7 @@ static void picture_watch_cb(struct k_work *work) {
     boot_note.crash = FX_CRASH_HANG;
     boot_note.code = FX_HANG_AT_START;
     boot_note.troubled++;
+    boot_note_keep();
     sys_reboot(SYS_REBOOT_WARM);
 }
 
@@ -448,6 +468,7 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) 
     if (!atomic_get(&pictured)) {
         boot_note.troubled++;
     }
+    boot_note_keep();
     if (atomic_get(&pictured) || boot_note.troubled <= HANG_RESTARTS_MAX) {
         sys_reboot(SYS_REBOOT_WARM);
     }
@@ -1880,6 +1901,7 @@ static void wake_watch_cb(struct k_work *work) {
     boot_note.crash = FX_CRASH_HANG;
     boot_note.code = FX_HANG_AFTER_WAKE;
     boot_note.troubled = 1; /* the first animation next time, once */
+    boot_note_keep();
     sys_reboot(SYS_REBOOT_WARM);
 }
 
