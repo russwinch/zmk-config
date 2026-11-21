@@ -202,7 +202,7 @@ layout line there picks Classic, Radii or Field instead.
 #### Animated screens
 
 The **Screen next** key on the Config layer (the U key) steps the dongle
-through the Keys screen, the [Status screen](#status-screen), the [Debug screen](#debug-screen) and three
+through the [Debug screen](#debug-screen), the [Status screen](#status-screen), the Keys screen and three
 full-screen animations, and round again; **Screen prev** (the Y key)
 goes the other way. It starts on Keys. The screen you leave it on is
 remembered: once it has been showing for 30 seconds it is saved, and the
@@ -224,9 +224,9 @@ themes](#colour-themes) of Keys, Status, Debug, Tracker and Terminal; **Theme pr
 
 | # | Screen | Idle | Typing |
 | --- | --- | --- | --- |
-| 1 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for two seconds after; orange while it is holding a modifier down, violet while it is holding a layer on (the ICE theme's colours: each [theme](#colour-themes) has its own) |
+| 1 | Debug | a page of readings: [see below](#debug-screen) | |
 | 2 | Status | the batteries, the signal and the keys, as a racing car's steering wheel display shows a car's: [see below](#status-screen) | the keys light as on Keys, and the typing speed lights a row of lights along the top |
-| 3 | Debug | a page of readings: [see below](#debug-screen) | |
+| 3 | Keys | the three links, a picture of the keys and a level meter for each column: [see below](#keys-screen) | each key lights white while held and glows for two seconds after; orange while it is holding a modifier down, violet while it is holding a layer on (the ICE theme's colours: each [theme](#colour-themes) has its own) |
 | 4 | Thermal | cold blue, two warm patches wandering | the board through a heat camera: each key leaves a hot spot at its own place that spreads as it slowly cools, so the keys of a word run together; a sight follows the last key. From 50 wpm the keys catch fire: each burns for a second or two after it is pressed, with a plume of smoke above. A key held down stays hot and gets hotter and wider, and after 5 seconds catches at any speed and burns until it is let go |
 | 5 | Tracker | a motion tracker's empty rings and pulse | contacts close in, more and nearer with speed; each key pulls one round to its column; the figure is the nearest one's range |
 | 6 | Terminal | a blinking cursor | what you type, in the theme's colour (green in PHOSPHOR), fading out over about 10 seconds |
@@ -451,7 +451,7 @@ racing car's steering wheel display.
 
 #### Debug screen
 
-The second screen is a page of readings rather than an animation,
+The first screen is a page of readings rather than an animation,
 for chasing connection, switch and firmware faults. It is a first pass with
 everything on it that the dongle can get at. Top to bottom:
 

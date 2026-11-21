@@ -171,7 +171,7 @@ config DONGLE_SCREEN_FX_START
     range 0 6
     help
       Counted through the screens in the order &scr_next shows them: 0 the
-      Keys screen, 1 Status, 2 Debug, 3 Thermal, 4 Tracker, 5 Terminal.
+      Debug screen, 1 Status, 2 Keys, 3 Thermal, 4 Tracker, 5 Terminal.
       With DONGLE_SCREEN_FX_MODULE_SCREEN the module's screen
       is 0 and each of those one more.
       The screensavers aren't among them. Once a screen has been chosen with

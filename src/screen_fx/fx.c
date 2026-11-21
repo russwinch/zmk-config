@@ -2535,9 +2535,9 @@ static const struct {
     bool keys;             /* see fx_shows_keys */
     uint8_t saver;         /* can be the screensaver: the way into it (FX_TR_*) */
 } effects[] = {
-    {"KEYS", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
-    {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
     {"DEBUG", debug_start, debug_frame, debug_colors, NULL, {0}, .debug = true},
+    {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
+    {"KEYS", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
     {"THERMAL", thermal_start, thermal_frame, NULL, &thermal_text, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
     {"TRACKER", tracker_start, tracker_frame, tracker_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
     {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
