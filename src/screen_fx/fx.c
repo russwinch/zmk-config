@@ -2238,6 +2238,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_SIGNAL_W 42
 #define STATUS_BATTERY_Y 79
 #define STATUS_BATTERY_W 61
+#define STATUS_CHARGE_STEP 6 /* 30ths of a second: each step of the charging bar's fill */
 #define STATUS_DBM_TOP -40
 #define STATUS_DBM_FLOOR -100
 
@@ -2305,8 +2306,18 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     const int level_w = 10 * (int)strlen(buf) - 2, level_x = half ? right - level_w : x;
     put_big(fb, level_x, y, buf, level ? battery_color(level) : DBG_LABEL, 2);
     charging_bolt(fb, half ? level_x - 8 : level_x + level_w + 3, y + 4, in->status, half);
+    /* while charging, the steps above the level fill one by one, over and over */
+    static float charge_clock[2];
+    const int lit = !level ? 0 : level < 15 ? 1 : (level + 5) / 10;
+    int filling = 0;
+    if (charging && level && level < 100) {
+        charge_clock[half] += in->step;
+        filling = (int)(charge_clock[half] / STATUS_CHARGE_STEP) % (10 - lit + 1);
+    } else {
+        charge_clock[half] = 0;
+    }
     for (int step = 0; step < 10; step++) {
-        const bool on = level && (step == 0 || step < (level + 5) / 10);
+        const bool on = step < lit + filling;
         fill(fb, x + 1 + step * 6, y + 15, 5, 3,
              !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
     }
