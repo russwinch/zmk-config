@@ -1613,6 +1613,14 @@ static uint8_t battery_color(int level) {
     return level <= FX_LOW_BATTERY ? DBG_BAD : level <= FX_WARN_BATTERY ? DBG_WARN : DBG_TEXT;
 }
 
+/* A half's level to show (0 not known): while it charges, and until its
+ * voltage has settled after, the dongle's estimate (`estimate` set), as
+ * ZMK's reads high under the charger; otherwise ZMK's. */
+static uint8_t half_level(const struct fx_input *in, int half, bool *estimate) {
+    *estimate = in->debug && in->debug->estimating[half];
+    return *estimate ? in->debug->battery_estimate[half] : in->status ? in->status->battery[half] : 0;
+}
+
 /* One row of the table: `level` is the battery percent, or the output for
  * the computer; `mv` its battery's volts, to the millivolt (the dongle's supply for the
  * computer's row); `presses` the key presses, from that half or (for the
@@ -1804,10 +1812,11 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put_right(fb, DBG_COL_CHARGE, 23, "CH", DBG_LABEL);
     char mv_buf[6];
     for (int half = 0; half < 2; half++) {
-        const uint8_t level = in->status ? in->status->battery[half] : 0;
+        bool estimate;
+        const uint8_t level = half_level(in, half, &estimate);
         const bool charging = in->status && in->status->charging[half];
         if (level) {
-            snprintf(buf, sizeof(buf), "%u", level);
+            snprintf(buf, sizeof(buf), estimate ? " %u" : "%u", level); /* an estimate: a ~ in the space */
         } else {
             strcpy(buf, "--");
         }
@@ -1822,6 +1831,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         debug_link(fb, 31 + half * 8, "LR"[half], &d->half[half], buf, level == 0 ? DBG_LABEL : battery_color(level),
                    mv_buf, mv && !charging ? DBG_TEXT : DBG_LABEL, d->presses[half], d->half_reads[half],
                    d->half_err[half], false);
+        if (level && estimate) {
+            put(fb, DBG_COL_LEVEL - 5 * (int)strlen(buf), 31 + half * 8, "~", DBG_WARN);
+        }
         /* charging: a bolt just right of the level, flashing until 100, so
          * the level can be watched going up against the millivolts */
         charging_bolt(fb, DBG_COL_LEVEL + 1, 31 + half * 8, in->status, half);
@@ -2102,8 +2114,9 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     for (int half = 0; half < 2; half++) {
         const bool charging = in->status && in->status->charging[half];
         /* while charging: a bolt to the left of the battery, flashing until
-         * 100, and the level (reading high, the charging voltage) */
-        const uint8_t level = in->status ? in->status->battery[half] : 0;
+         * 100, and the level, estimated (with a ~) as ZMK's reads high */
+        bool estimate;
+        const uint8_t level = half_level(in, half, &estimate);
         const uint8_t color = level == 0                 ? DBG_LABEL
                               : level <= FX_LOW_BATTERY  ? DBG_BAD
                               : level <= FX_WARN_BATTERY ? DBG_WARN
@@ -2111,13 +2124,16 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         if (level == 0) {
             strcpy(buf, "--");
         } else {
-            snprintf(buf, sizeof(buf), "%u%%", level);
+            snprintf(buf, sizeof(buf), estimate ? " %u%%" : "%u%%", level); /* a ~ in the space */
         }
         const int left = keys_block_x(half * 2);
         /* a low battery flashes, unless it is charging (its bolt does) */
         if (charging || !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
             battery_icon(fb, left + KEYS_ICON_X, 6, level, color);
             put(fb, left + KEYS_TEXT_X, 6, buf, color);
+            if (level && estimate) {
+                put(fb, left + KEYS_TEXT_X, 6, "~", DBG_WARN);
+            }
         }
         charging_bolt(fb, left, 6, in->status, half);
         keys_link(fb, half * 2, &d->half[half], d->signal_log[half]);
@@ -2252,7 +2268,6 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_BOX_Y 107 /* along the foot */
 #define STATUS_BATTERY_W 61
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
-#define STATUS_CHARGE_STEP 6 /* 30ths of a second: each step of the charging bar's fill */
 #define STATUS_DBM_TOP -40
 #define STATUS_DBM_FLOOR -100
 #define STATUS_DBM_SPAN 20 /* the signal graphs' top at least this far above their floor */
@@ -2308,13 +2323,14 @@ static void status_text(uint8_t *fb, int half, int edge, int y, const char *s, u
 }
 
 /* A half's battery, STATUS_BATTERY_W across from (x, y): its level, big
- * at its own side, a bar with the bolt at its inner end, and its latest
- * volts and draw. */
+ * at its own side (while charging, estimated: with a ~ over the %), a bar
+ * with the bolt at its inner end, and its latest volts and draw. */
 static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x, int y) {
     const struct fx_debug *d = in->debug;
     const int right = x + STATUS_BATTERY_W;
     char buf[20];
-    const uint8_t level = in->status ? in->status->battery[half] : 0;
+    bool estimate;
+    const uint8_t level = half_level(in, half, &estimate);
     const bool charging = in->status && in->status->charging[half];
     /* the figures big, the % small at their foot, to leave room beside it */
     if (level) {
@@ -2326,19 +2342,13 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     put_big(fb, level_x, y, buf, level ? battery_color(level) : DBG_LABEL, 2);
     if (level) {
         put(fb, level_x + level_w - 4, y + 7, "%", battery_color(level));
+        if (estimate) {
+            put(fb, level_x + level_w - 4, y, "~", DBG_WARN);
+        }
     }
-    /* while charging, the steps above the level fill one by one, over and over */
-    static float charge_clock[2];
     const int lit = !level ? 0 : level < 15 ? 1 : (level + 5) / 10;
-    int filling = 0;
-    if (charging && level && level < 100) {
-        charge_clock[half] += in->step;
-        filling = (int)(charge_clock[half] / STATUS_CHARGE_STEP) % (10 - lit + 1);
-    } else {
-        charge_clock[half] = 0;
-    }
     for (int step = 0; step < 10; step++) {
-        const bool on = step < lit + filling;
+        const bool on = step < lit;
         fill(fb, (half ? x + 2 : x) + step * 6, y + 18, 5, 3,
              !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
     }

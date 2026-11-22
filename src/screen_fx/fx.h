@@ -161,6 +161,9 @@ struct fx_debug {
     uint16_t half_mv[2];   /* left, right: the battery's millivolts; 0 when not known */
     int32_t drain_hundredths_mw[2]; /* and its average draw, hundredths of a milliwatt; -1 until known */
     bool drain_rough[2];            /* and whether that may still be well out */
+    bool estimating[2];             /* left, right: charging, or not yet settled since: shown in place of
+                                     * ZMK's level (high under the charger), with a ~ */
+    uint8_t battery_estimate[2];    /* and the estimated percent, 0 = not known */
     uint16_t battery_mah;           /* each half's battery, for how long it would last at that draw */
     /* each link's signal each second, kept whichever screen shows: dBm,
      * the newest last; left, right, the computer; 0 not known (and the

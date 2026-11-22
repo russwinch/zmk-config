@@ -121,6 +121,15 @@ config HALF_BATTERY_MAH
       config/<keyboard>.conf (read for its dongle too). Defined for every
       build, so that setting it there is never an error.
 
+config HALF_CHARGE_MA
+    int "Current each half's charger gives its battery, mA"
+    default 100
+    help
+      For the dongle's screens, which estimate a charging half's level
+      from the one it had before it was plugged in, as its own reads high
+      under the charger (src/dongle_half_drain.c). Set per keyboard next to
+      HALF_BATTERY_MAH.
+
 config BATTERY_REFRESH_ON_UNPLUG
     bool "Read the battery again a few seconds after USB power goes"
     default y

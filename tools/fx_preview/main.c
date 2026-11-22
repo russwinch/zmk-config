@@ -308,8 +308,17 @@ int main(int argc, char **argv) {
 
         status.host_connected = at < 0.55f || at >= 0.8f;
         status.usb = at >= 0.8f;
-        status.charging[0] = at >= 0.8f; /* the left half plugged in too: its bolt, solid at 100 */
-        status.bolt_off[0] = status.charging[0] && status.battery[0] < 100 && (int)(f * 1000 / fps) % 1000 >= 600;
+        /* the left half plugged in too: ZMK's 100 is the charger's, so its level is
+         * estimated (from 52 when it was plugged in); then the right, plugged in
+         * before anything was heard from it, so not known */
+        status.charging[0] = at >= 0.8f;
+        status.charging[1] = at >= 0.9f;
+        for (int half = 0; half < 2; half++) {
+            debug.estimating[half] = status.charging[half];
+            debug.battery_estimate[half] = half ? 0 : 52 + (int)((at - 0.8f) * 100);
+            status.bolt_off[half] = status.charging[half] && debug.battery_estimate[half] > 0 &&
+                                    (int)(f * 1000 / fps) % 1000 >= 600;
+        }
         status.profile_connected = at >= 0.8f && at < 0.88f;
         status.profile = at < 0.3f ? 1 : at < 0.88f ? 2 : 3;
         const bool plain = fx_is_debug(fx) || fx_shows_keys(fx);

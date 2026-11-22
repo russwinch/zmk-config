@@ -19,6 +19,13 @@ uint16_t dongle_half_millivolts(int half);
 // src/dongle_half_drain.c.
 int dongle_half_drain_hundredths_mw(int half, bool *rough);
 
+// While the half charges, and after until its voltage has settled, an
+// estimate of its battery's level (ZMK's reads high under the charger): with
+// `estimate` set, the percent, 0 when not known (nothing heard before it was
+// plugged in). Otherwise `estimate` is clear and ZMK's level is right.
+// src/dongle_half_drain.c.
+uint8_t dongle_half_charge_estimate(int half, bool *estimate);
+
 // Where the dongle has got to with the half's charging state, for the Debug
 // screen: up to two letters in `code` ("" when the half isn't connected):
 //   WT  waiting for ZMK to finish setting the half's link up

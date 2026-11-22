@@ -279,8 +279,12 @@ static void read_status(void) {
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         status.charging[half] = dongle_half_charging(half);
-        /* the bolt beside it flashes until the level reads 100 */
-        status.bolt_off[half] = status.charging[half] && level > 0 && level < 100 &&
+        /* the bolt beside it flashes until the level shown reads 100 (the
+         * estimate, if any, stops at 99) */
+        bool estimate;
+        const uint8_t estimated = dongle_half_charge_estimate(half, &estimate);
+        const uint8_t shown = estimate ? estimated : level;
+        status.bolt_off[half] = status.charging[half] && shown > 0 && shown < 100 &&
                                 k_uptime_get_32() % BOLT_FLASH_MS >= BOLT_FLASH_MS * 3 / 5;
 #endif
     }
@@ -759,6 +763,7 @@ static void read_debug(void) {
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         d->half_mv[half] = dongle_half_millivolts(half);
         d->drain_hundredths_mw[half] = dongle_half_drain_hundredths_mw(half, &d->drain_rough[half]);
+        d->battery_estimate[half] = dongle_half_charge_estimate(half, &d->estimating[half]);
 #else
         d->drain_hundredths_mw[half] = -1;
 #endif

@@ -24,6 +24,17 @@
  * while it has fallen by SETTLE_FALL_MV or more in the last SETTLE_MIN the
  * line starts again from there, and the figure is rough; it is settled once
  * it falls less than that, and the line starts once more from then.
+ *
+ * While a half charges its level reads high (ZMK's is from the charger's
+ * voltage), so the screens show an estimate instead, from ZMK's level at
+ * the last reading before it was plugged in, on battery and so a true one:
+ * CONFIG_HALF_CHARGE_MA for the time since, as a share of the capacity, at
+ * half that above TAPER_PERCENT, where a cell's charger eases off, and no
+ * more than 99 until it is unplugged, as the half can't say whether its
+ * charger has finished. Once unplugged the estimate stays as it was until
+ * the voltage has settled, then ZMK's level is right again. Plugged in again
+ * before then, it carries on from there. Nothing heard before it was plugged
+ * in (the dongle started while it charged): not known.
  */
 
 #include <zephyr/kernel.h>
@@ -31,6 +42,8 @@
 #include <zephyr/sys/util.h>
 
 #include <math.h>
+
+#include <zmk/split/central.h>
 
 #include "dongle_half_info.h"
 
@@ -42,6 +55,7 @@
 #define SETTLE_FALL_MV 8
 #define NOMINAL_MV 3700     // to turn mAh into mWh
 #define TREND_N (SETTLE_MIN + 1) // the readings back to SETTLE_MIN ago
+#define TAPER_PERCENT 80    // charging at half the rate above this
 
 // A typical lithium polymer cell resting: millivolts, and the percent of its
 // charge left there. Above the first, full; below the last, empty.
@@ -86,6 +100,30 @@ static bool was_charging[2];
 static uint16_t trend[2][TREND_N]; // under lock: a reading a minute, trend_at the next to write
 static int trend_at;
 static struct k_spinlock lock;
+// under lock: the charging estimate
+static uint8_t rest_level[2];  // ZMK's level at the last reading on battery; 0 not known
+static bool estimating[2];     // from plugging in until the voltage has settled after
+static uint8_t start_level[2]; // the level it started charging from; 0 not known
+static uint32_t plugged_ms[2]; // uptime then
+static uint8_t held_level[2];  // and once unplugged, the estimate then
+
+// The level after charging from `from` for `ms`.
+static uint8_t charged_level(uint8_t from, uint32_t ms) {
+    double percent = from + ms / 3600000.0 * CONFIG_HALF_CHARGE_MA * 100 / CONFIG_HALF_BATTERY_MAH;
+    const double taper_from = MAX(from, TAPER_PERCENT);
+    if (percent > taper_from) {
+        percent = taper_from + (percent - taper_from) / 2;
+    }
+    return (uint8_t)MIN(percent + 0.5, 99);
+}
+
+// The estimate now (0 not known); under lock, while estimating.
+static uint8_t estimate_now(int half, uint32_t now) {
+    if (!was_charging[half]) {
+        return held_level[half];
+    }
+    return start_level[half] ? charged_level(start_level[half], now - plugged_ms[half]) : 0;
+}
 
 static void sample_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(sample_work, sample_cb);
@@ -95,8 +133,18 @@ static void sample_cb(struct k_work *work) {
     for (int half = 0; half < 2; half++) {
         const bool charging = dongle_half_charging(half);
         const uint16_t mv = dongle_half_millivolts(half);
+        uint8_t level = 0;
+        if (half < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT) {
+            zmk_split_central_get_peripheral_battery_level(half, &level);
+        }
         K_SPINLOCK(&lock) {
             trend[half][trend_at] = mv;
+            if (charging && !was_charging[half]) {
+                // just plugged in: from the last level on battery, or where it had got to
+                start_level[half] = estimating[half] ? held_level[half] : rest_level[half];
+                plugged_ms[half] = now;
+                estimating[half] = true;
+            }
             if (charging) {
                 fits[half] = (struct fit){0}; // starts again once unplugged
                 was_charging[half] = true;
@@ -104,6 +152,7 @@ static void sample_cb(struct k_work *work) {
             }
             if (was_charging[half] && mv != 0) {
                 // unplugged (heard as a voltage with no charging)
+                held_level[half] = estimate_now(half, now);
                 was_charging[half] = false;
                 settling[half] = true;
             }
@@ -118,6 +167,12 @@ static void sample_cb(struct k_work *work) {
                     settling[half] = before >= mv + SETTLE_FALL_MV;
                     *f = (struct fit){0};
                 }
+            }
+            if (!settling[half]) {
+                estimating[half] = false; // ZMK's level is right again
+            }
+            if (!estimating[half] && level) {
+                rest_level[half] = level;
             }
             if (f->n == 0) {
                 f->start_ms = now;
@@ -169,6 +224,21 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
         *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * mw;
     }
     return hundredths;
+}
+
+uint8_t dongle_half_charge_estimate(int half, bool *estimate) {
+    *estimate = false;
+    if (half < 0 || half >= 2) {
+        return 0;
+    }
+    uint8_t level = 0;
+    K_SPINLOCK(&lock) {
+        *estimate = estimating[half];
+        if (*estimate) {
+            level = estimate_now(half, k_uptime_get_32());
+        }
+    }
+    return level;
 }
 
 static int dongle_half_drain_init(void) {

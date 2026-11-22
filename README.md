@@ -325,7 +325,7 @@ screensavers', and those of the status text over them.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known), with a bolt to its left while the half is on USB power, signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds (kept whichever screen is showing, so it is there when Keys is turned to), a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
+| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known; while charging, the estimate, with an amber `~` before it), with a bolt to its left while the half is on USB power, signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds (kept whichever screen is showing, so it is there when Keys is turned to), a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |
@@ -395,8 +395,11 @@ adds a gauge for each battery up the sides.
 A half on USB power shows a bolt: to the left of its battery on the Keys
 screen and to the right of its level on the Debug screen, neither moving
 for it; over the animations and the screensavers, in the place of its level.
-It flashes once a second while the level is under 100 and is solid at 100. While it charges the level reads high, from the
-charging voltage, so take it as rough; Tracker's gauge shows it too. Each
+It flashes once a second while the level is under 100 and is solid at 100. While it charges ZMK's level reads high, from the
+charging voltage, so the Keys, Status and Debug screens show the dongle's
+estimate in its place, with an amber `~` (see [Debug screen](#debug-screen)):
+that stops at 99, so there the bolt flashes until the half is unplugged.
+Over the animations and on Tracker's gauge it is ZMK's, so take it as rough. Each
 half says it is on USB power through
 the Battery Level Status of Bluetooth's standard battery service
 (`src/half_charging.c`). The dongle reads it once a half has connected and
@@ -446,7 +449,7 @@ racing car's steering wheel display.
 | left and right | each half of the board as on Keys (white while held, orange holding a modifier, violet holding a layer, glowing after; encoders as [knobs](#encoder-knobs)) |
 | middle | the typing speed, big, with `WPM` under it |
 | the three signals | each link's signal, the halves' over their batteries and the computer's between: its latest in dBm (the halves' at their outer edges), coloured as on Keys, `--` in red when down; while typing over USB the computer's isn't shown and the halves' widen to share its room; just under it the last 94 seconds, the weakest in each column, on a scale the graphs share from -100 dBm at the foot up to the strongest column shown, so the tallest reaches up to its reading and the links still compare; drawn as on Keys: a dim column with its top lit while above -75, a solid amber bar above -85 and a solid red one below, so weak seconds stand out, and a full-height red one where the link was down |
-| bottom left, bottom right | each half's battery: its percent, big, coloured as [below](#battery-warnings); beside it, towards the middle, its battery in volts to the millivolt (dim while charging: it is the charger's then) and its average draw in mW (as on Debug: `--` for its first minute, then an amber `~` before it while rough, coloured by battery life once settled), their units between the halves; and under them a bar of ten, whose steps above the level fill one by one while it charges, with a bolt at its inner end while the half is on USB power |
+| bottom left, bottom right | each half's battery: its percent, big, coloured as [below](#battery-warnings) (while charging, the estimate, with an amber `~` over the `%`; `--` when not known); beside it, towards the middle, its battery in volts to the millivolt (dim while charging: it is the charger's then) and its average draw in mW (as on Debug: `--` for its first minute, then an amber `~` before it while rough, coloured by battery life once settled), their units between the halves; and under them a bar of ten, lit up to the level (to the estimate while charging), with a bolt at its inner end while the half is on USB power |
 | the boxes, along the foot | the output: `BT` and the profile (green when the computer is connected) or `USB` (green when it is listening); `DR` the drops on all three links since the dongle started (amber when any); the dongle's supply in volts; its temperature (amber from 60 °C); then the worst trouble there is, filled red: `HANG` or `CRSH` the last start hung or crashed, `B` and milliseconds a switch bouncing (under 30 ms), `CH` a half's charging state failed; or amber `UE` and a count, USB reports the computer didn't take. `OK` in green when there is none. The Debug screen says more about each |
 
 #### Debug screen
@@ -473,7 +476,7 @@ The link rows' columns:
 | Column | Shows |
 | --- | --- |
 | `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. (The Keys screen draws it as bars, one for every 10 dB above -90.) Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
-| `%` | the half's battery percent, as ZMK reports it; with a bolt beside it while the half is on USB power, flashing until 100, so the level can be watched going up against `V`. For the computer, the output (`BT1`, `USB`) |
+| `%` | the half's battery percent, as ZMK reports it, or while it charges the estimate, with an amber `~` before it (below); with a bolt beside it while the half is on USB power, flashing until 100, so the level can be watched going up against `V`. For the computer, the output (`BT1`, `USB`) |
 | `V` | the half's battery in volts, to the millivolt (`3.912`), the average of ZMK's last 16 readings (a minute apart), sent when it moves by 1 mV (dim while charging: it is the charger's then; `--` for a half whose firmware doesn't send it). On `H`, the dongle's own supply, its 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
@@ -504,7 +507,23 @@ before the average send 4 mV steps, and stay rough for a day or more). Best for 
 settled, it is coloured by how long a full battery would last at it: green
 four weeks or more (under about 1.1 mW on 200 mAh, 0.65 mW on the Forager's
 120), plain a week to four, amber under a week (over about 4.4 mW, 2.6 mW),
-red under two days (over about 15 mW, 9 mW). Key timings are taken when an event reaches the
+red under two days (over about 15 mW, 9 mW).
+
+While a half charges, ZMK's level is the charger's voltage, near 100
+whatever the charge, so the dongle estimates it instead (in
+`src/dongle_half_drain.c` too): from ZMK's level at the last reading before
+the half was plugged in, on battery and so a true one, it adds the charge
+current for the time since as a share of the capacity
+(`CONFIG_HALF_CHARGE_MA`, next to the capacity: 50 mA on the Forager, its
+XIAO's charger left at its default; 100 mA on the nice!nano v2 boards), at
+half that above 80%, where a cell's charger eases off, and no more than 99
+until it is unplugged, as a half can't say when its charger has finished.
+After unplugging the estimate stays as it was until the voltage has settled
+(as for the draw), then ZMK's level is right again; plugged in again before
+that, it carries on from there. When nothing was heard from the half before
+it was plugged in (the dongle started while it charged) it is `--`.
+
+Key timings are taken when an event reaches the
 dongle, and a half sends at most once per connection interval, so a bounce
 shorter than that (7.5 ms) can't be seen from here. The counts and the draw start again
 when the dongle restarts.
