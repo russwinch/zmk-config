@@ -2237,9 +2237,9 @@ static int keys_block_x(int place) {
 
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale);
 
-/* Along the foot: each half's level, big, in its corner with its signal's
- * bars beside it (and a bolt while on USB power), the output small between
- * them. */
+/* Along the foot: each half's level, big, in its corner (a bolt over its %
+ * while on USB power) with its signal's bars beside it, the output small
+ * between them. */
 static void typist_foot(uint8_t *fb, const struct fx_input *in) {
     const struct fx_debug *d = in->debug;
     const int y = TYPIST_FOOT_Y, inset = fx_corner_inset(y, y + 13) + 1;
@@ -2260,14 +2260,17 @@ static void typist_foot(uint8_t *fb, const struct fx_input *in) {
             put_big(fb, x, y, buf, color, 2);
             if (level) {
                 put(fb, x + wide - 4, y + 7, "%", color);
-                if (estimate) {
-                    put(fb, x + wide - 4, y, "~", DBG_WARN);
-                }
             }
         }
-        const int bars = half ? x - 4 - 7 : x + wide + 4;
-        signal_bars(fb, bars, y + 7, &d->half[half]);
-        charging_bolt(fb, half ? bars - 7 : bars + 9, y + 7, in->status, half);
+        /* over the %: a bolt while on USB power (flashing until 100), or
+         * after, while the level is still the dongle's estimate, a ~ */
+        const bool charging = in->status && in->status->charging[half];
+        if (charging) {
+            charging_bolt(fb, level ? x + wide - 4 : x + wide + 2, y, in->status, half);
+        } else if (level && estimate) {
+            put(fb, x + wide - 4, y, "~", DBG_WARN);
+        }
+        signal_bars(fb, half ? x - 4 - 7 : x + wide + 4, y + 7, &d->half[half]);
     }
     if (in->status && in->status->usb) {
         put(fb, (FX_W - 14) / 2, y + 7, "USB", d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
