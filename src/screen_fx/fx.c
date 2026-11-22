@@ -2308,7 +2308,7 @@ static void status_text(uint8_t *fb, int half, int edge, int y, const char *s, u
 }
 
 /* A half's battery, STATUS_BATTERY_W across from (x, y): its level, big
- * at its own side, a bar with the bolt at its inner end, and its latest
+ * at its own side, a bar (that shows it charging), and its latest
  * volts and draw. */
 static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x, int y) {
     const struct fx_debug *d = in->debug;
@@ -2327,7 +2327,10 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     if (level) {
         put(fb, level_x + level_w - 4, y + 7, "%", battery_color(level));
     }
-    /* while charging, the steps above the level fill one by one, over and over */
+    /* while charging, the steps above the level fill one by one, over and
+     * over; once all are lit, still on USB power, it stops and is steady in
+     * the text colour rather than green (the half can't say whether its
+     * charger has finished, and reads high under it) */
     static float charge_clock[2];
     const int lit = !level ? 0 : level < 15 ? 1 : (level + 5) / 10;
     int filling = 0;
@@ -2337,12 +2340,11 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     } else {
         charge_clock[half] = 0;
     }
+    const uint8_t lit_color = level <= FX_WARN_BATTERY ? battery_color(level) : charging && lit == 10 ? DBG_TEXT : DBG_GOOD;
     for (int step = 0; step < 10; step++) {
         const bool on = step < lit + filling;
-        fill(fb, (half ? x + 2 : x) + step * 6, y + 18, 5, 3,
-             !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
+        fill(fb, (half ? x + 2 : x) + step * 6, y + 18, 5, 3, on ? lit_color : DBG_DIM);
     }
-    charging_bolt(fb, half ? x - 4 : right, y + 16, in->status, half); /* at the bar's inner end, under the mW */
 
     /* beside the level its latest volts (the charger's while charging, so
      * dim then) and draw, aligned to the middle, where their units are;
