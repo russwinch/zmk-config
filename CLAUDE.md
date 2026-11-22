@@ -24,6 +24,10 @@
   workflow; pull before pushing after a keymap change.
 - Keep the README's tables (boards, layers, timings, encoders) in step with
   the keymap.
+- Docs are for people: README.md (boards, keymap, flashing, the dongle),
+  `src/screen_fx/README.md` (the dongle's screens), `tools/README.md`. Keep
+  them short: what a user sees and does, not how it works or which file does
+  it. Implementation notes worth keeping go below, or in code comments.
 - The dongle's Debug screen (`debug_frame` in `src/screen_fx/fx.c`) is for
   seeing what works, what doesn't, and how the boards compare. When changing
   it:
@@ -38,7 +42,7 @@
     waits on hardware or a half goes on a thread of its own, never in the
     frame;
   - render it with `tools/fx_preview.py` and look before pushing, and keep
-    the README's Debug screen tables in step.
+    the Debug tables in `src/screen_fx/README.md` in step.
 - `tools/flash.py`'s `TARGETS` mirrors `build.yaml`: when a build is added,
   renamed or gets an `artifact-name`, update both (and `--dry-run` it). The
   Keyboard Writer app (russwinch/keyboard-writer) has its own copy in
@@ -47,7 +51,7 @@
 ## Flashing
 
 The user flashes with their Keyboard Writer app (russwinch/keyboard-writer,
-see README "Flashing"): it lists this repo's releases, one per build, and
+see README, Flashing): it lists this repo's releases, one per build, and
 flashes the devices in order. So when firmware is ready to try, don't spell
 out `flash.py` commands. Say which release to pick in the app (`build-<run
 number>`, and that it is a prerelease if it is a branch build), which devices
@@ -98,3 +102,32 @@ user's own computer: a cloud session can't see USB drives.
    user has confirmed which device is plugged in.
 6. After a `--reset` on a `-dongle` keyboard, remind them: dongle stays powered,
    and re-pair the computer (forget the keyboard there first).
+
+## Implementation notes
+
+- The dongle asks the halves for their charging state (`src/dongle_half_info.c`,
+  sent by `src/half_charging.c` through the battery service's Battery Level
+  Status) one request at a time, only after ZMK has finished setting the link
+  up: ZMK can't wait for a free request while it subscribes to a half's keys,
+  and when it couldn't, the half connected and showed its battery but typed
+  nothing. Reading the halves' temperature or transmit power never worked, so
+  don't add those back.
+- Battery volts come from each half as the average of ZMK's last 16 readings;
+  the draw (`src/dongle_half_drain.c`) fits a line through the energy left
+  since unplugging, and the charging estimate adds `CONFIG_HALF_CHARGE_MA`
+  over `CONFIG_HALF_BATTERY_MAH` (per keyboard `.conf`) to the last level
+  before plugging in.
+- `src/dongle_screen_fx.c` parks LVGL and writes frames straight to the panel;
+  the animations' memory is one of LVGL's draw buffers, so only one animation
+  runs at a time and a transition's other picture is the last frame. A whole
+  frame takes about 70 ms over SPI.
+- Crashes: the reason and program counter survive the restart in a register
+  and the first KB of RAM (`config/prospector_adapter.overlay` keeps it out of
+  Zephyr's). CI keeps no `.elf`: rebuild that commit and `addr2line`.
+- Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
+  `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
+- The animations place keys on a 10x4 grid (the Waterfowl); Keys, Status and
+  Debug use the matrix transform.
+- Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
+  black with captions in the same strong hue; light ones adjust each colour's
+  lightness, never its hue. Check `tools/fx_preview.py --contrast`.

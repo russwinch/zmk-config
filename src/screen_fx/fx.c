@@ -1388,7 +1388,7 @@ static void life_frame(uint8_t *fb, const struct fx_input *in) {
 
 /*
  * Not an animation: a page of readings for finding faults with connections,
- * switches and the firmware (README, "Debug screen"). Top to bottom: the
+ * switches and the firmware (src/screen_fx/README.md, "Debug"). Top to bottom: the
  * dongle itself; a table of the three Bluetooth links; the profiles, USB
  * and the output in use; layer, typing speed and modifiers; then the last
  * few raw events beside a map of the keys (`board`), and the worst key
