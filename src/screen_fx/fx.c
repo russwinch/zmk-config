@@ -2267,7 +2267,10 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     }
     char buf[8];
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, TYPIST_WPM_Y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
+    /* with its unit beside it, the two together in the middle */
+    const int wpm_w = 15 * (int)strlen(buf) - 3, wpm_x = (FX_W - (wpm_w + 3 + 14)) / 2;
+    put_big(fb, wpm_x, TYPIST_WPM_Y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
+    put(fb, wpm_x + wpm_w + 3, TYPIST_WPM_Y + 14, "WPM", DBG_LABEL);
     const struct view v =
         shape_view(0, TYPIST_BOARD_TOP, FX_W, TYPIST_FOOT_Y - 4 - TYPIST_BOARD_TOP, KEYS_SPLIT, true);
     shape_board(fb, in, &v, true);
