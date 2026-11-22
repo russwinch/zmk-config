@@ -83,11 +83,11 @@ speed and battery levels are on Typist and Status.
 
 | Line | Shows |
 | --- | --- |
-| `B149 1:12:51 ACT MEM 62%` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; LVGL memory used |
+| `B149 1:12:51 ACT 15FPS` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; this screen's frames a second |
 | `RESET SOFT  BOUNCE 18MS` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`, or `HANG`/`CRASH` with a code and address); the quickest any key has come back down, red under 30 ms: a bouncing switch |
 | `LEFT`, `DONGLE`, `RIGHT` | a column each, red when its link is down (the dongle's is to the computer): rows below |
 | profiles, `USB` | the five profiles (filled: connected, ring: paired, dot: free; the one in use underlined); USB `--`, `PWR` or `HID` |
-| `SENT 18K FAIL 0` | reports sent over USB, and how many the computer didn't take |
+| `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
 | `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
 | last line | the last key, keycode or encoder event, with the ms since the one before |
 | key map | every key, lit while held. A key that doesn't light isn't reaching the dongle |

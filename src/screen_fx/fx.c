@@ -1611,21 +1611,6 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
     board_fade(in);
 }
 
-/* A count in at most four characters, rounded down: 999, 1.2K, 12K, 999K, 1.2M, 12M, 999M at most. */
-static void count_text(char *buf, size_t size, uint32_t n) {
-    if (n < 1000) {
-        snprintf(buf, size, "%u", (unsigned)n);
-    } else if (n < 10000) {
-        snprintf(buf, size, "%u.%uK", (unsigned)(n / 1000), (unsigned)(n / 100 % 10));
-    } else if (n < 1000000) {
-        snprintf(buf, size, "%uK", (unsigned)(n / 1000));
-    } else if (n < 10000000) {
-        snprintf(buf, size, "%u.%uM", (unsigned)(n / 1000000), (unsigned)(n / 100000 % 10));
-    } else {
-        snprintf(buf, size, "%uM", (unsigned)(n / 1000000 > 999 ? 999 : n / 1000000));
-    }
-}
-
 /* A charging half's bolt, at (x, y): shown unless in the off half of its flash. */
 static void charging_bolt(uint8_t *fb, int x, int y, const struct fx_status *status, int half) {
     if (status && status->charging[half] && !status->bolt_off[half]) {
@@ -1848,8 +1833,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     memset(fb, DBG_BG, PIXELS);
 
-    /* the dongle: which build, how long up, active, idle or asleep, LVGL's
-     * memory used. The top line is in the corners' curve, so it starts
+    /* the dongle: which build, how long up, active, idle or asleep, and
+     * this screen's frames a second. The top line is in the corners' curve, so it starts
      * further in and ends as far from the right */
     const int top_inset = fx_corner_inset(4, 10);
     int x = put(fb, top_inset, 4, d->firmware ? d->firmware : "DEV", DBG_BRIGHT) + 4;
@@ -1857,11 +1842,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
              (unsigned)(d->uptime_s % 60));
     x = put(fb, x, 4, buf, DBG_TEXT) + 4;
     put(fb, x, 4, d->activity == 0 ? "ACT" : d->activity == 1 ? "IDLE" : "SLEEP", d->activity ? DBG_WARN : DBG_GOOD);
-    if (d->heap_known) {
-        snprintf(buf, sizeof(buf), "%u%%", d->heap_used);
-        put_right(fb, FX_W - top_inset, 4, buf, d->heap_used > 90 ? DBG_BAD : DBG_TEXT);
-        put_right(fb, FX_W - top_inset - 5 * (int)strlen(buf) - 3, 4, "MEM", DBG_LABEL);
-    }
+    snprintf(buf, sizeof(buf), "%u", d->fps);
+    put_right(fb, FX_W - top_inset - 15 - 1, 4, buf, DBG_TEXT);
+    put_right(fb, FX_W - top_inset, 4, "FPS", DBG_LABEL);
 
     /* why it last restarted, a hang or crash in red with its code (and where);
      * then the quickest a key has come back down after going up: a switch
@@ -1985,19 +1968,25 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    /* the output: the profiles, USB's state, the reports sent over it and
-     * those that failed */
+    /* the output: the profiles and USB's state */
     const int out_y = 87;
     profiles(fb, d, in->status, 6, out_y + 1);
     x = put(fb, 48, out_y, "USB", DBG_LABEL) + 3;
     put(fb, x, out_y, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--",
         d->usb == 2 ? (usb_out && in->status->host_connected ? DBG_GOOD : DBG_TEXT) : DBG_TEXT);
-    x = put(fb, 6, out_y + 8, "SENT", DBG_LABEL) + 3;
-    count_text(buf, sizeof(buf), d->usb_reports);
-    x = put(fb, x, out_y + 8, buf, DBG_TEXT) + 4;
-    x = put(fb, x, out_y + 8, "FAIL", DBG_LABEL) + 3;
-    snprintf(buf, sizeof(buf), "%u", d->usb_errors > 99 ? 99 : d->usb_errors);
-    put(fb, x, out_y + 8, buf, d->usb_errors ? DBG_WARN : DBG_TEXT);
+
+    /* LVGL's memory used; then, only if there are any, the USB reports the
+     * computer didn't take (UE, as on Status) */
+    x = 6;
+    if (d->heap_known) {
+        x = put(fb, x, out_y + 8, "MEM", DBG_LABEL) + 3;
+        snprintf(buf, sizeof(buf), "%u%%", d->heap_used);
+        x = put(fb, x, out_y + 8, buf, d->heap_used > 90 ? DBG_BAD : DBG_TEXT) + 4;
+    }
+    if (d->usb_errors) {
+        snprintf(buf, sizeof(buf), "UE%u", d->usb_errors > 99 ? 99 : d->usb_errors);
+        put(fb, x, out_y + 8, buf, DBG_WARN);
+    }
 
     /* the layer (number and name), the modifiers lit while held; in the
      * bottom corner's curve, so in from the side */
