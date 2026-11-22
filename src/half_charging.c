@@ -17,13 +17,13 @@
  * Identifier field, which is ours to use, in millivolts. Nothing extra is
  * measured: ZMK reads the battery every ZMK_BATTERY_REPORT_INTERVAL for its
  * percentage, and this takes the last of those readings from the battery
- * sensor. Looked at every VOLTAGE_EVERY_S, sent only when it has moved by
- * VOLTAGE_STEP_MV, as a notification in a connection event the radio wakes
- * for anyway. The dongle already subscribes to it for the charging state,
+ * sensor every VOLTAGE_EVERY_S. A single reading jitters by a few millivolts
+ * and dips while the radio sends, far more than an hour's draw moves it, so
+ * what is sent is the average of the last VOLTAGE_AVERAGE_N (started again
+ * when USB power comes or goes), whenever that has moved by a millivolt, as a
+ * notification in a connection event the radio wakes for anyway. The dongle already subscribes to it for the charging state,
  * so this asks nothing more of the link.
  */
-
-#include <stdlib.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
@@ -51,7 +51,14 @@ void half_charging_update(void) {
                                             : BT_BAS_BLS_CHARGE_STATE_DISCHARGING_ACTIVE);
 }
 
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
+static atomic_t voltage_restart; // USB power came or went: the voltage average starts again
+#endif
+
 static int half_charging_listener(const zmk_event_t *eh) {
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
+    atomic_set(&voltage_restart, 1);
+#endif
     half_charging_update();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -61,7 +68,7 @@ ZMK_SUBSCRIPTION(half_charging, zmk_usb_conn_state_changed);
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
 #define VOLTAGE_EVERY_S 60
-#define VOLTAGE_STEP_MV 4
+#define VOLTAGE_AVERAGE_N 16
 
 static const struct device *const battery = DEVICE_DT_GET(DT_CHOSEN(zmk_battery));
 
@@ -80,11 +87,25 @@ static void voltage_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(voltage_work, voltage_cb);
 
 static void voltage_cb(struct k_work *work) {
-    static uint16_t sent;
+    static uint16_t readings[VOLTAGE_AVERAGE_N], sent;
+    static int count, next;
+    if (atomic_clear(&voltage_restart)) {
+        count = next = 0;
+    }
     const uint16_t mv = last_millivolts();
-    if (mv != 0 && abs((int)mv - (int)sent) >= VOLTAGE_STEP_MV) {
-        sent = mv;
-        bt_bas_bls_set_identifier(mv);
+    if (mv != 0) {
+        readings[next] = mv;
+        next = (next + 1) % VOLTAGE_AVERAGE_N;
+        count = MIN(count + 1, VOLTAGE_AVERAGE_N);
+        uint32_t sum = 0;
+        for (int i = 0; i < count; i++) {
+            sum += readings[i];
+        }
+        const uint16_t average = (uint16_t)((sum + count / 2) / count);
+        if (average != sent) {
+            sent = average;
+            bt_bas_bls_set_identifier(average);
+        }
     }
     k_work_schedule(&voltage_work, K_SECONDS(VOLTAGE_EVERY_S));
 }

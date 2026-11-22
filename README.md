@@ -474,7 +474,7 @@ The link rows' columns:
 | --- | --- |
 | `DBM` | how strongly the dongle hears the other end, in dBm: around -50 is strong, green above -75, amber to -85, red below. The radios still hear a packet at about -95, so green has 20 dB or more to spare (a hand or a body in the way can take 10 to 20), amber works but with less, and red is where packets start to go missing (sent again, so a key comes late) and then the link drops. (The Keys screen draws it as bars, one for every 10 dB above -90.) Blank, or `E` and a code in red, when the radio wouldn't say: `EH` no handle for the link, `EB` no buffer for the question, a number Zephyr's error (`E5`: the radio refused) |
 | `%` | the half's battery percent, as ZMK reports it; with a bolt beside it while the half is on USB power, flashing until 100, so the level can be watched going up against `V`. For the computer, the output (`BT1`, `USB`) |
-| `V` | the half's battery in volts, to the millivolt (`3.912`), the last of ZMK's own readings, sent when it moves by 4 mV (dim while charging: it is the charger's then; `--` for a half whose firmware doesn't send it). On `H`, the dongle's own supply, its 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it) |
+| `V` | the half's battery in volts, to the millivolt (`3.912`), the average of ZMK's last 16 readings (a minute apart), sent when it moves by 1 mV (dim while charging: it is the charger's then; `--` for a half whose firmware doesn't send it). On `H`, the dongle's own supply, its 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
 | `CH` | for a half (blank on `H`), where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows in place of the level while it is plugged in, and its volts come; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
@@ -482,23 +482,25 @@ The link rows' columns:
 
 The `mW` figures are each half's average draw, to compare boards and
 settings (`src/dongle_half_drain.c`). Each half sends its battery voltage in
-the same message as its charging state (the last of ZMK's own readings, when
-it has moved by 4 mV). Once a minute the dongle turns it into the energy
+the same message as its charging state: the average of ZMK's last 16
+readings, a minute apart (started again when USB power comes or goes), when
+it has moved by 1 mV. One reading jitters by a few mV and dips while the
+radio sends; the average doesn't. Once a minute the dongle turns it into the energy
 left, from a typical LiPo cell's curve and the battery's capacity
 (`CONFIG_HALF_BATTERY_MAH` in each `config/<keyboard>.conf`: Waterfowl, Urchin
 and Aurora Corne 200, Forager 120 mAh), and fits a straight line
 through those since the half was last unplugged (or the dongle started). It
 is `--` until it has two readings a minute apart. After that it shows, with a
 flashing amber `~` in front and one place fewer while it is rough: while it
-may be out by more than a quarter, from the line's scatter or one 4 mV step
+may be out by more than a quarter, from the line's scatter or one 1 mV step
 over the time the line spans, whichever is more, and while the half is still
 settling. After unplugging (and when the dongle starts) the voltage comes
 down from the charger's much faster than any half draws, so while it falls
 8 mV or more in 20 minutes the line starts again from there; it has settled
 once it falls less. It is an estimate: the voltage moves only a few
-millivolts for each percent through the middle of the charge, and a half
-only sends it when it has moved 4 mV, so at a milliwatt or so it can stay
-rough for many hours. Best for comparing halves over a day or more. Key timings are taken when an event reaches the
+millivolts for each percent through the middle of the charge, so at a
+milliwatt or so it can stay rough for some hours (halves on firmware from
+before the average send 4 mV steps, and stay rough for a day or more). Best for comparing halves over a day or more. Key timings are taken when an event reaches the
 dongle, and a half sends at most once per connection interval, so a bounce
 shorter than that (7.5 ms) can't be seen from here. The counts and the draw start again
 when the dongle restarts.

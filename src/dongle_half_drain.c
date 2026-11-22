@@ -13,8 +13,8 @@
  *
  * It is an estimate: the cell's real curve differs a little from the
  * typical one, through the middle of the charge the voltage moves only a
- * few millivolts for each percent, and a half sends it only when it has
- * moved by STEP_MV. So it is steadier the longer it runs. It shows after
+ * few millivolts for each percent, and a half sends it (an average of its
+ * last readings) only when it has moved by STEP_MV. So it is steadier the longer it runs. It shows after
  * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
  * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
  * by one STEP_MV over the time it spans, whichever is more.
@@ -37,7 +37,7 @@
 #define SAMPLE_EVERY_S 60
 #define SHOW_AFTER_MIN 1    // of readings, before there is a figure
 #define ROUGH_PERCENT 25    // rough while it may be out by more than this
-#define STEP_MV 4           // a half sends its voltage when it moves by this (src/half_charging.c)
+#define STEP_MV 1           // a half sends its voltage when it moves by this (src/half_charging.c)
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
 #define SETTLE_FALL_MV 8
 #define NOMINAL_MV 3700     // to turn mAh into mWh
@@ -176,7 +176,7 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
         const double sse = MAX(syy - sxy * sxy / sxx, 0);
         const double scatter = f->n > 2 ? sqrt(sse / (f->n - 2) / sxx) : INFINITY;
         const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
-        const double step = (energy_mwh(f->last_mv + STEP_MV / 2) - energy_mwh(f->last_mv - STEP_MV / 2)) / span_h;
+        const double step = (energy_mwh(f->last_mv) - energy_mwh(f->last_mv - STEP_MV)) / span_h;
         *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * mw;
     }
     return hundredths;
