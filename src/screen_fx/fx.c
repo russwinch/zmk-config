@@ -2338,27 +2338,14 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_CONN_H 5
 #define STATUS_KEYS_TOP 22 /* the board's keys, the speed small between the halves */
 #define STATUS_KEYS_H 51
-#define STATUS_WPM_GAP 18 /* room for three figures, 5 across each */
+#define STATUS_WPM_GAP 18
+#define STATUS_WPM_H 25 /* the speed twice the size (14), a gap, its unit (7), a row clear each side */
 #define STATUS_BATTERY_Y 77
 #define STATUS_BOX_Y 104 /* along the foot */
 #define STATUS_BATTERY_W 61
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
 
 static void status_start(uint16_t *palette) { debug_start(palette); }
-
-/* Text twice as tall, no wider: big in a narrow gap. */
-static void put_tall(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
-    for (; *s; s++, x += 5) {
-        const uint8_t *rows = fx_glyph_rows(*s);
-        for (int row = 0; rows && row < 7; row++) {
-            for (int col = 0; col < 5; col++) {
-                if (rows[row] & (0x10 >> col)) {
-                    line(fb, x + col, y + row * 2, x + col, y + row * 2 + 1, color);
-                }
-            }
-        }
-    }
-}
 
 /* Text `scale` times the size. */
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale) {
@@ -2473,9 +2460,34 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     /* the keys as they are, and the speed small between the halves, its unit under it */
     const struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, STATUS_WPM_GAP, false);
     shape_board(fb, in, &v, false);
+    /* the speed twice the size: where the room between the halves is widest
+     * for it (three figures, 28 across) and its unit under it, highest first */
+    int free[STATUS_KEYS_H];
+    for (int row = 0; row < STATUS_KEYS_H; row++) {
+        const uint8_t *px = fb + (STATUS_KEYS_TOP + row) * FX_W;
+        int left = FX_W / 2, right = FX_W / 2;
+        while (left > 0 && px[left - 1] == DBG_BG) {
+            left--;
+        }
+        while (right < FX_W - 1 && px[right] == DBG_BG) {
+            right++;
+        }
+        free[row] = 2 * (FX_W / 2 - left < right - FX_W / 2 ? FX_W / 2 - left : right - FX_W / 2);
+    }
+    int wpm_y = STATUS_KEYS_TOP, best = -1;
+    for (int top = 0; top + STATUS_WPM_H <= STATUS_KEYS_H; top++) {
+        int room = FX_W;
+        for (int row = top; row < top + STATUS_WPM_H; row++) {
+            room = free[row] < room ? free[row] : room;
+        }
+        if (room > best) {
+            best = room;
+            wpm_y = STATUS_KEYS_TOP + top;
+        }
+    }
+    wpm_y += 1;
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    const int wpm_y = STATUS_KEYS_TOP + 4;
-    put_tall(fb, (FX_W - (5 * (int)strlen(buf) - 1)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL);
+    put_big(fb, (FX_W - (10 * (int)strlen(buf) - 2)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 2);
     put(fb, (FX_W - 14) / 2, wpm_y + 16, "WPM", DBG_LABEL);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
