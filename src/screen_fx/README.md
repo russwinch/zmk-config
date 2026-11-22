@@ -95,10 +95,10 @@ speed and battery levels are on Typist and Status.
 | Row | Shows |
 | --- | --- |
 | `dBm` | signal: green above -75, amber to -85, red below (packets start going missing). `E` and a code when the radio wouldn't say; `USB` while typing over it |
-| `90S` | the signal's last 90 seconds, the weakest of each 3; a red dot where the link was down |
+| chart under `dBm` | the signal's last 30 minutes, a dot a minute (the weakest in it); red at the top where the link was down, green over USB |
 | `DROPS` | times the link was lost since the dongle started, then why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
 | `V` | the battery's volts, to the millivolt (dim while charging: the charger's); the dongle's own 3.3 V supply |
-| `90MIN` | the last 90 minutes of them, 3 minutes a dot, scaled to fit (at least 60 mV top to bottom) |
+| chart under `V` | the last 30 minutes of them, a dot a minute, scaled to fit (at least 60 mV top to bottom) |
 | `CHG` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q`, `R`, `S` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO`. A bolt while on USB power. For the dongle, its temperature |
 | `mW` | each half's average draw (`~` while still rough) |
 

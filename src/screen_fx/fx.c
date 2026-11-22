@@ -1662,19 +1662,17 @@ static void chart(uint8_t *fb, int x, int y, const uint8_t *high, const uint8_t 
     }
 }
 
-/* A link's last DBG_CHART_W * 3 seconds of signal (`log`, fx_debug's
- * signal_log), three to a column: the weakest of them, -95 dBm a column one
- * high and -40 the full 7, green, amber or red; down, a full red column. */
+/* A link's last DBG_CHART_W minutes of signal (`log`, fx_debug's conn_log,
+ * a minute a slot): the weakest of each, -95 dBm a dot one up and -40 the
+ * full 7, green, amber or red; down, red at the top; over USB, green at
+ * the top; idle, nothing. */
 static void signal_chart(uint8_t *fb, int x, int y, const int8_t *log) {
     uint8_t high[DBG_CHART_W], color[DBG_CHART_W];
     for (int i = 0; i < DBG_CHART_W; i++) {
-        int8_t worst = 0;
-        for (int j = 0; j < 3; j++) {
-            worst = fx_conn_worse(worst, log[FX_HISTORY - DBG_CHART_W * 3 + i * 3 + j]);
-        }
-        if (worst == FX_SIGNAL_DOWN) {
+        const int8_t worst = log[FX_CONN_HISTORY - DBG_CHART_W + i];
+        if (worst == FX_SIGNAL_DOWN || worst == FX_CONN_USB) {
             high[i] = 7;
-            color[i] = DBG_BAD;
+            color[i] = worst == FX_CONN_USB ? DBG_GOOD : DBG_BAD;
         } else if (worst < 0) {
             const int h = 1 + (worst + 95) * 6 / 55;
             high[i] = (uint8_t)(h < 1 ? 1 : h > 7 ? 7 : h);
@@ -1903,18 +1901,18 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
 
     /* the table: a column each for the left half, the dongle and the right
      * half, as on Status; a row for each reading, its unit or what it is in
-     * front. First the links (the dongle's to the computer): signal and its
-     * last 90 seconds, drops and why the last */
+     * front, the charts under their readings a minute a dot. First the links
+     * (the dongle's to the computer): signal, drops and why the last */
     const bool usb_out = in->status && in->status->usb;
     const struct fx_link *links[3] = {&d->half[0], &d->host, &d->half[1]};
-    const int8_t *logs[3] = {d->signal_log[0], d->signal_log[2], d->signal_log[1]};
+    const int8_t *logs[3] = {d->conn_log[0], d->conn_log[2], d->conn_log[1]};
     static const char *const titles[3] = {"LEFT", "DONGLE", "RIGHT"};
     const int title_y = 21;
     for (int col = 0; col < 3; col++) {
         put_col(fb, col, title_y, titles[col], links[col]->up || (col == 1 && usb_out) ? DBG_BRIGHT : DBG_BAD);
     }
-    static const char *const labels[] = {"dBm", "90S", "DROPS", "V", "90MIN", "CHG", "mW"};
-    static const int label_y[] = {29, 37, 45, 54, 62, 70, 78};
+    static const char *const labels[] = {"dBm", "DROPS", "V", "CHG", "mW"};
+    static const int label_y[] = {29, 45, 54, 70, 78};
     for (unsigned i = 0; i < sizeof(labels) / sizeof(labels[0]); i++) {
         put(fb, 5, label_y[i], labels[i], DBG_LABEL);
     }
@@ -1944,7 +1942,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
 
     /* then power: each half's battery and the dongle's 3.3 V supply, to the
-     * millivolt, and their last 90 minutes; the halves' charging-state
+     * millivolt, and their last 30 minutes; the halves' charging-state
      * subscription and average draw, the dongle's temperature */
     const uint16_t mv[3] = {d->half_mv[0], d->dongle_mv, d->half_mv[1]};
     const uint16_t *mv_logs[3] = {d->mv_log[0], d->mv_log[2], d->mv_log[1]};
@@ -2131,7 +2129,105 @@ static struct view shape_view(int x, int y, int wide, int high, int gap, bool wh
     v.left_x = x + wide / 2.0f - gap / 2.0f - hi_x * v.scale;
     v.right_x = x + wide / 2.0f + gap / 2.0f + hi_x * v.scale;
     v.top = y + (high - (hi_y - lo_y) * v.scale) / 2 - lo_y * v.scale;
+    /* the halves mirror each other about a whole pixel's edge, so the right
+     * half is the left pixel for pixel */
+    const float axis = roundf(v.left_x + v.right_x);
+    v.left_x = roundf(v.left_x);
+    v.right_x = axis - v.left_x;
     return v;
+}
+
+/* Where the keys square to the screen go: on a grid, the same pixels apart
+ * across and down, each column's keys where the board has its column. The
+ * board's pitch is the average spacing of its columns and of its rows. */
+struct grid {
+    float col_q, row_q; /* the pitch, quarter mm */
+    float inner_q;      /* the innermost column's x */
+    float cap_q;        /* a 1u key's size */
+};
+
+static bool grid_key(const struct fx_part *p) {
+    return (p->kind & FX_PART_KIND) == FX_PART_KEY && p->rot == 0 && !(p->kind & FX_PART_RIGHT);
+}
+
+static struct grid shape_grid(void) {
+    struct grid g = {0, 0, -10000, 10000};
+    float outer = 10000;
+    for (int i = 0; i < shape->n_keys; i++) {
+        const struct fx_part *p = &shape->keys[i];
+        if (!grid_key(p)) {
+            continue;
+        }
+        g.inner_q = p->x > g.inner_q ? p->x : g.inner_q;
+        g.cap_q = p->w < g.cap_q ? p->w : g.cap_q;
+        outer = p->x < outer ? p->x : outer;
+    }
+    /* how many columns */
+    float seen[16];
+    int n_seen = 0;
+    for (int i = 0; i < shape->n_keys; i++) {
+        const struct fx_part *p = &shape->keys[i];
+        bool done = false;
+        for (int k = 0; k < n_seen; k++) {
+            done |= fabsf(seen[k] - p->x) < 8;
+        }
+        if (!grid_key(p) || done || n_seen == 16) {
+            continue;
+        }
+        seen[n_seen++] = p->x;
+    }
+    g.col_q = n_seen > 1 ? (g.inner_q - outer) / (n_seen - 1) : 76;
+    /* and the rows: the average spacing of keys one above another */
+    float count = 0;
+    for (int i = 0; i < shape->n_keys; i++) {
+        const struct fx_part *p = &shape->keys[i];
+        for (int j = 0; grid_key(p) && j < shape->n_keys; j++) {
+            const struct fx_part *q = &shape->keys[j];
+            const float dy = q->y - p->y;
+            if (grid_key(q) && fabsf(q->x - p->x) < 8 && dy > 8 && dy < 1.5f * p->h + 16) {
+                g.row_q += dy;
+                count++;
+            }
+        }
+    }
+    g.row_q = count ? g.row_q / count : g.col_q;
+    return g;
+}
+
+/* A part square to the screen as whole pixels (x, y, wide, high), worked
+ * out on the left half and mirrored for the right: a key on the grid, `g`,
+ * anything else where it is. */
+static void part_rect(const struct view *v, const struct grid *g, const struct fx_part *p, int *x, int *y, int *wide,
+                      int *high) {
+    const bool right = p->kind & FX_PART_RIGHT;
+    if ((p->kind & FX_PART_KIND) == FX_PART_KEY && g) {
+        const int col_px = (int)lroundf(g->col_q * v->scale), row_px = (int)lroundf(g->row_q * v->scale);
+        const int col = (int)lroundf((g->inner_q - p->x) / g->col_q);
+        /* the column's top key, and how many rows down this one is */
+        float top_q = p->y;
+        for (int j = 0; j < shape->n_keys; j++) {
+            const struct fx_part *q = &shape->keys[j];
+            if (grid_key(q) && fabsf(q->x - p->x) < 8) {
+                top_q = q->y < top_q ? q->y : top_q;
+            }
+        }
+        const int row = (int)lroundf((p->y - top_q) / g->row_q);
+        /* a 1u key the pitch less a pixel, so the gaps are one pixel across and down */
+        *wide = (int)lroundf((p->w + g->col_q - g->cap_q) / g->col_q * col_px) - 1;
+        *high = (int)lroundf((p->h + g->row_q - g->cap_q) / g->row_q * row_px) - 1;
+        const int cx = (int)lroundf(v->left_x + g->inner_q * v->scale) - col * col_px;
+        const int cy = (int)lroundf(v->top + top_q * v->scale) + row * row_px;
+        *x = cx - *wide / 2;
+        *y = cy - *high / 2;
+    } else {
+        *wide = (int)lroundf(p->w * v->scale) - 1;
+        *high = (int)lroundf(p->h * v->scale) - 1;
+        *x = (int)lroundf(v->left_x + p->x * v->scale - *wide / 2.0f);
+        *y = (int)lroundf(v->top + p->y * v->scale - *high / 2.0f);
+    }
+    if (right) {
+        *x = (int)lroundf(v->left_x + v->right_x) - *x - *wide;
+    }
 }
 
 /* The board drawn as it is through `v`: keys coloured as `board` has them,
@@ -2160,6 +2256,7 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
             }
         }
     }
+    const struct grid g = shape_grid();
     for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
         const struct fx_part *p = &shape->keys[key];
         const bool right = p->kind & FX_PART_RIGHT;
@@ -2167,23 +2264,20 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
         const bool held = (d->held >> key) & 1;
         const int encoder = key_encoder(key);
         const int kind = p->kind & FX_PART_KIND;
+        int x, y, wide, high;
+        part_rect(v, kind == FX_PART_KEY ? &g : NULL, p, &x, &y, &wide, &high);
         if (kind == FX_PART_DIAL) {
-            const float size = p->w * v->scale - 1;
-            const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
-            const float cy = v->top + p->y * v->scale;
             const int heat = encoder >= 0 && knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
-            knob(fb, (int)lroundf(cx - size / 2), (int)lroundf(cy - size / 2), (int)lroundf(size), (int)lroundf(size),
+            knob(fb, x, y, wide, wide,
                  held || debug_heat[key] ? color : DBG_BG, held ? color : heat ? DBG_HEAT + heat : DBG_DIM,
                  held ? DBG_BG : encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_LABEL,
                  encoder >= 0 ? knob_shown[encoder] : 0);
             continue;
         }
         if (p->rot == 0) {
-            /* square to the screen: whole pixels, so every key is the same size */
-            const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
-            const float cy = v->top + p->y * v->scale;
-            const int wide = (int)lroundf(p->w * v->scale) - 1, high = (int)lroundf(p->h * v->scale) - 1;
-            fill(fb, (int)lroundf(cx - wide / 2.0f), (int)lroundf(cy - high / 2.0f), wide, high, color);
+            /* square to the screen: whole pixels on the grid, so every key is
+             * the same size and the same distance from the next */
+            fill(fb, x, y, wide, high, color);
         } else {
             part_quad(v, p, right, 0.5f, pts);
             fill_poly(fb, pts, 4, color);
@@ -2191,13 +2285,10 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
         if (kind == FX_PART_ROLLER) {
             /* ribs down it, rolling sideways as it turns, as it does under a thumb */
             const float turned = encoder >= 0 ? knob_shown[encoder] : 0;
-            const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
-            const float cy = v->top + p->y * v->scale, half_h = p->h * v->scale / 2 - 1.5f;
-            const float half_w = p->w * v->scale / 2 - 0.5f;
-            const float phase = fmodf((right ? -turned : turned) / 30, 2);
-            for (float x = -half_w + (phase < 0 ? phase + 2 : phase); x < half_w; x += 2) {
-                line(fb, (int)lroundf(cx + x), (int)lroundf(cy - half_h), (int)lroundf(cx + x),
-                     (int)lroundf(cy + half_h) - 1, encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_BG);
+            const int phase = ((int)floorf(turned / 30) % 2 + 2) % 2;
+            for (int rib = 1 + phase; rib < wide - 1; rib += 2) {
+                line(fb, x + rib, y + 1, x + rib, y + high - 2,
+                     encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_BG);
             }
         }
     }
@@ -2459,7 +2550,7 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     char buf[16];
 
     /* the keys as they are, and the speed small between the halves, its unit under it */
-    const struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, STATUS_WPM_GAP, false);
+    const struct view v = shape_view(1, STATUS_KEYS_TOP, FX_W - 2, STATUS_KEYS_H, STATUS_WPM_GAP, false);
     shape_board(fb, in, &v, false);
     /* the speed twice the size: where the room between the halves is widest
      * for it (three figures, 28 across) and its unit under it, highest first */

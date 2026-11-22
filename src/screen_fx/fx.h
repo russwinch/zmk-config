@@ -95,7 +95,7 @@ struct fx_theme {
 #define FX_CONN_IDLE 1      /* in it: the keyboard idle the whole slot (the halves may be asleep) */
 #define FX_CONN_USB (-1)    /* and for the computer over USB: ready to type (no radio to read) */
 #define FX_MV_HISTORY 30    /* slots of the volts history kept */
-#define FX_MV_SLOT_S 180    /* seconds in each: 30 of them are 90 minutes */
+#define FX_MV_SLOT_S 60     /* seconds in each: 30 of them are 30 minutes */
 
 /* Two readings of a link (signal_log's or conn_log's) as one: down if
  * either was, else the weaker dBm, else idle, else 0 (not known). */
