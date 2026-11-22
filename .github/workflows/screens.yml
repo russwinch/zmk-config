@@ -1,0 +1,48 @@
+# Redraw docs/screens/*.png (a still of each dongle screen, for the README)
+# whenever the screens' code changes, and commit them back to the same
+# branch, as draw.yml does for the keymap. Pushes made with GITHUB_TOKEN
+# don't start other workflows, so this commit won't trigger a build or loop.
+name: Draw screens
+
+on:
+  push:
+    paths:
+      - "src/screen_fx/**"
+      - "tools/fx_preview.py"
+      - "tools/fx_preview/**"
+      - "config/west.yml"
+      - ".github/workflows/screens.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screens-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  draw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Draw
+        run: pip install pillow && python tools/fx_preview.py --stills --out docs/screens
+
+      - name: Commit if changed
+        run: |
+          git add docs/screens
+          if git diff --cached --quiet; then
+            echo "screen stills already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Redraw screen stills"
+          git pull --rebase
+          git push

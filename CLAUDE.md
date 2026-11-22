@@ -22,6 +22,8 @@
   pushing keymap changes.
 - `keymap-drawer/keymap.svg` is redrawn and committed by the "Draw keymap"
   workflow; pull before pushing after a keymap change.
+- `docs/screens/*.png` (the README's screen stills) are redrawn and committed
+  by the "Draw screens" workflow; pull before pushing after a screen change.
 - Keep the README's tables (boards, layers, timings, encoders) in step with
   the keymap.
 - Docs are for people: README.md (boards, keymap, flashing, the dongle),
