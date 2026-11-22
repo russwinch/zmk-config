@@ -2077,20 +2077,6 @@ static int outline_px(const struct view *v, const int16_t *pts, int n, bool righ
     return n;
 }
 
-/* How far in a half's keys reach (quarter mm, x as boards.h has it). */
-static float shape_keys_inner(void) {
-    float hi_x = -10000;
-    struct view unit = {1, 0, 0, 0};
-    for (int i = 0; i < shape->n_keys; i++) {
-        float q[8];
-        part_quad(&unit, &shape->keys[i], false, 0, q);
-        for (int c = 0; c < 4; c++) {
-            hi_x = q[2 * c] > hi_x ? q[2 * c] : hi_x;
-        }
-    }
-    return hi_x;
-}
-
 /* Fit the board into (x, y, wide, high) with `gap` pixels between the halves:
  * only its keys, or (`whole`) its outline and all. */
 static struct view shape_view(int x, int y, int wide, int high, int gap, bool whole) {
@@ -2309,9 +2295,9 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * wheel display: lights across the top, the big figure in the middle, bars
  * and graphs rather than columns of numbers. Top to bottom:
  *
- *   the typing speed as a row of lights, green then red then violet;
+ *   the typing speed, small (Typist has it big);
  *
- *   each half of the board at its side, the speed big between them;
+ *   the board's keys as they are;
  *
  *   each link's latest dBm, the halves' over their batteries and the
  *   computer's between (over USB, USB in its place); under each a strip of
@@ -2330,12 +2316,9 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
-#define STATUS_LIGHTS 15
-#define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
-#define STATUS_LIGHTS_Y 3
-#define STATUS_KEYS_TOP 10 /* the halves, the speed big between them */
-#define STATUS_KEYS_H 42
-#define STATUS_WPM_ROOM 46 /* across the middle for the speed (3 figures, 3 times the size) */
+#define STATUS_WPM_Y 3
+#define STATUS_KEYS_TOP 11 /* the board's keys */
+#define STATUS_KEYS_H 40
 #define STATUS_SIGNAL_Y 54 /* each link's dBm */
 #define STATUS_CONN_Y 63   /* and under it its connection strip, this high: */
 #define STATUS_CONN_H 5
@@ -2456,29 +2439,13 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const bool usb_out = in->status && in->status->usb;
     char buf[16];
 
-    /* the lights: the speed */
-    const int lights_x = (FX_W - (STATUS_LIGHTS * 8 - 2)) / 2; /* clear of the rounded corners */
-    for (int i = 0; i < STATUS_LIGHTS; i++) {
-        const uint8_t on = i < 5 ? DBG_GOOD : i < 10 ? DBG_BAD : DBG_LAYER;
-        fill(fb, lights_x + i * 8, STATUS_LIGHTS_Y, 6, 4, d->wpm >= (i + 1) * STATUS_LIGHT_WPM ? on : DBG_DIM);
-    }
-
-    /* the halves as they are, at the sides, the speed big between them where
-     * the controllers are (or a gap made for it, on a board with none there) */
-    const float inner = shape_keys_inner();
-    struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, STATUS_WPM_ROOM, false);
-    if (inner < 0) { /* room to the inner edge of the PCB: the keys that far apart */
-        const int room = (int)(-2 * inner * v.scale) + STATUS_WPM_ROOM / 3;
-        v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, room > STATUS_WPM_ROOM ? room : STATUS_WPM_ROOM,
-                       false);
-    }
-    shape_board(fb, in, &v, false);
+    /* the speed, and the keys as they are */
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    /* the speed and its label under it, together in the middle of the halves */
-    const int wpm_y = STATUS_KEYS_TOP + (STATUS_KEYS_H - 21 - 10) / 2;
-    put(fb, (FX_W - 14) / 2, wpm_y + 26, "WPM", DBG_LABEL);
-    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, wpm_y, buf,
-            d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
+    const int wpm_x = (FX_W - (5 * (int)strlen(buf) + 1 + 14)) / 2;
+    put(fb, wpm_x, STATUS_WPM_Y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL);
+    put(fb, wpm_x + 5 * (int)strlen(buf) + 1, STATUS_WPM_Y, "WPM", DBG_LABEL);
+    const struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, KEYS_SPLIT, false);
+    shape_board(fb, in, &v, false);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
      * then the worst trouble there is, if any; in from the sides, clear of

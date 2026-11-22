@@ -18,7 +18,7 @@ The screen, theme and brightness are remembered once left for 30 seconds.
 | # | Screen | What it is |
 | --- | --- | --- |
 | 1 | Debug | a page of readings for chasing faults: [below](#debug) |
-| 2 | Status | batteries, signal and typing speed as graphs and bars: [below](#status) |
+| 2 | Status | the board's keys, batteries, signal and connections at a glance: [below](#status) |
 | 3 | Typist | your typing speed, and the board as it is, its keys lighting as you type: [below](#typist) |
 | 4 | Thermal | the board through a heat camera; from 50 wpm the keys catch fire |
 | 5 | Tracker | a motion tracker: contacts close in with typing speed |
@@ -70,8 +70,8 @@ Laid out like a racing car's steering wheel display.
 
 | Part | Shows |
 | --- | --- |
-| lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
-| left and right | each half's keys as they are on the board, lit as on Typist; the speed big between them, where the controllers are |
+| top | the typing speed |
+| the keys | as they are on the board, lit as on Typist |
 | signals | each link's dBm (`--` in red when down), the computer's in the middle (over USB: `USB`, green when ready, amber when the computer sleeps) |
 | connection strips | under each link, its last 80 minutes, 2 minutes a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
