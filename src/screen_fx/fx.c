@@ -1491,14 +1491,11 @@ static void signal_bars(uint8_t *fb, int x, int y, const struct fx_link *link) {
     }
 }
 
-/* Column right edges of the two tables (links, then power): a reading, its
- * history as a little chart, then up to three more columns. */
-#define DBG_COL_NOW 33
-#define DBG_CHART_X 37
+/* The table's columns: the left half, the dongle, the right half, each
+ * DBG_COL_W across from DBG_COL_X(i), after the rows' labels; a chart in each. */
+#define DBG_COL_X(i) (34 + (i) * 35)
+#define DBG_COL_W 33
 #define DBG_CHART_W 30
-#define DBG_COL_B 92
-#define DBG_COL_C 110
-#define DBG_COL_D 135
 
 /* A knob's mark turns this many times as far as the encoder does: one of the
  * Waterfowl's 18 degree clicks moves it 45, an eighth of the way round. */
@@ -1714,44 +1711,33 @@ static void mv_chart(uint8_t *fb, int x, int y, const uint16_t *log, int span) {
     chart(fb, x, y, high, color);
 }
 
-/* A row of the links table: the link's name (red when down), its dBm and
- * chart, its drops and the reason for the last, and `presses`. `off`: down on
- * purpose (the computer's, while typing over USB), so not a fault. */
-static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link, const int8_t *log,
-                       uint32_t presses, bool off) {
-    char buf[12];
-    const char label[2] = {name, '\0'};
-    put(fb, 5, y, label, link->up || off ? DBG_BRIGHT : DBG_BAD);
-    if (off) {
-        put_right(fb, DBG_COL_NOW, y, "USB", DBG_LABEL);
-    } else if (link->up) {
-        if (link->rssi_known) {
-            snprintf(buf, sizeof(buf), "%d", link->rssi < -99 ? -99 : link->rssi);
-            put_right(fb, DBG_COL_NOW, y, buf, signal_color(link));
-        } else if (link->rssi_err) {
-            /* why it couldn't be read, to track down: EH no handle for the
-             * link, EB no command buffer, E1-E99 the radio's or Zephyr's error */
-            if (link->rssi_err == FX_RSSI_ERR_HANDLE) {
-                strcpy(buf, "EH");
-            } else if (link->rssi_err == FX_RSSI_ERR_BUFFER) {
-                strcpy(buf, "EB");
-            } else {
-                snprintf(buf, sizeof(buf), "E%u", link->rssi_err > 99 ? 99 : link->rssi_err);
-            }
-            put_right(fb, DBG_COL_NOW, y, buf, DBG_BAD);
-        }
+/* Text centred in column `col` of the table. */
+static void put_col(uint8_t *fb, int col, int y, const char *s, uint8_t color) {
+    put(fb, DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(s) - 1)) / 2, y, s, color);
+}
+
+/* A link's signal as text and its colour: dBm, `--` when down, or why it
+ * couldn't be read (EH no handle for the link, EB no command buffer, E1-E99
+ * the radio's or Zephyr's error). */
+static uint8_t signal_text(char *buf, size_t size, const struct fx_link *link) {
+    if (!link->up) {
+        snprintf(buf, size, "--");
+        return DBG_BAD;
+    }
+    if (link->rssi_known) {
+        snprintf(buf, size, "%d", link->rssi < -99 ? -99 : link->rssi);
+        return signal_color(link);
+    }
+    if (link->rssi_err == FX_RSSI_ERR_HANDLE) {
+        snprintf(buf, size, "EH");
+    } else if (link->rssi_err == FX_RSSI_ERR_BUFFER) {
+        snprintf(buf, size, "EB");
+    } else if (link->rssi_err) {
+        snprintf(buf, size, "E%u", link->rssi_err > 99 ? 99 : link->rssi_err);
     } else {
-        put_right(fb, DBG_COL_NOW, y, "--", DBG_BAD);
+        buf[0] = '\0';
     }
-    signal_chart(fb, DBG_CHART_X, y, log);
-    snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
-    put_right(fb, DBG_COL_B, y, buf, link->drops ? DBG_WARN : DBG_LABEL);
-    if (link->reason) {
-        snprintf(buf, sizeof(buf), "%02X", link->reason);
-        put_right(fb, DBG_COL_C, y, buf, DBG_WARN);
-    }
-    count_text(buf, sizeof(buf), presses);
-    put_right(fb, DBG_COL_D, y, buf, presses ? DBG_TEXT : DBG_LABEL);
+    return DBG_BAD;
 }
 
 /* Millivolts as text, or why not (`why`, else "--"). */
@@ -1849,11 +1835,13 @@ static uint8_t drain_color(int hundredths, bool rough, uint16_t mah) {
  * Whether each part of the keyboard works, and what went wrong; the typing
  * speed and the batteries' levels are on Typist and Status. Top to bottom:
  * the dongle (build, up time, activity, memory; why it last restarted, the
- * quickest a key has bounced); each link's signal with its last 90 seconds,
- * drops, why the last, key presses; each half's battery volts and the
- * dongle's supply with the last 90 minutes, the charging-state reads, the
- * draw, the temperature; the profiles and USB, the reports sent over it; the
- * layer and modifiers, the last event, and every key, lit while held.
+ * quickest a key has bounced); a table with a column for the left half, the
+ * dongle and the right half, as on Status: each link's signal with its last
+ * 90 seconds, drops and why the last; each half's battery volts and the
+ * dongle's supply with their last 90 minutes, the charging-state reads and
+ * the dongle's temperature, the draw; the profiles and USB, the reports sent
+ * over it; the layer and modifiers, the last event, and every key, lit while
+ * held.
  */
 static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     static const struct fx_debug none;
@@ -1912,75 +1900,96 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put_right(fb, FX_W - 6, y2, "BOUNCE --", DBG_LABEL);
     }
 
-    /* the links: signal and its last 90 seconds, drops, why the last, presses */
-    const int links_y = 21;
-    put_right(fb, DBG_COL_NOW, links_y, "dBm", DBG_LABEL);
-    put(fb, DBG_CHART_X, links_y, "90S", DBG_LABEL);
-    put_right(fb, DBG_COL_B, links_y, "DROPS", DBG_LABEL);
-    put_right(fb, DBG_COL_C, links_y, "WHY", DBG_LABEL);
-    put_right(fb, DBG_COL_D, links_y, "KEYS", DBG_LABEL);
+    /* the table: a column each for the left half, the dongle and the right
+     * half, as on Status; a row for each reading, its unit or what it is in
+     * front. First the links (the dongle's to the computer): signal and its
+     * last 90 seconds, drops and why the last */
     const bool usb_out = in->status && in->status->usb;
-    for (int half = 0; half < 2; half++) {
-        debug_link(fb, links_y + 8 + half * 8, "LR"[half], &d->half[half], d->signal_log[half], d->presses[half],
-                   false);
+    const struct fx_link *links[3] = {&d->half[0], &d->host, &d->half[1]};
+    const int8_t *logs[3] = {d->signal_log[0], d->signal_log[2], d->signal_log[1]};
+    static const char *const titles[3] = {"LEFT", "DONGLE", "RIGHT"};
+    const int title_y = 21;
+    for (int col = 0; col < 3; col++) {
+        put_col(fb, col, title_y, titles[col], links[col]->up || (col == 1 && usb_out) ? DBG_BRIGHT : DBG_BAD);
     }
-    debug_link(fb, links_y + 24, 'H', &d->host, d->signal_log[2], d->presses[0] + d->presses[1], usb_out);
+    static const char *const labels[] = {"dBm", "90S", "DROPS", "mV", "90MIN", "CHG", "mW"};
+    static const int label_y[] = {29, 37, 45, 54, 62, 70, 78};
+    for (unsigned i = 0; i < sizeof(labels) / sizeof(labels[0]); i++) {
+        put(fb, 5, label_y[i], labels[i], DBG_LABEL);
+    }
+    for (int col = 0; col < 3; col++) {
+        const struct fx_link *link = links[col];
+        if (col == 1 && usb_out) {
+            put_col(fb, col, 29, "USB", DBG_LABEL); /* no radio to the computer */
+        } else {
+            const uint8_t color = signal_text(buf, sizeof(buf), link);
+            put_col(fb, col, 29, buf, color);
+        }
+        signal_chart(fb, DBG_COL_X(col) + 1, 37, logs[col]);
+        /* the drops, and why the last: 08 went silent, 13 the other end
+         * closed it, 16 the dongle did, 3E never got going */
+        snprintf(buf, sizeof(buf), "%d", link->drops > 99 ? 99 : link->drops);
+        if (link->reason) {
+            const int n = (int)strlen(buf);
+            snprintf(buf + n, sizeof(buf) - n, " %02X", link->reason);
+            const int left = DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(buf) - 1)) / 2;
+            buf[n] = '\0';
+            put(fb, left, 45, buf, link->drops ? DBG_WARN : DBG_LABEL);
+            snprintf(buf, sizeof(buf), "%02X", link->reason);
+            put(fb, left + 5 * (n + 1), 45, buf, DBG_LABEL);
+        } else {
+            put_col(fb, col, 45, buf, link->drops ? DBG_WARN : DBG_LABEL);
+        }
+    }
 
-    /* power: each half's battery volts (dim while charging, the charger's)
-     * and the dongle's supply, their last 90 minutes; the charging-state
-     * subscription, the halves' average draw, the dongle's temperature */
-    const int power_y = links_y + 33;
-    put_right(fb, DBG_COL_NOW, power_y, "mV", DBG_LABEL);
-    put(fb, DBG_CHART_X, power_y, "90MIN", DBG_LABEL);
-    put_right(fb, DBG_COL_B, power_y, "CHG", DBG_LABEL);
-    put_right(fb, DBG_COL_D, power_y, "mW", DBG_LABEL);
-    for (int half = 0; half < 2; half++) {
-        const int y = power_y + 8 + half * 8;
-        const bool charging = in->status && in->status->charging[half];
-        put(fb, 5, y, half ? "R" : "L", DBG_BRIGHT);
-        mv_text(buf, sizeof(buf), d->half_mv[half], NULL);
-        put_right(fb, DBG_COL_NOW, y, buf, d->half_mv[half] && !charging ? DBG_TEXT : DBG_LABEL);
-        mv_chart(fb, DBG_CHART_X, y, d->mv_log[half], 60);
+    /* then power: each half's battery and the dongle's 3.3 V supply, to the
+     * millivolt, and their last 90 minutes; the halves' charging-state
+     * subscription and average draw, the dongle's temperature */
+    const uint16_t mv[3] = {d->half_mv[0], d->dongle_mv, d->half_mv[1]};
+    const uint16_t *mv_logs[3] = {d->mv_log[0], d->mv_log[2], d->mv_log[1]};
+    for (int col = 0; col < 3; col++) {
+        const int half = col / 2; /* the left's or the right's, for cols 0 and 2 */
+        const bool charging = col != 1 && in->status && in->status->charging[half];
+        mv_text(buf, sizeof(buf), mv[col], col == 1 ? d->dongle_mv_why : NULL);
+        put_col(fb, col, 54, buf, mv[col] && !charging ? DBG_TEXT : col == 1 && d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL);
+        mv_chart(fb, DBG_COL_X(col) + 1, 62, mv_logs[col], 60);
+        if (col == 1) {
+            if (d->dongle_temp_known) {
+                const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
+                snprintf(buf, sizeof(buf), "%dC", c);
+                put_col(fb, col, 70, buf, c >= 60 ? DBG_WARN : DBG_TEXT);
+            } else {
+                snprintf(buf, sizeof(buf), "%sC", d->dongle_temp_why[0] ? d->dongle_temp_why : "--");
+                put_col(fb, col, 70, buf, d->dongle_temp_why[0] ? DBG_WARN : DBG_LABEL);
+            }
+            continue;
+        }
         /* the charging state: where the dongle has got with it (see
          * dongle_half_info_progress): OK green, WT/Q/R/S on the way in amber,
-         * NF (firmware without it) dim, E and its error or TO in red */
+         * NF (firmware without it) dim, E and its error or TO in red; a
+         * bolt after it while on USB power */
         const char *reads = d->half_reads[half];
-        if (reads[0]) {
-            const bool bad = reads[0] == 'E' || reads[0] == 'T';
-            if (reads[0] == 'E' && d->half_err[half]) {
-                snprintf(buf, sizeof(buf), "E%02X", d->half_err[half]);
-            } else {
-                snprintf(buf, sizeof(buf), "%s", reads);
-            }
-            put_right(fb, DBG_COL_B, y, buf,
-                      bad ? DBG_BAD : reads[0] == 'O' ? DBG_GOOD : reads[0] == 'N' ? DBG_LABEL : DBG_WARN);
+        const bool bad = reads[0] == 'E' || reads[0] == 'T';
+        if (reads[0] == 'E' && d->half_err[half]) {
+            snprintf(buf, sizeof(buf), "E%02X", d->half_err[half]);
+        } else {
+            snprintf(buf, sizeof(buf), "%s", reads[0] ? reads : "--");
         }
-        charging_bolt(fb, DBG_COL_B + 2, y, in->status, half);
+        put_col(fb, col, 70, buf,
+                bad ? DBG_BAD : reads[0] == 'O' ? DBG_GOOD : reads[0] == 'N' || !reads[0] ? DBG_LABEL : DBG_WARN);
+        charging_bolt(fb, DBG_COL_X(col) + DBG_COL_W - 5, 70, in->status, half);
         const int hundredths = d->drain_hundredths_mw[half];
         const bool rough = hundredths >= 0 && d->drain_rough[half];
         drain_text(buf, sizeof(buf), hundredths, rough);
-        put_right(fb, DBG_COL_D, y, buf, drain_color(hundredths, rough, d->battery_mah));
+        put_col(fb, col, 78, buf, drain_color(hundredths, rough, d->battery_mah));
         if (rough) {
-            put(fb, DBG_COL_D - 5 * (int)strlen(buf), y, "~", DBG_WARN);
+            put(fb, DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(buf) - 1)) / 2, 78, "~", DBG_WARN);
         }
-    }
-    const int dongle_y = power_y + 24;
-    put(fb, 5, dongle_y, "D", DBG_BRIGHT);
-    mv_text(buf, sizeof(buf), d->dongle_mv, d->dongle_mv_why);
-    put_right(fb, DBG_COL_NOW, dongle_y, buf, d->dongle_mv ? DBG_TEXT : d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL);
-    mv_chart(fb, DBG_CHART_X, dongle_y, d->mv_log[2], 60);
-    if (d->dongle_temp_known) {
-        const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
-        snprintf(buf, sizeof(buf), "%dC", c);
-        put_right(fb, DBG_COL_B, dongle_y, buf, c >= 60 ? DBG_WARN : DBG_TEXT);
-    } else {
-        snprintf(buf, sizeof(buf), "%sC", d->dongle_temp_why[0] ? d->dongle_temp_why : "--");
-        put_right(fb, DBG_COL_B, dongle_y, buf, d->dongle_temp_why[0] ? DBG_WARN : DBG_LABEL);
     }
 
     /* the output: the profiles, USB's state, the reports sent over it and
      * those that failed */
-    const int out_y = dongle_y + 9;
+    const int out_y = 87;
     profiles(fb, d, in->status, 6, out_y + 1);
     x = put(fb, 48, out_y, "USB", DBG_LABEL) + 3;
     put(fb, x, out_y, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--",
@@ -1992,12 +2001,13 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%u", d->usb_errors > 99 ? 99 : d->usb_errors);
     put(fb, x, out_y + 8, buf, d->usb_errors ? DBG_WARN : DBG_TEXT);
 
-    /* the layer (number and name), the modifiers lit while held */
+    /* the layer (number and name), the modifiers lit while held; in the
+     * bottom corner's curve, so in from the side */
     const int layer_y = out_y + 16;
     snprintf(buf, sizeof(buf), "L%u", d->layer);
-    x = put(fb, 6, layer_y, buf, DBG_BRIGHT) + 3;
+    x = put(fb, fx_corner_inset(layer_y, layer_y + 6) + 1, layer_y, buf, DBG_BRIGHT) + 3;
     if (d->layer_name) {
-        snprintf(buf, sizeof(buf), "%.6s", d->layer_name);
+        snprintf(buf, sizeof(buf), "%.5s", d->layer_name);
         for (char *c = buf; *c; c++) {
             *c = *c >= 'a' && *c <= 'z' ? *c - 32 : *c; /* the small letters are for typed text */
         }
@@ -2005,7 +2015,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
     static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
     static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
-    const int mods_x = 50;
+    const int mods_x = 52;
     for (int i = 0; i < 4; i++) {
         const bool on = (d->mods & mod_bit[i]) != 0;
         const int gx = mods_x + i * 7;
@@ -2018,17 +2028,15 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put(fb, gx, layer_y, g, on ? DBG_BG : DBG_LABEL);
     }
 
-    /* the last raw event: the ms since the one before, then what it was. In
-     * the bottom corner's curve, so in from the side */
-    const int event_y = layer_y + 8;
+    /* the last raw event: the ms since the one before, then what it was */
     if (d->n_log) {
         event_text(buf, sizeof(buf), &d->log[d->n_log - 1]);
-        put(fb, fx_corner_inset(event_y, event_y + 6) + 1, event_y, buf, DBG_BRIGHT);
+        put(fb, fx_corner_inset(layer_y + 8, layer_y + 14) + 1, layer_y + 8, buf, DBG_BRIGHT);
     }
 
     /* every key, lit while held: one that doesn't light isn't reaching the dongle */
     const int board_pitch = board_cols > 10 ? 4 : 5;
-    const int board_left = FX_W - 1 - fx_corner_inset(out_y, out_y + 24) - board_cols * board_pitch;
+    const int board_left = FX_W - 1 - fx_corner_inset(out_y, out_y + 20) - board_cols * board_pitch;
     board(fb, in, board_left, out_y + 1, board_pitch, 4, 1, 1);
 }
 
@@ -2327,13 +2335,27 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_CONN_H 5
 #define STATUS_KEYS_TOP 22 /* the board's keys, the speed small between the halves */
 #define STATUS_KEYS_H 51
-#define STATUS_WPM_GAP 32 /* room for three figures twice the size */
+#define STATUS_WPM_GAP 18 /* room for three figures, 5 across each */
 #define STATUS_BATTERY_Y 77
 #define STATUS_BOX_Y 104 /* along the foot */
 #define STATUS_BATTERY_W 61
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
 
 static void status_start(uint16_t *palette) { debug_start(palette); }
+
+/* Text twice as tall, no wider: big in a narrow gap. */
+static void put_tall(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
+    for (; *s; s++, x += 5) {
+        const uint8_t *rows = fx_glyph_rows(*s);
+        for (int row = 0; rows && row < 7; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (rows[row] & (0x10 >> col)) {
+                    line(fb, x + col, y + row * 2, x + col, y + row * 2 + 1, color);
+                }
+            }
+        }
+    }
+}
 
 /* Text `scale` times the size. */
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale) {
@@ -2450,7 +2472,7 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     shape_board(fb, in, &v, false);
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
     const int wpm_y = STATUS_KEYS_TOP + 4;
-    put_big(fb, (FX_W - (10 * (int)strlen(buf) - 2)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 2);
+    put_tall(fb, (FX_W - (5 * (int)strlen(buf) - 1)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL);
     put(fb, (FX_W - 14) / 2, wpm_y + 16, "WPM", DBG_LABEL);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
