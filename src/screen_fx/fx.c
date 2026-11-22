@@ -2244,10 +2244,10 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_KEYS_TOP 19 /* the halves, the speed big between them */
 #define STATUS_KEYS_H 35
 #define STATUS_WPM_MAX 120
-#define STATUS_SIGNAL_Y 56 /* each link's latest, its graph just under */
+#define STATUS_SIGNAL_Y 60 /* each link's latest, its graph just under */
 #define STATUS_SIGNAL_W 42
 #define STATUS_SIGNAL_WIDE 64 /* the halves', with no computer's between */
-#define STATUS_SIGNAL_H 14
+#define STATUS_SIGNAL_H 10
 #define STATUS_BATTERY_Y 83
 #define STATUS_BOX_Y 107 /* along the foot */
 #define STATUS_BATTERY_W 61
@@ -2308,7 +2308,7 @@ static void status_text(uint8_t *fb, int half, int edge, int y, const char *s, u
 }
 
 /* A half's battery, STATUS_BATTERY_W across from (x, y): its level, big
- * at its own side, a bar with the bolt at its outer end, and its latest
+ * at its own side, a bar with the bolt at its inner end, and its latest
  * volts and draw. */
 static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x, int y) {
     const struct fx_debug *d = in->debug;
@@ -2339,10 +2339,10 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     }
     for (int step = 0; step < 10; step++) {
         const bool on = step < lit + filling;
-        fill(fb, x + 6 + step * 5, y + 16, 4, 3,
+        fill(fb, (half ? x + 2 : x) + step * 6, y + 18, 5, 3,
              !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
     }
-    charging_bolt(fb, half ? right - 4 : x, y + 14, in->status, half); /* at the bar's outer end */
+    charging_bolt(fb, half ? x - 4 : right, y + 16, in->status, half); /* at the bar's inner end, under the mW */
 
     /* beside the level its latest volts (the charger's while charging, so
      * dim then) and draw, aligned to the middle, where their units are;
@@ -2421,7 +2421,7 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
     /* the speed and its label under it, together in the middle of the halves */
     const int wpm_y = STATUS_KEYS_TOP + (STATUS_KEYS_H - 21 - 10) / 2;
-    put(fb, (FX_W - 14) / 2, wpm_y + 24, "WPM", DBG_LABEL);
+    put(fb, (FX_W - 14) / 2, wpm_y + 26, "WPM", DBG_LABEL);
     put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, wpm_y, buf,
             d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
 
@@ -2505,11 +2505,14 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     for (int link = 0; link < shown; link++) {
         const int sx = 4 + (usb_out ? link : column[link]) * (wide + 3);
         const int foot = STATUS_SIGNAL_Y + 8 + STATUS_SIGNAL_H, mid = sx + wide / 2;
+        /* the halves' readings against their outer edges, the computer's in the middle */
+        const int edge = link == 2 ? 0 : column[link] ? 1 : -1;
         if (!links[link]->up) {
-            put(fb, mid - 5, STATUS_SIGNAL_Y, "--", DBG_BAD);
+            put(fb, edge < 0 ? sx : edge > 0 ? sx + wide - 10 : mid - 5, STATUS_SIGNAL_Y, "--", DBG_BAD);
         } else if (links[link]->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
-            const int left = mid - (5 * (int)strlen(buf) + 14) / 2;
+            const int text_w = 5 * (int)strlen(buf) + 14;
+            const int left = edge < 0 ? sx : edge > 0 ? sx + wide - text_w : mid - text_w / 2;
             put(fb, left, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
             put(fb, left + 5 * (int)strlen(buf), STATUS_SIGNAL_Y, "dBm", DBG_LABEL);
         }
