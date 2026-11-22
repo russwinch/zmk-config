@@ -2309,7 +2309,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_CONN_H 5
 #define STATUS_KEYS_TOP 22 /* the board's keys, the speed small between the halves */
 #define STATUS_KEYS_H 51
-#define STATUS_WPM_GAP 18
+#define STATUS_WPM_GAP 32 /* room for three figures twice the size */
 #define STATUS_BATTERY_Y 77
 #define STATUS_BOX_Y 104 /* along the foot */
 #define STATUS_BATTERY_W 61
@@ -2431,9 +2431,9 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, STATUS_WPM_GAP, false);
     shape_board(fb, in, &v, false);
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    const int wpm_y = STATUS_KEYS_TOP + (STATUS_KEYS_H - 14) / 2;
-    put(fb, (FX_W - (5 * (int)strlen(buf) - 1)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL);
-    put(fb, (FX_W - 14) / 2, wpm_y + 8, "WPM", DBG_LABEL);
+    const int wpm_y = STATUS_KEYS_TOP + 4;
+    put_big(fb, (FX_W - (10 * (int)strlen(buf) - 2)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 2);
+    put(fb, (FX_W - 14) / 2, wpm_y + 16, "WPM", DBG_LABEL);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
      * then the worst trouble there is, if any; in from the sides, clear of
