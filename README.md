@@ -337,7 +337,7 @@ screensavers', and those of the status text over them.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known; while charging, the estimate, with an amber `~` before it), with a bolt to its left while the half is on USB power, signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds (kept whichever screen is showing, so it is there when Keys is turned to), a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
+| top left, top right | the left and the right half: a battery and its percent ([amber, red and flashing](#battery-warnings) as it runs down; an empty battery and `--` when not known; while charging, the estimate, with an amber `~` before it), with a bolt to its left while the half is on USB power, signal strength as bars and in dBm, green, amber or red (`--` in red when the half isn't connected), and under them that signal over the last 40 seconds (kept whichever screen is showing, so it is there when Keys is turned to; not while the keyboard is idle), a dim column a second with its top lit: a second of amber or red signal is a solid bar of that colour, so it stands out |
 | top middle, on Bluetooth | the computer: the five Bluetooth profiles as on the Debug screen (filled: connected, ring: paired, dot: free; the selected one underlined), and the signal of the link to it, the same way as the halves' |
 | top middle, over USB | `USB`, green when the computer is listening, amber when the computer has suspended the port (it is asleep), red otherwise; the typing speed in words a minute; and under it that speed over the last 40 seconds, its height 60 wpm or the fastest showing if that is more |
 | the keys | every key position of the keyboard the dongle is built for; encoders as [knobs](#encoder-knobs) |
@@ -457,7 +457,7 @@ racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | the row of lights along the top | the typing speed, a light for every 8 words a minute: green, then red, then violet from 88 to 120. A white light stays at the fastest of the last 94 seconds |
-| the graph under the lights | the typing speed over the last 94 seconds, a point a second, up to 120 at the top; the dotted lines are where the lights turn red (40) and violet (80). The dongle keeps this, and each link's signal, whichever screen is showing (since it started), so they are already there when the screen is turned to |
+| the graph under the lights | the typing speed over the last 94 seconds, a point a second, up to 120 at the top; the dotted lines are where the lights turn red (40) and violet (80). The dongle keeps this, and each link's signal, whichever screen is showing (since it started), so they are already there when the screen is turned to. They wait while the keyboard is idle, so the halves going to sleep doesn't show as their links dropping |
 | left and right | each half of the board as on Keys (white while held, orange holding a modifier, violet holding a layer, glowing after; encoders as [knobs](#encoder-knobs)) |
 | middle | the typing speed, big, with `WPM` under it |
 | the three signals | each link's signal, the halves' over their batteries and the computer's between: its latest in dBm (the halves' at their outer edges), coloured as on Keys, `--` in red when down; while typing over USB the computer's isn't shown and the halves' widen to share its room; just under it the last 94 seconds, the weakest in each column, on a scale the graphs share from -100 dBm at the foot up to the strongest column shown, so the tallest reaches up to its reading and the links still compare; drawn as on Keys: a dim column with its top lit while above -75, a solid amber bar above -85 and a solid red one below, so weak seconds stand out, and a full-height red one where the link was down |
@@ -556,7 +556,9 @@ GIFs black them out the same way; `--square` shows the whole picture.
 `--board waterfowl` (or `corne`) draws Keys and Debug on that board,
 encoders turning, instead of the Forager. `tools/fx_preview.py --saver thermal` saves each screensaver coming over that
 animation and going again, and `--power keys` the panel going off and
-coming back on. Only one animation can run at a time (they share
+coming back on, and `--stills` a PNG of each screen mid-typing (Status over
+USB), four times the panel's size: every build puts these on its release too,
+as `screen-<n>_<name>.png`, to look at or draw over. Only one animation can run at a time (they share
 their memory), so the other picture in a transition is a still: the last
 frame sent, which the dongle keeps anyway, and its palette. A transition
 changes every pixel, so it runs at the whole-frame rate or under. On the dongle, `src/dongle_screen_fx.c` parks LVGL on an

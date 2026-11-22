@@ -10,6 +10,7 @@ draw, without flashing anything:
     tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
     tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
     tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
+    tools/fx_preview.py --stills     # a still of each screen -> fx_preview_out/<n>_<name>.png
     tools/fx_preview.py --contrast   # every theme's contrast ratios, the low ones flagged
     tools/fx_preview.py --board waterfowl  # on the Waterfowl's keys and encoders (or corne)
 
@@ -183,6 +184,9 @@ def main() -> None:
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
     parser.add_argument("--board", choices=["forager", "waterfowl", "corne"], default="forager",
                         help="the keyboard the Keys and Debug screens draw (default forager)")
+    parser.add_argument("--stills", action="store_true",
+                        help="instead: a PNG of each screen mid-typing (Status over USB), 4x the panel's size "
+                             "(to draw over)")
     parser.add_argument("--square", action="store_true",
                         help="show the corners too, which the panel's rounded glass hides")
     args = parser.parse_args()
@@ -207,6 +211,15 @@ def main() -> None:
             save(render(exe, "power", showing, args.fps), args.out / f"power_{args.power.lower()}.gif", args.fps)
             return
         frames = int(args.seconds * args.fps)
+        if args.stills:
+            # mid-typing over Bluetooth; Status over USB, where its middle has no computer's link
+            for index, name in enumerate(names()):
+                at = 0.85 if name == "STATUS" else 0.4
+                path = args.out / f"{index + 1}_{name.lower()}.png"
+                render(exe, index, frames, args.fps)[int(frames * at)].resize(
+                    (WIDTH * 4, HEIGHT * 4), Image.NEAREST).save(path)
+                print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
+            return
         if args.themes:
             # a row a theme: the first screen as it is turned to (its name up), then each typing flat out
             screens = [names().index(name) for name in themed()]

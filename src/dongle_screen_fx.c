@@ -646,7 +646,7 @@ static void dongle_readings_cb(struct k_work *work) {
  * the display queue (a frame drawn after a stuck one would never come,
  * leaving the screen blank). Always, whichever screen shows, so that the
  * signal and the typing speed have a history (FX_HISTORY seconds) when the
- * Keys or Status screen is turned to.
+ * Keys or Status screen is turned to; but not while the keyboard is idle.
  */
 #define READINGS_EVERY_MS 1000
 #define READINGS_STACK 3072
@@ -684,20 +684,26 @@ static void readings_cb(struct k_work *work) {
     dongle_half_info_progress(1, half_reads[1], &half_err[1]);
 #endif
     const bool usb_out = zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
+    /* while the keyboard is idle the panel is off and the halves go on to
+     * sleep, dropping their links: the histories wait, rather than fill
+     * with links that are only down because the halves are asleep */
+    const bool active = zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE;
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
         memcpy(readings.half_reads, half_reads, sizeof(half_reads));
         memcpy(readings.half_err, half_err, sizeof(half_err));
         /* this second in the histories */
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 3 && active; i++) {
             memmove(readings.signal_log[i], readings.signal_log[i] + 1, FX_HISTORY - 1);
             readings.signal_log[i][FX_HISTORY - 1] = i == 2 && usb_out ? 0
                                                      : !link[i].up     ? FX_SIGNAL_DOWN
                                                      : link[i].rssi_known ? (int8_t)CLAMP(link[i].rssi, -127, -1)
                                                                           : 0;
         }
-        memmove(readings.wpm_log, readings.wpm_log + 1, FX_HISTORY - 1);
-        readings.wpm_log[FX_HISTORY - 1] = (uint8_t)MIN(atomic_get(&wpm), 255);
+        if (active) {
+            memmove(readings.wpm_log, readings.wpm_log + 1, FX_HISTORY - 1);
+            readings.wpm_log[FX_HISTORY - 1] = (uint8_t)MIN(atomic_get(&wpm), 255);
+        }
     }
     k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
 }

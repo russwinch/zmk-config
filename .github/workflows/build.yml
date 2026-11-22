@@ -9,6 +9,23 @@ jobs:
   build:
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85  # same ZMK commit as config/west.yml
 
+  # A still of each dongle screen as this commit draws it (tools/fx_preview.py
+  # --stills), put on the release beside the firmware to look at and draw
+  # over (e.g. on an iPad). Its own job, so the firmware is released even if
+  # this fails.
+  screens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow && python tools/fx_preview.py --stills --out screens
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screens
+          path: screens/*.png
+
   # One release per build, holding the firmware zip and each .uf2. The
   # Keyboard Writer app (russwinch/keyboard-writer) lists these and downloads
   # the zip of the one chosen:
@@ -16,8 +33,8 @@ jobs:
   # branches are prereleases. The release's target is the commit built, which
   # the app checks for settings-reset/<why> tags (README, Flashing).
   release:
-    needs: build
-    if: github.event_name != 'pull_request'
+    needs: [build, screens]
+    if: always() && needs.build.result == 'success' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,7 +55,11 @@ jobs:
           tag="build-$GITHUB_RUN_NUMBER"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # a re-run
           if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then kind=--latest; else kind=--prerelease; fi
-          gh release create "$tag" firmware.zip assets/*.uf2 --target "$GITHUB_SHA" $kind \
+          # the screens' stills, as screen-<n>_<name>.png, if they were drawn
+          shopt -s nullglob
+          gh run download "$GITHUB_RUN_ID" --name screens --dir screens || true
+          for f in screens/*.png; do cp "$f" "assets/screen-$(basename "$f")"; done
+          gh release create "$tag" firmware.zip assets/*.uf2 assets/*.png --target "$GITHUB_SHA" $kind \
             --title "$GITHUB_REF_NAME · $subject" --notes "Built from $GITHUB_SHA."
 
       - name: Keep the newest 30
