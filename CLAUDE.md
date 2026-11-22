@@ -129,8 +129,10 @@ user's own computer: a cloud session can't see USB drives.
   `.elf`s in `dongle-elf.tar.gz`: `addr2line -ife <dongle>.elf 0x<address>`.
 - Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
   `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
-- The animations place keys on a 10x4 grid (the Waterfowl); Keys, Status and
-  Debug use the matrix transform.
+- The animations place keys on a 10x4 grid (the Waterfowl); Debug uses the
+  matrix transform; Keys and Status draw each board as it is from
+  `src/screen_fx/boards.h`, written by `tools/boards.py --header` (with the
+  README's pictures) and picked per dongle shield in `src/dongle_screen_fx.c`.
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
   black with captions in the same strong hue; light ones adjust each colour's
   lightness, never its hue. Check `tools/fx_preview.py --contrast`.

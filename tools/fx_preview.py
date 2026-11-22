@@ -182,7 +182,7 @@ def main() -> None:
                         help="instead: one picture of every colour theme, on each screen drawn in them")
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
-    parser.add_argument("--board", choices=["forager", "waterfowl", "corne"], default="forager",
+    parser.add_argument("--board", choices=["forager", "urchin", "waterfowl", "corne"], default="forager",
                         help="the keyboard the Keys and Debug screens draw (default forager)")
     parser.add_argument("--stills", action="store_true",
                         help="instead: a PNG of each screen mid-typing (Status over USB), 4x the panel's size "
