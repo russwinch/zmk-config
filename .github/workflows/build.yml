@@ -59,7 +59,10 @@ jobs:
           shopt -s nullglob
           gh run download "$GITHUB_RUN_ID" --name screens --dir screens || true
           for f in screens/*.png; do cp "$f" "assets/screen-$(basename "$f")"; done
-          gh release create "$tag" firmware.zip assets/*.uf2 assets/*.png --target "$GITHUB_SHA" $kind \
+          # each dongle's zmk.elf, to look up where it crashed (Debug, CRSH)
+          elfs=(); while read -r f; do elfs+=("$f"); done < <(find firmware -name '*.elf')
+          if [ ${#elfs[@]} -gt 0 ]; then zip -q -j assets/dongle-elf.zip "${elfs[@]}"; fi
+          gh release create "$tag" firmware.zip assets/*.uf2 assets/*.png assets/*.zip --target "$GITHUB_SHA" $kind \
             --title "$GITHUB_REF_NAME · $subject" --notes "Built from $GITHUB_SHA."
 
       - name: Keep the newest 30
