@@ -2080,10 +2080,10 @@ static void battery_icon(uint8_t *fb, int x, int y, int level, uint8_t color) {
 #define KEYS_ICON_X 7  /* the battery, and the bars: after the bolt (5) and a gap */
 #define KEYS_TEXT_X 20 /* the level, and the dBm: after the battery (10) and a gap */
 
-/* One of the three blocks' signal: the bars, the dBm at `top` and under
- * them the last SIGNAL_W seconds of `log` (fx_debug's signal_log). `place`
- * 0 on the left, 1 in the middle, 2 on the right. */
-static void keys_link(uint8_t *fb, int place, int top, const struct fx_link *link, const int8_t *log) {
+/* One of the three blocks' signal: the bars, the dBm and the last SIGNAL_W
+ * seconds of `log` (fx_debug's signal_log). `place` 0 on the left, 1 in the
+ * middle, 2 on the right. */
+static void keys_link(uint8_t *fb, int place, const struct fx_link *link, const int8_t *log) {
     char dbm[8] = "";
     uint8_t dbm_color = DBG_LABEL;
     if (!link->up) {
@@ -2094,8 +2094,8 @@ static void keys_link(uint8_t *fb, int place, int top, const struct fx_link *lin
         dbm_color = signal_color(link);
     }
     const int left = keys_block_x(place);
-    signal_bars(fb, left + KEYS_ICON_X, top, link);
-    put(fb, left + KEYS_TEXT_X, top, dbm, dbm_color);
+    signal_bars(fb, left + KEYS_ICON_X, 15, link);
+    put(fb, left + KEYS_TEXT_X, 15, dbm, dbm_color);
     /* -95 dBm and under is one row, -40 and over all of them; a second of
      * weak signal keeps its colour in the history */
     uint8_t high[SIGNAL_W];
@@ -2108,22 +2108,7 @@ static void keys_link(uint8_t *fb, int place, int top, const struct fx_link *lin
             high[i] |= dbm > SIGNAL_GOOD_DBM ? 0 : dbm > SIGNAL_WARN_DBM ? SPARK_WARN : SPARK_RED;
         }
     }
-    spark(fb, keys_block_x(place), top + 9, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
-}
-
-/* The typing speed over the last SIGNAL_W seconds, in the middle block from
- * `y`: SPEED_FULL words a minute fill it, or the fastest in it if more. */
-static void speed_spark(uint8_t *fb, const struct fx_debug *d, int y) {
-    const uint8_t *speed = d->wpm_log + FX_HISTORY - SIGNAL_W;
-    int full = SPEED_FULL;
-    for (int i = 0; i < SIGNAL_W; i++) {
-        full = speed[i] > full ? speed[i] : full;
-    }
-    uint8_t high[SIGNAL_W];
-    for (int i = 0; i < SIGNAL_W; i++) {
-        high[i] = (uint8_t)((speed[i] * SIGNAL_H + full - 1) / full);
-    }
-    spark(fb, keys_block_x(1), y, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
+    spark(fb, keys_block_x(place), 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -2162,7 +2147,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
             }
         }
         charging_bolt(fb, left, 6, in->status, half);
-        keys_link(fb, half * 2, 15, &d->half[half], d->signal_log[half]);
+        keys_link(fb, half * 2, &d->half[half], d->signal_log[half]);
     }
     /* the computer */
     if (in->status && in->status->usb) {
@@ -2176,11 +2161,20 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
         const int wpm_x = (FX_W - (15 + 1 + 15)) / 2 + 15 + 1;
         put_right(fb, wpm_x - 1, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
         put(fb, wpm_x, 15, "WPM", DBG_LABEL);
-        speed_spark(fb, d, 24);
+        const uint8_t *speed = d->wpm_log + FX_HISTORY - SIGNAL_W;
+        int full = SPEED_FULL;
+        for (int i = 0; i < SIGNAL_W; i++) {
+            full = speed[i] > full ? speed[i] : full;
+        }
+        uint8_t high[SIGNAL_W];
+        for (int i = 0; i < SIGNAL_W; i++) {
+            high[i] = (uint8_t)((speed[i] * SIGNAL_H + full - 1) / full);
+        }
+        spark(fb, keys_block_x(1), 24, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
     } else {
         /* the Bluetooth profiles as the Debug screen draws them, and the link */
         profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 6);
-        keys_link(fb, 1, 15, &d->host, d->signal_log[2]);
+        keys_link(fb, 1, &d->host, d->signal_log[2]);
     }
     rule(fb, 35);
 
@@ -2247,18 +2241,15 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * wheel display: lights across the top, the big figure in the middle, bars
  * and graphs rather than columns of numbers. Top to bottom:
  *
- *   the typing speed as a row of lights, green then red then violet, with a
- *   mark at the fastest of the last FX_HISTORY seconds;
+ *   the typing speed as a row of lights, green then red then violet;
  *
  *   each half of the board at its side, the speed big between them;
  *
- *   each link as on Keys, the halves' over their batteries and the
- *   computer's between: the bars and dBm, under them the last SIGNAL_W
- *   seconds (over USB, the middle has USB and the typing speed instead);
- *   and under that a strip of the last FX_CONN_HISTORY slots of
- *   FX_CONN_SLOT_S seconds: green, amber or red by the weakest signal in
- *   it, red where the link was down, a dim line where the keyboard was
- *   idle (so the halves may have been asleep);
+ *   each link's latest dBm, the halves' over their batteries and the
+ *   computer's between (over USB, USB in its place); under each a strip of
+ *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: green, amber
+ *   or red by the weakest signal in it, red where the link was down, a dim
+ *   line where the keyboard was idle (so the halves may have been asleep);
  *
  *   each half's battery at its side: its level, big, and beside it its
  *   volts and average draw, their units between the halves; under them a
@@ -2274,13 +2265,13 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_LIGHTS 15
 #define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
 #define STATUS_LIGHTS_Y 3
-#define STATUS_KEYS_TOP 11 /* the halves, the speed big between them */
+#define STATUS_KEYS_TOP 12 /* the halves, the speed big between them */
 #define STATUS_KEYS_H 35
-#define STATUS_SIGNAL_Y 50 /* each link's bars and dBm, its graph under them */
-#define STATUS_CONN_Y 70   /* and under that its connection strip, this high: */
-#define STATUS_CONN_H 3
-#define STATUS_BATTERY_Y 79
-#define STATUS_BOX_Y 107 /* along the foot */
+#define STATUS_SIGNAL_Y 54 /* each link's dBm */
+#define STATUS_CONN_Y 63   /* and under it its connection strip, this high: */
+#define STATUS_CONN_H 5
+#define STATUS_BATTERY_Y 77
+#define STATUS_BOX_Y 104 /* along the foot */
 #define STATUS_BATTERY_W 61
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
 
@@ -2396,19 +2387,11 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const bool usb_out = in->status && in->status->usb;
     char buf[16];
 
-    /* the lights: the speed, and a mark at the fastest lately */
-    int fastest = d->wpm;
-    for (int i = 0; i < FX_HISTORY; i++) {
-        fastest = d->wpm_log[i] > fastest ? d->wpm_log[i] : fastest;
-    }
+    /* the lights: the speed */
     const int lights_x = (FX_W - (STATUS_LIGHTS * 8 - 2)) / 2; /* clear of the rounded corners */
     for (int i = 0; i < STATUS_LIGHTS; i++) {
-        const int at = (i + 1) * STATUS_LIGHT_WPM;
         const uint8_t on = i < 5 ? DBG_GOOD : i < 10 ? DBG_BAD : DBG_LAYER;
-        const uint8_t color = d->wpm >= at ? on
-                              : fastest >= at && fastest < at + STATUS_LIGHT_WPM ? DBG_BRIGHT
-                                                                                 : DBG_DIM;
-        fill(fb, lights_x + i * 8, STATUS_LIGHTS_Y, 6, 4, color);
+        fill(fb, lights_x + i * 8, STATUS_LIGHTS_Y, 6, 4, d->wpm >= (i + 1) * STATUS_LIGHT_WPM ? on : DBG_DIM);
     }
 
     /* the halves at the sides, the speed big between them */
@@ -2481,16 +2464,22 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     status_box(fb, x, STATUS_BOX_Y, FX_W - 6 - x, trouble ? trouble : "OK", trouble ? DBG_BG : DBG_GOOD,
                trouble ? trouble_color : DBG_BG);
 
-    /* each link as on Keys, and under it its connection strip */
-    if (usb_out) {
-        put(fb, (FX_W - 15 + 1) / 2, STATUS_SIGNAL_Y, "USB",
-            d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
-        speed_spark(fb, d, STATUS_SIGNAL_Y + 9);
-    } else {
-        keys_link(fb, 1, STATUS_SIGNAL_Y, &d->host, d->signal_log[2]);
+    /* each link's latest dBm, and under it its connection strip */
+    const struct fx_link *links[3] = {&d->half[0], &d->half[1], &d->host};
+    for (int link = 0; link < 3; link++) {
+        const int mid = keys_block_x(link == 2 ? 1 : link * 2) + SIGNAL_W / 2;
+        if (link == 2 && usb_out) {
+            put(fb, mid - 7, STATUS_SIGNAL_Y, "USB",
+                d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
+        } else if (!links[link]->up) {
+            put(fb, mid - 5, STATUS_SIGNAL_Y, "--", DBG_BAD);
+        } else if (links[link]->rssi_known) {
+            snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
+            const int left = mid - (5 * (int)strlen(buf) + 14) / 2;
+            put(fb, left, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
+            put(fb, left + 5 * (int)strlen(buf), STATUS_SIGNAL_Y, "dBm", DBG_LABEL);
+        }
     }
-    keys_link(fb, 0, STATUS_SIGNAL_Y, &d->half[0], d->signal_log[0]);
-    keys_link(fb, 2, STATUS_SIGNAL_Y, &d->half[1], d->signal_log[1]);
     static const int place[3] = {0, 2, 1};
     for (int link = 0; link < 3; link++) {
         const int x = keys_block_x(place[link]);
