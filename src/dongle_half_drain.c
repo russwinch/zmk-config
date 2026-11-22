@@ -140,8 +140,11 @@ static void sample_cb(struct k_work *work) {
         K_SPINLOCK(&lock) {
             trend[half][trend_at] = mv;
             if (charging && !was_charging[half]) {
-                // just plugged in: from the last level on battery, or where it had got to
+                // just plugged in: from the last level on battery, or where it had got to;
+                // with neither (plugged in before the dongle had a level on battery),
+                // ZMK's now, before the charger has had long to lift it
                 start_level[half] = estimating[half] ? held_level[half] : rest_level[half];
+                start_level[half] = start_level[half] ? start_level[half] : level;
                 plugged_ms[half] = now;
                 estimating[half] = true;
             }
@@ -238,6 +241,10 @@ uint8_t dongle_half_charge_estimate(int half, bool *estimate) {
             level = estimate_now(half, k_uptime_get_32());
         }
     }
+    /* no level from before it was plugged in (say the dongle started with
+     * the half already charging): no estimate, so the screens show ZMK's
+     * own rather than nothing */
+    *estimate = *estimate && level != 0;
     return level;
 }
 

@@ -2210,6 +2210,9 @@ static void part_rect(const struct view *v, const struct grid *g, const struct f
     } else {
         *wide = (int)lroundf(p->w * v->scale) - 1;
         *high = (int)lroundf(p->h * v->scale) - 1;
+        if ((p->kind & FX_PART_KIND) == FX_PART_ROLLER && *wide < 6) {
+            *wide = 6; /* room for two ribs rolling, so the way it turns shows */
+        }
         *x = (int)lroundf(v->left_x + p->x * v->scale - *wide / 2.0f);
         *y = (int)lroundf(v->top + p->y * v->scale - *high / 2.0f);
     }
@@ -2273,8 +2276,11 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
         if (kind == FX_PART_ROLLER) {
             /* ribs down it, rolling sideways as it turns, as it does under a thumb */
             const float turned = encoder >= 0 ? knob_shown[encoder] : 0;
-            const int phase = ((int)floorf(turned / 30) % 2 + 2) % 2;
-            for (int rib = 1 + phase; rib < wide - 1; rib += 2) {
+            /* a rib every 3 pixels, stepping one along for each 10 degrees
+             * the mark turns: three steps to come round, so the way it rolls shows */
+            const int step = (int)floorf((right ? -turned : turned) / 10);
+            const int phase = (step % 3 + 3) % 3;
+            for (int rib = phase; rib < wide; rib += 3) {
                 line(fb, x + rib, y + 1, x + rib, y + high - 2,
                      encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_BG);
             }
