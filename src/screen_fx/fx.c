@@ -2255,6 +2255,7 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_CHARGE_STEP 6 /* 30ths of a second: each step of the charging bar's fill */
 #define STATUS_DBM_TOP -40
 #define STATUS_DBM_FLOOR -100
+#define STATUS_DBM_SPAN 20 /* the signal graphs' top at least this far above their floor */
 
 static void status_start(uint16_t *palette) { debug_start(palette); }
 
@@ -2478,14 +2479,30 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
                trouble ? trouble_color : DBG_BG);
 
     /* each link's signal: its latest, and just under it the last
-     * FX_HISTORY seconds from -40 dBm to -100, the worst in each column,
-     * as on Keys: a dim column topped in white, solid amber or red where
-     * it was weak, red full height where it was down */
+     * FX_HISTORY seconds, the worst in each column, as on Keys: a dim
+     * column topped in white, solid amber or red where it was weak, red
+     * full height where it was down. The graphs share a scale, from
+     * STATUS_DBM_FLOOR up to the strongest column shown, so the tallest
+     * reaches up to its reading and they still compare */
     static const int column[3] = {0, 2, 1}; /* the computer's between the halves' */
-    for (int link = 0; link < (usb_out ? 2 : 3); link++) {
-        /* typing over USB, the computer's link is down on purpose: the
-         * halves' take its room, half each */
-        const int wide = usb_out ? STATUS_SIGNAL_WIDE : STATUS_SIGNAL_W;
+    const int shown = usb_out ? 2 : 3; /* typing over USB, the computer's is down on purpose */
+    const int wide = usb_out ? STATUS_SIGNAL_WIDE : STATUS_SIGNAL_W; /* the halves' then take its room */
+    int8_t worst[3][STATUS_SIGNAL_WIDE];
+    const int lo = STATUS_DBM_FLOOR;
+    int hi = lo + STATUS_DBM_SPAN;
+    for (int link = 0; link < shown; link++) {
+        for (int px = 0; px < wide; px++) {
+            int w = 0;
+            for (int i = px * FX_HISTORY / wide; i < (px + 1) * FX_HISTORY / wide; i++) {
+                const int v = d->signal_log[link][i];
+                w = v == FX_SIGNAL_DOWN || w == FX_SIGNAL_DOWN ? FX_SIGNAL_DOWN : v && (!w || v < w) ? v : w;
+            }
+            worst[link][px] = (int8_t)w;
+            hi = w != FX_SIGNAL_DOWN && w > hi ? w : hi;
+        }
+    }
+    hi = hi > STATUS_DBM_TOP ? STATUS_DBM_TOP : hi;
+    for (int link = 0; link < shown; link++) {
         const int sx = 4 + (usb_out ? link : column[link]) * (wide + 3);
         const int foot = STATUS_SIGNAL_Y + 8 + STATUS_SIGNAL_H, mid = sx + wide / 2;
         if (!links[link]->up) {
@@ -2498,19 +2515,13 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         }
         uint8_t high[STATUS_SIGNAL_WIDE];
         for (int px = 0; px < wide; px++) {
-            int worst = 0;
-            bool down = false;
-            for (int i = px * FX_HISTORY / wide; i < (px + 1) * FX_HISTORY / wide; i++) {
-                const int v = d->signal_log[link][i];
-                down |= v == FX_SIGNAL_DOWN;
-                worst = v != FX_SIGNAL_DOWN && v && (!worst || v < worst) ? v : worst;
-            }
+            const int w = worst[link][px];
             high[px] = 0;
-            if (down) {
+            if (w == FX_SIGNAL_DOWN) {
                 high[px] = STATUS_SIGNAL_H | SPARK_RED;
-            } else if (worst) {
-                const int dbm = worst > STATUS_DBM_TOP ? STATUS_DBM_TOP : worst < STATUS_DBM_FLOOR ? STATUS_DBM_FLOOR : worst;
-                high[px] = (uint8_t)(1 + (dbm - STATUS_DBM_FLOOR) * (STATUS_SIGNAL_H - 1) / (STATUS_DBM_TOP - STATUS_DBM_FLOOR));
+            } else if (w) {
+                const int dbm = w > hi ? hi : w < lo ? lo : w;
+                high[px] = (uint8_t)(1 + (dbm - lo) * (STATUS_SIGNAL_H - 1) / (hi - lo));
                 high[px] |= dbm > SIGNAL_GOOD_DBM ? 0 : dbm > SIGNAL_WARN_DBM ? SPARK_WARN : SPARK_RED;
             }
         }
