@@ -23,7 +23,7 @@
  * still coming down from the charger's, much faster than any half draws. So
  * while it has fallen by SETTLE_FALL_MV or more in the last SETTLE_MIN the
  * line starts again from there, and the figure is rough; it is settled once
- * it falls less than that.
+ * it falls less than that, and the line starts once more from then.
  */
 
 #include <zephyr/kernel.h>
@@ -112,11 +112,10 @@ static void sample_cb(struct k_work *work) {
             }
             struct fit *f = &fits[half];
             if (settling[half]) {
-                // still coming down from the charger's: start again from here
+                // still coming down from the charger's, or just settled: start again from here
                 const uint16_t before = trend[half][(trend_at - SETTLE_MIN + TREND_N) % TREND_N];
-                if (before != 0 && before < mv + SETTLE_FALL_MV) {
-                    settling[half] = false;
-                } else if (before != 0) {
+                if (before != 0) {
+                    settling[half] = before >= mv + SETTLE_FALL_MV;
                     *f = (struct fit){0};
                 }
             }

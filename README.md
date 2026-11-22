@@ -497,7 +497,7 @@ over the time the line spans, whichever is more, and while the half is still
 settling. After unplugging (and when the dongle starts) the voltage comes
 down from the charger's much faster than any half draws, so while it falls
 8 mV or more in 20 minutes the line starts again from there; it has settled
-once it falls less. It is an estimate: the voltage moves only a few
+once it falls less, and starts again once more then. It is an estimate: the voltage moves only a few
 millivolts for each percent through the middle of the charge, so at a
 milliwatt or so it can stay rough for some hours (halves on firmware from
 before the average send 4 mV steps, and stay rough for a day or more). Best for comparing halves over a day or more. Key timings are taken when an event reaches the
