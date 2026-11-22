@@ -35,7 +35,7 @@ if(DEFINED ENV{GITHUB_RUN_NUMBER})
   target_compile_definitions(app PRIVATE DONGLE_BUILD_NUMBER=$ENV{GITHUB_RUN_NUMBER})
 endif()
 # On CI, a dongle's zmk.elf goes into the build's artifacts folder beside its
-# .uf2, for the release's dongle-elf.zip: the address beside CRSH on the Debug
+# .uf2, for the release's dongle-elf.tar.gz: the address beside CRSH on the Debug
 # screen is looked up in it. ZMK's workflow makes that folder after the build
 # but carries on when it is already there.
 if(DEFINED ENV{GITHUB_RUN_NUMBER} AND CONFIG_DONGLE_SCREEN_FX)

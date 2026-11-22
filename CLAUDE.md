@@ -124,7 +124,7 @@ user's own computer: a cloud session can't see USB drives.
 - Crashes: the reason and program counter survive the restart in a register
   and the first KB of RAM (`config/prospector_adapter.overlay` keeps it out of
   Zephyr's). Each release has the dongles'
-  `.elf`s in `dongle-elf.zip`: `addr2line -ife <dongle>.elf 0x<address>`.
+  `.elf`s in `dongle-elf.tar.gz`: `addr2line -ife <dongle>.elf 0x<address>`.
 - Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
   `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
 - The animations place keys on a 10x4 grid (the Waterfowl); Keys, Status and
