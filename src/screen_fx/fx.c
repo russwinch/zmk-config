@@ -185,6 +185,16 @@ static int key_encoder(int key) {
     return -1;
 }
 
+/* The board's shape, for the Keys screen (fx_set_board). */
+#include "boards.h"
+static const struct fx_board *shape = &fx_boards[FX_BOARD_URCHIN];
+
+void fx_set_board(int which) {
+    if (which >= 0 && which < FX_BOARDS) {
+        shape = &fx_boards[which];
+    }
+}
+
 /* The same for the animations, which take every board for 10 columns by 4
  * rows: on a wider one the outer columns count as the ones next to them, so
  * each half's keys stay on its side. */
@@ -1399,7 +1409,9 @@ enum {
     DBG_BG, DBG_DIM, DBG_LABEL, DBG_TEXT, DBG_BRIGHT, DBG_GOOD, DBG_WARN, DBG_BAD,
     DBG_MOD,   /* a key holding a modifier down */
     DBG_LAYER, /* a key holding a layer on */
-    DBG_HEAT   /* ..DBG_HEAT + 15 */
+    DBG_HEAT,  /* ..DBG_HEAT + 15 */
+    DBG_BODY = DBG_HEAT + 16, /* a board's PCB, on the Keys screen */
+    DBG_EDGE,                 /* and its cover, and the edge round a screen */
 };
 
 static uint8_t debug_heat[64]; /* how lately each key was pressed */
@@ -1425,6 +1437,8 @@ static void debug_colors(uint16_t *palette) {
     for (int i = 0; i < 16; i++) {
         palette[DBG_HEAT + i] = color565(mix(scheme->dim, scheme->glow, i * 256 / 15));
     }
+    palette[DBG_BODY] = color565(mix(scheme->bg, scheme->dim, 95));
+    palette[DBG_EDGE] = color565(mix(scheme->bg, scheme->dim, 35));
 }
 
 static void debug_start(uint16_t *palette) {
@@ -1528,8 +1542,8 @@ static void knob(uint8_t *fb, int x, int y, int wide, int high, uint8_t fill, ui
  * knob instead: filled the same way while pressed, its ring glowing and its
  * mark bright for two seconds after it is turned, the mark moving round with it.
  */
-static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int pitch, int high, int gap,
-                  int split) {
+/* The keys pressed and encoders turned this frame, for `board` and `shape_board`. */
+static void board_heat(const struct fx_input *in) {
     const struct fx_debug *d = in->debug;
     for (int k = 0; k < in->n_keys; k++) {
         if (in->keys[k] < sizeof(debug_heat)) {
@@ -1551,15 +1565,41 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
         }
     }
     knob_known = true;
+}
+
+/* And the glow going, two seconds after. */
+static void board_fade(const struct fx_input *in) {
+    debug_fade += in->step;
+    if (debug_fade >= 4) { /* the glow is gone in two seconds */
+        debug_fade = 0;
+        for (unsigned key = 0; key < sizeof(debug_heat); key++) {
+            debug_heat[key] -= debug_heat[key] > 0;
+        }
+        for (int i = 0; i < FX_MAX_ENCODERS; i++) {
+            knob_heat[i] -= knob_heat[i] > 0;
+        }
+    }
+}
+
+/* A key's colour: white held (orange holding a modifier, violet a layer), glowing after. */
+static uint8_t key_color(const struct fx_debug *d, int key) {
+    const uint64_t bit = 1ull << key;
+    return !(d->held & bit)     ? (debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM)
+           : d->held_layer & bit ? DBG_LAYER
+           : d->held_mod & bit   ? DBG_MOD
+                                 : DBG_BRIGHT;
+}
+
+static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int pitch, int high, int gap,
+                  int split) {
+    const struct fx_debug *d = in->debug;
+    board_heat(in);
     for (int key = 0; key < key_count && key < (int)sizeof(debug_heat); key++) {
         const int col = board_col(key), row = board_row(key) < 4 ? board_row(key) : 4;
         const int kx = left + col * pitch + (col >= board_cols / 2 ? split : 0), ky = top + row * (high + gap);
         const uint64_t bit = 1ull << key;
         const bool held = (d->held & bit) != 0;
-        const uint8_t color = !held                 ? (debug_heat[key] ? DBG_HEAT + debug_heat[key] : DBG_DIM)
-                              : d->held_layer & bit ? DBG_LAYER
-                              : d->held_mod & bit   ? DBG_MOD
-                                                    : DBG_BRIGHT;
+        const uint8_t color = key_color(d, key);
         const int encoder = key_encoder(key);
         if (encoder >= 0) {
             const int heat = knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
@@ -1574,16 +1614,7 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
             }
         }
     }
-    debug_fade += in->step;
-    if (debug_fade >= 4) { /* the glow is gone in two seconds */
-        debug_fade = 0;
-        for (unsigned key = 0; key < sizeof(debug_heat); key++) {
-            debug_heat[key] -= debug_heat[key] > 0;
-        }
-        for (int i = 0; i < FX_MAX_ENCODERS; i++) {
-            knob_heat[i] -= knob_heat[i] > 0;
-        }
-    }
+    board_fade(in);
 }
 
 /* A count in at most four characters, rounded down: 999, 1.2K, 12K, 999K, 1.2M, 12M, 999M at most. */
@@ -1983,54 +2014,206 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
-/* --- keys: the keyboard, the three links and how busy it all is ------------- */
+static void fill(uint8_t *fb, int x, int y, int wide, int high, uint8_t color);
+
+/* --- a board as it is: each key where it is on it, from boards.h ------------- */
+
+/* How a board's quarter millimetres land on the screen. */
+struct view {
+    float scale;           /* pixels a quarter millimetre */
+    float left_x, right_x; /* where each half's inner edge (x 0) is */
+    float top;             /* where y 0 is */
+};
+
+/* Fill a polygon of `n` points (x, y, x, y.. in pixels), by pixel middles. */
+static void fill_poly(uint8_t *fb, const float *pts, int n, uint8_t color) {
+    float top = FX_H, bottom = 0;
+    for (int i = 0; i < n; i++) {
+        top = pts[2 * i + 1] < top ? pts[2 * i + 1] : top;
+        bottom = pts[2 * i + 1] > bottom ? pts[2 * i + 1] : bottom;
+    }
+    for (int y = top < 0 ? 0 : (int)top; y < FX_H && y <= (int)bottom; y++) {
+        const float yc = y + 0.5f;
+        float xs[16];
+        int m = 0;
+        for (int i = 0; i < n && m < 16; i++) {
+            const float *a = pts + 2 * i, *b = pts + 2 * ((i + 1) % n);
+            if ((a[1] <= yc) != (b[1] <= yc)) {
+                const float x = a[0] + (yc - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+                int j = m++;
+                for (; j > 0 && xs[j - 1] > x; j--) {
+                    xs[j] = xs[j - 1];
+                }
+                xs[j] = x;
+            }
+        }
+        for (int k = 0; k + 1 < m; k += 2) {
+            for (int x = (int)ceilf(xs[k] - 0.5f); x <= (int)floorf(xs[k + 1] - 0.5f); x++) {
+                plot(fb, x, y, color);
+            }
+        }
+    }
+}
+
+/* A part's corners in pixels, `inset` in from each side. */
+static void part_quad(const struct view *v, const struct fx_part *p, bool right, float inset, float out[8]) {
+    const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale, cy = v->top + p->y * v->scale;
+    const float a = (right ? -p->rot : p->rot) * (TWO_PI / 360), c = cosf(a), s = sinf(a);
+    const float hw = p->w * v->scale / 2 - inset, hh = p->h * v->scale / 2 - inset;
+    static const int8_t corner[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+    for (int i = 0; i < 4; i++) {
+        const float u = corner[i][0] * hw, w = corner[i][1] * hh;
+        out[2 * i] = cx + u * c - w * s;
+        out[2 * i + 1] = cy + u * s + w * c;
+    }
+}
+
+/* A half's outline (the left's points, mirrored for the right) in pixels. */
+static int outline_px(const struct view *v, const int16_t *pts, int n, bool right, float *out) {
+    for (int i = 0; i < n; i++) {
+        out[2 * i] = right ? v->right_x - pts[2 * i] * v->scale : v->left_x + pts[2 * i] * v->scale;
+        out[2 * i + 1] = v->top + pts[2 * i + 1] * v->scale;
+    }
+    return n;
+}
+
+/* How far in a half's keys reach (quarter mm, x as boards.h has it). */
+static float shape_keys_inner(void) {
+    float hi_x = -10000;
+    struct view unit = {1, 0, 0, 0};
+    for (int i = 0; i < shape->n_keys; i++) {
+        float q[8];
+        part_quad(&unit, &shape->keys[i], false, 0, q);
+        for (int c = 0; c < 4; c++) {
+            hi_x = q[2 * c] > hi_x ? q[2 * c] : hi_x;
+        }
+    }
+    return hi_x;
+}
+
+/* Fit the board into (x, y, wide, high) with `gap` pixels between the halves:
+ * only its keys, or (`whole`) its outline and all. */
+static struct view shape_view(int x, int y, int wide, int high, int gap, bool whole) {
+    float lo_x = 0, hi_x = -10000, lo_y = 10000, hi_y = -10000;
+    struct view unit = {1, 0, 0, 0};
+    for (int i = 0; i < shape->n_keys; i++) {
+        float q[8];
+        part_quad(&unit, &shape->keys[i], false, 0, q);
+        for (int c = 0; c < 4; c++) {
+            lo_x = q[2 * c] < lo_x ? q[2 * c] : lo_x;
+            hi_x = q[2 * c] > hi_x ? q[2 * c] : hi_x;
+            lo_y = q[2 * c + 1] < lo_y ? q[2 * c + 1] : lo_y;
+            hi_y = q[2 * c + 1] > hi_y ? q[2 * c + 1] : hi_y;
+        }
+    }
+    for (int i = 0; whole && i < shape->n_outline; i++) {
+        const float px = shape->outline[2 * i], py = shape->outline[2 * i + 1];
+        lo_x = px < lo_x ? px : lo_x;
+        hi_x = px > hi_x ? px : hi_x;
+        lo_y = py < lo_y ? py : lo_y;
+        hi_y = py > hi_y ? py : hi_y;
+    }
+    const float across = (wide - gap) / (2 * (hi_x - lo_x)), down = high / (hi_y - lo_y);
+    struct view v = {across < down ? across : down, 0, 0, 0};
+    v.left_x = x + wide / 2.0f - gap / 2.0f - hi_x * v.scale;
+    v.right_x = x + wide / 2.0f + gap / 2.0f + hi_x * v.scale;
+    v.top = y + (high - (hi_y - lo_y) * v.scale) / 2 - lo_y * v.scale;
+    return v;
+}
+
+/* The board drawn as it is through `v`: keys coloured as `board` has them,
+ * encoders as knobs (a roller's ribs move with it); with `whole`, its PCB,
+ * the cover over its controller, its screen and controller too. */
+static void shape_board(uint8_t *fb, const struct fx_input *in, const struct view *v, bool whole) {
+    const struct fx_debug *d = in->debug;
+    float pts[2 * 48];
+    board_heat(in);
+    for (int right = 0; whole && right < 2; right++) {
+        fill_poly(fb, pts, outline_px(v, shape->outline, shape->n_outline < 48 ? shape->n_outline : 48, right, pts),
+                  DBG_BODY);
+        if (shape->cover) {
+            fill_poly(fb, pts, outline_px(v, shape->cover, shape->n_cover < 48 ? shape->n_cover : 48, right, pts),
+                      DBG_EDGE);
+        }
+    }
+    for (int i = 0; whole && i < shape->n_extras; i++) {
+        const struct fx_part *p = &shape->extras[i];
+        for (int right = 0; right < ((p->kind & FX_PART_BOTH) ? 2 : 1); right++) {
+            part_quad(v, p, right, 0, pts);
+            fill_poly(fb, pts, 4, (p->kind & FX_PART_KIND) == FX_PART_SCREEN ? DBG_BG : DBG_EDGE);
+            if ((p->kind & FX_PART_KIND) == FX_PART_SCREEN) {
+                part_quad(v, p, right, 1.2f, pts);
+                fill_poly(fb, pts, 4, DBG_LABEL);
+            }
+        }
+    }
+    for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
+        const struct fx_part *p = &shape->keys[key];
+        const bool right = p->kind & FX_PART_RIGHT;
+        const uint8_t color = key_color(d, key);
+        const bool held = (d->held >> key) & 1;
+        const int encoder = key_encoder(key);
+        const int kind = p->kind & FX_PART_KIND;
+        if (kind == FX_PART_DIAL) {
+            const float size = p->w * v->scale - 1;
+            const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
+            const float cy = v->top + p->y * v->scale;
+            const int heat = encoder >= 0 && knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
+            knob(fb, (int)lroundf(cx - size / 2), (int)lroundf(cy - size / 2), (int)lroundf(size), (int)lroundf(size),
+                 held || debug_heat[key] ? color : DBG_BG, held ? color : heat ? DBG_HEAT + heat : DBG_DIM,
+                 held ? DBG_BG : encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_LABEL,
+                 encoder >= 0 ? knob_shown[encoder] : 0);
+            continue;
+        }
+        if (p->rot == 0) {
+            /* square to the screen: whole pixels, so every key is the same size */
+            const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
+            const float cy = v->top + p->y * v->scale;
+            const int wide = (int)lroundf(p->w * v->scale) - 1, high = (int)lroundf(p->h * v->scale) - 1;
+            fill(fb, (int)lroundf(cx - wide / 2.0f), (int)lroundf(cy - high / 2.0f), wide, high, color);
+        } else {
+            part_quad(v, p, right, 0.5f, pts);
+            fill_poly(fb, pts, 4, color);
+        }
+        if (kind == FX_PART_ROLLER) {
+            /* ribs across it, rolling as it turns */
+            const float turned = encoder >= 0 ? knob_shown[encoder] : 0;
+            const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
+            const float cy = v->top + p->y * v->scale, half_h = p->h * v->scale / 2 - 1;
+            const float half_w = p->w * v->scale / 2 - 1.5f;
+            const float phase = fmodf(turned / 30, 3);
+            for (float y = -half_h + (phase < 0 ? phase + 3 : phase); y < half_h; y += 3) {
+                line(fb, (int)lroundf(cx - half_w), (int)lroundf(cy + y), (int)lroundf(cx + half_w) - 1,
+                     (int)lroundf(cy + y), encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_BG);
+            }
+        }
+    }
+    board_fade(in);
+}
+
+/* --- keys: the keyboard as it is, and how it is doing --------------------------- */
 
 /*
- * The Debug screen's map of the keys with room to see it, and the readings
- * that are worth watching move. Top to bottom:
- *
- *   three blocks: the left half, the computer and the right half. Each has
- *   its battery and level (the computer: the Bluetooth profiles as the
- *   Debug screen draws them), its signal as bars and in dBm, and that
- *   signal over the last SIGNAL_W seconds;
- *
- *   the board, colours as `board` has them;
- *
- *   a level meter under each column of the board, as on a hi-fi: a key
- *   pressed in the column sends its bar up (and its neighbours' a little),
- *   more keys send it higher, and it falls back in about two seconds. A mark
- *   stays at the highest each bar got to for a moment, then falls after it.
- *
- * Over USB the middle block has no radio link to show: it has the typing
- * speed where the signal would be, and that speed over the same seconds
- * (SPEED_FULL words a minute fill it, or the fastest in it if that is more).
+ * The board drawn as it is (boards.h, as the README's pictures): its PCB,
+ * the cover over its controller, its screen, and each key where it is,
+ * coloured as `board` has them; encoders as knobs, a roller's ribs rolling
+ * as it turns. Along the top, each half's battery big at its side with its
+ * signal's bars under it, the output between them and the typing speed under
+ * that.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
-#define SIGNAL_W 40
+#define SIGNAL_W 40 /* the link blocks Status draws (keys_link, speed_spark) */
 #define SIGNAL_H 9
 #define SPEED_FULL 60 /* words a minute */
-#define KEYS_BOARD_TOP 39
-#define KEYS_BOARD_H 50
-#define METER_COLS 16
-#define METER_STEPS 6     /* lights in a bar */
-#define METER_STEP_H 2    /* each this high, a row apart */
-#define METER_FOOT 108 /* high enough that the outer bars clear the bottom corners' curve */
-#define METER_KEY 0.55f   /* what a key adds to its column's bar, of a full one */
-#define METER_SPILL 0.2f  /* and to the bars beside it */
-#define METER_FALL 0.5f   /* full bars a second */
-#define METER_HOLD 1.2f   /* seconds the mark stays up */
-#define METER_MARK_FALL 0.3f
+#define KEYS_BOARD_TOP 28
+#define KEYS_SPLIT 6 /* pixels between the halves */
 
-static float meter_level[METER_COLS], meter_mark[METER_COLS], meter_held[METER_COLS];
 static float keys_time; /* 30ths of a second */
 
 static void keys_start(uint16_t *palette) {
     debug_start(palette);
-    memset(meter_level, 0, sizeof(meter_level));
-    memset(meter_mark, 0, sizeof(meter_mark));
-    memset(meter_held, 0, sizeof(meter_held));
     keys_time = 0;
 }
 
@@ -2057,28 +2240,10 @@ static int keys_block_x(int place) {
     return (FX_W - SIGNAL_W) / 2 + (place - 1) * (SIGNAL_W + 2);
 }
 
-/* A battery, 10 by 6 with its cap on the right: as full as `level` percent,
- * an empty outline when that isn't known (0). */
-static void battery_icon(uint8_t *fb, int x, int y, int level, uint8_t color) {
-    line(fb, x, y, x + 8, y, color);
-    line(fb, x, y + 5, x + 8, y + 5, color);
-    line(fb, x, y, x, y + 5, color);
-    line(fb, x + 8, y, x + 8, y + 5, color);
-    line(fb, x + 9, y + 2, x + 9, y + 3, color);
-    const int full = level <= 0 ? 0 : level >= 100 ? 5 : 1 + level * 4 / 100;
-    for (int i = 0; i < full; i++) {
-        line(fb, x + 2 + i, y + 2, x + 2 + i, y + 3, color);
-    }
-}
-
-/*
- * Where things go across a block of the Keys screen, from its left edge, so
- * that nothing moves as readings change: a charging bolt, the battery with
- * the signal bars under it, then the level with the dBm under it, both
- * left-aligned with room for four characters ("100%", "-100").
- */
-#define KEYS_ICON_X 7  /* the battery, and the bars: after the bolt (5) and a gap */
-#define KEYS_TEXT_X 20 /* the level, and the dBm: after the battery (10) and a gap */
+/* Where a link block's bars and dBm go across it, from its left edge, so
+ * nothing moves as readings change; the dBm left-aligned with room for "-100". */
+#define KEYS_ICON_X 7
+#define KEYS_TEXT_X 20
 
 /* One of the three blocks' signal: the bars, the dBm at `top` and under
  * them the last SIGNAL_W seconds of `log` (fx_debug's signal_log). `place`
@@ -2126,118 +2291,58 @@ static void speed_spark(uint8_t *fb, const struct fx_debug *d, int y) {
     spark(fb, keys_block_x(1), y, high, SIGNAL_W, SIGNAL_H, DBG_TEXT);
 }
 
+static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale);
+
+/* Along the top: each half's level, big, at its side with its signal's bars
+ * under it; the output between them, and under that the typing speed. */
+static void keys_top(uint8_t *fb, const struct fx_input *in) {
+    const struct fx_debug *d = in->debug;
+    const int inset = fx_corner_inset(3, 26) + 1;
+    char buf[8];
+    for (int half = 0; half < 2; half++) {
+        bool estimate;
+        const uint8_t level = half_level(in, half, &estimate);
+        const uint8_t color = level ? battery_color(level) : DBG_LABEL;
+        if (level) {
+            snprintf(buf, sizeof(buf), "%u", level);
+        } else {
+            strcpy(buf, "--");
+        }
+        const int wide = 10 * (int)strlen(buf) - 2 + (level ? 6 : 0);
+        const int x = half ? FX_W - inset - wide : inset;
+        if ((in->status && in->status->charging[half]) ||
+            !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
+            put_big(fb, x, 3, buf, color, 2);
+            if (level) {
+                put(fb, x + wide - 4, 10, "%", color);
+                if (estimate) {
+                    put(fb, x + wide - 4, 3, "~", DBG_WARN);
+                }
+            }
+        }
+        charging_bolt(fb, half ? x - 7 : x + wide + 2, 10, in->status, half);
+        signal_bars(fb, half ? FX_W - inset - 7 : inset, 19, &d->half[half]);
+    }
+    if (in->status && in->status->usb) {
+        put(fb, (FX_W - 15 + 1) / 2, 4, "USB", d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
+    } else {
+        profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 4);
+    }
+    {
+        snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+        put_big(fb, (FX_W - (10 * (int)strlen(buf) - 2)) / 2, 13, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 2);
+    }
+}
+
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     memset(fb, DBG_BG, PIXELS);
     if (in->debug == NULL) {
         return;
     }
-    const struct fx_debug *d = in->debug;
-    char buf[32];
-
     keys_time += in->step;
-
-    /* the halves: a battery and its level, in their places in the block */
-    for (int half = 0; half < 2; half++) {
-        const bool charging = in->status && in->status->charging[half];
-        /* while charging: a bolt to the left of the battery, flashing until
-         * 100, and the level, estimated (with a ~) as ZMK's reads high */
-        bool estimate;
-        const uint8_t level = half_level(in, half, &estimate);
-        const uint8_t color = level == 0                 ? DBG_LABEL
-                              : level <= FX_LOW_BATTERY  ? DBG_BAD
-                              : level <= FX_WARN_BATTERY ? DBG_WARN
-                                                         : DBG_TEXT;
-        if (level == 0) {
-            strcpy(buf, "--");
-        } else {
-            snprintf(buf, sizeof(buf), estimate ? " %u%%" : "%u%%", level); /* a ~ in the space */
-        }
-        const int left = keys_block_x(half * 2);
-        /* a low battery flashes, unless it is charging (its bolt does) */
-        if (charging || !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
-            battery_icon(fb, left + KEYS_ICON_X, 6, level, color);
-            put(fb, left + KEYS_TEXT_X, 6, buf, color);
-            if (level && estimate) {
-                put(fb, left + KEYS_TEXT_X, 6, "~", DBG_WARN);
-            }
-        }
-        charging_bolt(fb, left, 6, in->status, half);
-        keys_link(fb, half * 2, 15, &d->half[half], d->signal_log[half]);
-    }
-    /* the computer */
-    if (in->status && in->status->usb) {
-        /* no radio in it: the port (green when the computer is listening,
-         * amber when it has put the port to sleep), and the typing speed
-         * where the halves have their signal */
-        put(fb, (FX_W - 15 + 1) / 2, 6, "USB",
-            d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
-        /* the speed right-aligned in room for three figures, so "WPM" stays put */
-        snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-        const int wpm_x = (FX_W - (15 + 1 + 15)) / 2 + 15 + 1;
-        put_right(fb, wpm_x - 1, 15, buf, d->wpm ? DBG_BRIGHT : DBG_TEXT);
-        put(fb, wpm_x, 15, "WPM", DBG_LABEL);
-        speed_spark(fb, d, 24);
-    } else {
-        /* the Bluetooth profiles as the Debug screen draws them, and the link */
-        profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 6);
-        keys_link(fb, 1, 15, &d->host, d->signal_log[2]);
-    }
-    rule(fb, 35);
-
-    /* the board: as big as fits across, and no taller than its space */
-    int rows = 1;
-    for (int key = 0; key < key_count; key++) {
-        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
-        rows = row > rows ? row : rows;
-    }
-    /* in from the sides by as much as the meters' bottom lights need, at least 3 */
-    const int meter_top = METER_FOOT - (METER_STEPS - 1) * (METER_STEP_H + 1) - (METER_STEP_H - 1);
-    const int margin = fx_corner_inset(meter_top, METER_FOOT) > 3 ? fx_corner_inset(meter_top, METER_FOOT) : 3;
-    const int split = 4, gap = 2, pitch = (FX_W - 2 * margin - split) / board_cols;
-    int high = pitch - gap;
-    if (rows * (high + gap) - gap > KEYS_BOARD_H) {
-        high = (KEYS_BOARD_H + gap) / rows - gap;
-    }
-    const int left = (FX_W - (board_cols * pitch - gap + split)) / 2;
-    board(fb, in, left, KEYS_BOARD_TOP + (KEYS_BOARD_H - (rows * (high + gap) - gap)) / 2, pitch, high, gap, split);
-
-    /* the meters: up with the keys of this frame, then down with the time */
-    const int cols = board_cols < METER_COLS ? board_cols : METER_COLS;
-    const float seconds = in->step / 30;
-    for (int k = 0; k < in->n_keys; k++) {
-        const int col = in->keys[k] < key_count ? board_col(in->keys[k]) : -1;
-        for (int near = col - 1; col >= 0 && near <= col + 1; near++) {
-            if (near >= 0 && near < cols) {
-                meter_level[near] = clampf(meter_level[near] + (near == col ? METER_KEY : METER_SPILL), 0, 1);
-            }
-        }
-    }
-    for (int col = 0; col < cols; col++) {
-        if (meter_level[col] >= meter_mark[col]) {
-            meter_mark[col] = meter_level[col];
-            meter_held[col] = METER_HOLD;
-        } else if (meter_held[col] > 0) {
-            meter_held[col] -= seconds;
-        } else {
-            meter_mark[col] = clampf(meter_mark[col] - METER_MARK_FALL * seconds, 0, 1);
-        }
-        const int lit = (int)(meter_level[col] * METER_STEPS + 0.5f), mark = (int)(meter_mark[col] * METER_STEPS + 0.5f);
-        const int x = left + col * pitch + (col >= board_cols / 2 ? split : 0);
-        for (int step = 0; step < METER_STEPS; step++) {
-            /* the top light red and the one under it amber, as a hi-fi's are */
-            const uint8_t color = step < lit ? (step == METER_STEPS - 1   ? DBG_BAD
-                                                : step == METER_STEPS - 2 ? DBG_WARN
-                                                                          : DBG_HEAT + 6 + step * 3)
-                                  : step == mark - 1 ? DBG_BRIGHT
-                                  : step == 0        ? DBG_DIM
-                                                     : DBG_BG;
-            const int y = METER_FOOT - step * (METER_STEP_H + 1);
-            for (int row = 0; row < METER_STEP_H && color != DBG_BG; row++) {
-                line(fb, x, y - row, x + pitch - gap - 1, y - row, color);
-            }
-        }
-        meter_level[col] = clampf(meter_level[col] - METER_FALL * seconds, 0, 1);
-    }
+    keys_top(fb, in);
+    const struct view v = shape_view(0, KEYS_BOARD_TOP, FX_W, FX_H - 6 - KEYS_BOARD_TOP, KEYS_SPLIT, true);
+    shape_board(fb, in, &v, true);
 }
 
 /* --- status: halfway between Keys and Debug ---------------------------------- */
@@ -2274,12 +2379,13 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_LIGHTS 15
 #define STATUS_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
 #define STATUS_LIGHTS_Y 3
-#define STATUS_KEYS_TOP 11 /* the halves, the speed big between them */
-#define STATUS_KEYS_H 35
-#define STATUS_SIGNAL_Y 50 /* each link's bars and dBm, its graph under them */
-#define STATUS_CONN_Y 70   /* and under that its connection strip, this high: */
+#define STATUS_KEYS_TOP 9 /* the halves, the speed big between them */
+#define STATUS_KEYS_H 46
+#define STATUS_WPM_ROOM 46 /* across the middle for the speed (3 figures, 3 times the size) */
+#define STATUS_SIGNAL_Y 56 /* each link's bars and dBm, its graph under them */
+#define STATUS_CONN_Y 75   /* and under that its connection strip, this high: */
 #define STATUS_CONN_H 3
-#define STATUS_BATTERY_Y 79
+#define STATUS_BATTERY_Y 82
 #define STATUS_BOX_Y 107 /* along the foot */
 #define STATUS_BATTERY_W 61
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
@@ -2411,16 +2517,16 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         fill(fb, lights_x + i * 8, STATUS_LIGHTS_Y, 6, 4, color);
     }
 
-    /* the halves at the sides, the speed big between them */
-    int rows = 1;
-    for (int key = 0; key < key_count; key++) {
-        const int row = (board_row(key) < 4 ? board_row(key) : 4) + 1;
-        rows = row > rows ? row : rows;
+    /* the halves as they are, at the sides, the speed big between them where
+     * the controllers are (or a gap made for it, on a board with none there) */
+    const float inner = shape_keys_inner();
+    struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, STATUS_WPM_ROOM, false);
+    if (inner < 0) { /* room to the inner edge of the PCB: the keys that far apart */
+        const int room = (int)(-2 * inner * v.scale) + STATUS_WPM_ROOM / 3;
+        v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, room > STATUS_WPM_ROOM ? room : STATUS_WPM_ROOM,
+                       false);
     }
-    const int gap = 1, pitch = board_cols > 10 ? 7 : 9;
-    const int high = (STATUS_KEYS_H + gap) / rows - gap;
-    board(fb, in, 4, STATUS_KEYS_TOP, pitch, high > pitch - gap ? pitch - gap : high, gap,
-          FX_W - 8 - (board_cols * pitch - gap));
+    shape_board(fb, in, &v, false);
     snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
     /* the speed and its label under it, together in the middle of the halves */
     const int wpm_y = STATUS_KEYS_TOP + (STATUS_KEYS_H - 21 - 10) / 2;

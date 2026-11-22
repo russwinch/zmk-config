@@ -19,7 +19,7 @@ The screen, theme and brightness are remembered once left for 30 seconds.
 | --- | --- | --- |
 | 1 | Debug | a page of readings for chasing faults: [below](#debug) |
 | 2 | Status | batteries, signal and typing speed as graphs and bars: [below](#status) |
-| 3 | Keys | the three links, the keys lighting as you type, a level meter per column: [below](#keys) |
+| 3 | Keys | the board as it is, its keys lighting as you type: [below](#keys) |
 | 4 | Thermal | the board through a heat camera; from 50 wpm the keys catch fire |
 | 5 | Tracker | a motion tracker: contacts close in with typing speed |
 | 6 | Terminal | what you type, fading out (passwords included, while it is showing) |
@@ -58,10 +58,9 @@ They are one line each in `colors.h`.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | each half: battery, signal in dBm (green, amber, red; `--` when not connected), and under it the signal over the last 40 seconds, weak seconds as solid amber or red bars |
-| top middle | on Bluetooth: the five profiles (filled: connected, ring: paired, dot: free; the selected one underlined) and the computer's signal. Over USB: `USB` (green: listening, amber: computer asleep), the typing speed and a graph of it |
-| the keys | white while held and glowing after; orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them |
-| under the keys | a level meter per column, as on a hi-fi |
+| top left, top right | each half's battery, and under it its signal's bars (green, amber, red) |
+| top middle | on Bluetooth the five profiles (filled: connected, ring: paired, dot: free; the selected one underlined), over USB `USB` (green: listening, amber: computer asleep); the typing speed under them |
+| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them, the Waterfowl's rollers rolling |
 
 ## Status
 
@@ -70,8 +69,8 @@ Laid out like a racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88. A white light marks the fastest lately |
-| left and right | each half's keys, as on Keys; the speed big between them |
-| signals | each link as on Keys, the computer's in the middle (over USB: `USB` and a graph of the typing speed) |
+| left and right | each half's keys as they are on the board, lit as on Keys; the speed big between them, where the controllers are |
+| signals | each link's bars and dBm (green, amber, red; `--` when not connected) and its last 40 seconds, weak seconds solid amber or red; the computer's in the middle (over USB: `USB` and a graph of the typing speed) |
 | connection strips | under each link, its last 80 minutes, 2 minutes a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
 | boxes along the foot | `BT`+profile or `USB`; `DR` drops since start; the dongle's supply volts and temperature; the worst trouble (`HANG`, `CRSH`, `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken) or `OK` |

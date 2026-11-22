@@ -1053,6 +1053,17 @@ static const int8_t encoder_keys[] = {36, 41};
 #define ENCODER_TURN_SIGN 1
 #endif
 
+/* The board as it is, for the Keys and Status screens (boards.h). */
+#if IS_ENABLED(CONFIG_SHIELD_WATERFOWL_DONGLE)
+#define BOARD_SHAPE FX_BOARD_WATERFOWL
+#elif IS_ENABLED(CONFIG_SHIELD_SPLITKB_AURORA_CORNE_DONGLE)
+#define BOARD_SHAPE FX_BOARD_CORNE
+#elif IS_ENABLED(CONFIG_SHIELD_FORAGER_DONGLE)
+#define BOARD_SHAPE FX_BOARD_FORAGER
+#else
+#define BOARD_SHAPE FX_BOARD_URCHIN
+#endif
+
 static void begin_animation(void) {
     if (saver == SAVER_IN) {
         /* the still it comes in over: what was showing, or black */
@@ -1067,6 +1078,7 @@ static void begin_animation(void) {
 #ifdef KEY_TRANSFORM
     fx_set_keys(key_places, ARRAY_SIZE(key_places));
 #endif
+    fx_set_board(BOARD_SHAPE);
 #ifdef HAS_ENCODER_KEYS
     fx_set_encoders(encoder_keys, ARRAY_SIZE(encoder_keys));
 #endif

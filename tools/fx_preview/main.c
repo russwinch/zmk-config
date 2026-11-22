@@ -31,7 +31,7 @@
  * seconds of the animation, off, half a second of nothing, on, 2 seconds
  * more. The backlight's own fading isn't shown.
  *
- * FX_PREVIEW_BOARD=waterfowl or corne in the environment draws that board
+ * FX_PREVIEW_BOARD=waterfowl, corne or urchin in the environment draws that board
  * (its keys, its encoders as knobs, its name) instead of the Forager, with
  * its encoders turned and pressed now and then.
  */
@@ -67,13 +67,20 @@ static const char *preview_board(const int8_t **encoders, int *n_encoders) {
     const char *board = getenv("FX_PREVIEW_BOARD");
     *encoders = NULL;
     *n_encoders = 0;
+    fx_set_board(FX_BOARD_FORAGER);
+    if (board && strcmp(board, "urchin") == 0) {
+        fx_set_board(FX_BOARD_URCHIN);
+        return "Urchin";
+    }
     if (board && strcmp(board, "waterfowl") == 0) {
+        fx_set_board(FX_BOARD_WATERFOWL);
         fx_set_keys(waterfowl_keys, sizeof(waterfowl_keys) / sizeof(waterfowl_keys[0]));
         *encoders = waterfowl_encoders;
         *n_encoders = sizeof(waterfowl_encoders);
         return "Waterfowl";
     }
     if (board && strcmp(board, "corne") == 0) {
+        fx_set_board(FX_BOARD_CORNE);
         fx_set_keys(corne_keys, sizeof(corne_keys) / sizeof(corne_keys[0]));
         *encoders = corne_encoders;
         *n_encoders = sizeof(corne_encoders);

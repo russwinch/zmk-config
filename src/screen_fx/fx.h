@@ -253,6 +253,36 @@ const uint8_t *fx_glyph_rows(char c);
 #define FX_GLYPH_GUI '\x04'
 
 
+/*
+ * The keyboards' shapes, as tools/boards.py measured them (boards.h): each
+ * key position where it is on the board, not where it is in the matrix. In
+ * quarter millimetres, y down, x from the left half's inner edge (so
+ * negative); a part on the right half is the mirror of that.
+ */
+enum { FX_BOARD_WATERFOWL, FX_BOARD_CORNE, FX_BOARD_URCHIN, FX_BOARD_FORAGER, FX_BOARDS };
+enum { FX_PART_KEY, FX_PART_DIAL, FX_PART_ROLLER, FX_PART_SCREEN, FX_PART_CONTROLLER };
+#define FX_PART_KIND 0x0f
+#define FX_PART_RIGHT 0x10 /* a key on the right half */
+#define FX_PART_BOTH 0x20  /* anything else: on both halves, not only the left */
+struct fx_part {
+    int16_t x, y; /* its middle */
+    int8_t rot;   /* degrees clockwise */
+    uint8_t w, h;
+    uint8_t kind; /* FX_PART_* */
+};
+struct fx_board {
+    const struct fx_part *keys; /* by key position */
+    uint8_t n_keys;
+    const struct fx_part *extras; /* the screen, the controller */
+    uint8_t n_extras;
+    const int16_t *outline; /* the left half's PCB: x, y, x, y.. */
+    uint8_t n_outline;
+    const int16_t *cover; /* and the cover over its controller, or NULL */
+    uint8_t n_cover;
+};
+/* Which board the Keys screen draws (FX_BOARD_*); until set, the Urchin. */
+void fx_set_board(int board);
+
 /* The Debug screen: wants fx_input's debug filled in, fills the whole
  * picture with its own text, and takes no status text over it. */
 bool fx_is_debug(int fx);
