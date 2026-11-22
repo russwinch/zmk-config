@@ -78,27 +78,32 @@ Laid out like a racing car's steering wheel display.
 
 ## Debug
 
+Whether each part of the keyboard works, and what has gone wrong. The typing
+speed and battery levels are on Typist and Status.
+
 | Line | Shows |
 | --- | --- |
-| `B149 1:12:46 ACT 10F 38MS` | build 149 (`DEV` if not from CI); uptime; `ACT`ive, `IDL`e or `SLP`; frames a second and ms per frame |
-| `RST SOFT 02  MEM 62% ^71` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`, `HANG`, `CRSH` with a code and address); LVGL memory used and peak |
-| `L`, `R`, `H` rows | the links to the left half, right half and computer (letter red when down): columns below |
-| profiles, `USB`, `RPT`, `E` | the five profiles; USB `--`/`PWR`/`HID`; reports sent over USB and how many failed |
-| `L3 NAV 0009 ⌃⌥⇧⌘ 51WPM` | top layer and its name, active layers (hex), held modifiers, typing speed |
-| `DRAW L1.42 R~0.9mW 31C` | each half's average draw; the dongle's temperature. A missing reading says why in amber: `WT` not yet, `TO` timed out, `NB` not built, `E1`–`E4` failed |
-| three event lines | the last key, keycode and encoder events, with ms between |
+| `B149 1:12:51 ACT MEM 62%` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; LVGL memory used |
+| `RESET SOFT  BOUNCE 18MS` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`, or `HANG`/`CRASH` with a code and address); the quickest any key has come back down, red under 30 ms: a bouncing switch |
+| `L`, `R`, `H` under `dBm` | the links to the left half, right half and computer (letter red when down): columns below |
+| `L`, `R`, `D` under `mV` | the halves' batteries and the dongle's own 3.3 V supply: columns below |
+| profiles, `USB` | the five profiles (filled: connected, ring: paired, dot: free; the one in use underlined); USB `--`, `PWR` or `HID` |
+| `SENT 18K FAIL 0` | reports sent over USB, and how many the computer didn't take |
+| `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
+| last line | the last key, keycode or encoder event, with the ms since the one before |
 | key map | every key, lit while held. A key that doesn't light isn't reaching the dongle |
-| `BNC 18MS P23` | the shortest up-and-down of any key; red under 30 ms: a bouncing switch |
 
 | Column | Shows |
 | --- | --- |
-| `DBM` | signal: green above -75, amber to -85, red below (packets start going missing). `E` and a code when the radio wouldn't say |
-| `%` | battery (the estimate with `~` while charging), with a bolt on USB power. On `H`, the output |
-| `V` | battery to the millivolt (dim while charging); on `H` the dongle's 3.3 V supply |
-| `DR` | drops since the dongle started |
-| `RS` | why the last drop: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
-| `CH` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q1`, `R1`, `S1` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO` |
-| `KEY` | key presses since start |
+| `dBm` | signal: green above -75, amber to -85, red below (packets start going missing). `E` and a code when the radio wouldn't say |
+| `90S` | the signal's last 90 seconds, the weakest of each 3; a red dot where the link was down |
+| `DROPS` | times the link was lost since the dongle started |
+| `WHY` | why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
+| `KEYS` | key presses since start (both halves on `H`) |
+| `mV` | the battery's millivolts (dim while charging: the charger's) |
+| `90MIN` | the last 90 minutes of them, 3 minutes a dot, scaled to fit (at least 60 mV top to bottom) |
+| `CHG` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q`, `R`, `S` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO`. A bolt while on USB power. On `D`, the dongle's temperature |
+| `mW` | each half's average draw (`~` while still rough) |
 
 The draw (mW) is coloured by how long a full battery would last: green four
 weeks or more, plain a week or more, amber under a week, red under two days.

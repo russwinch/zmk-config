@@ -94,6 +94,8 @@ struct fx_theme {
 #define FX_CONN_SLOT_S 120  /* seconds in each: 40 of them are 80 minutes */
 #define FX_CONN_IDLE 1      /* in it: the keyboard idle the whole slot (the halves may be asleep) */
 #define FX_CONN_USB (-1)    /* and for the computer over USB: ready to type (no radio to read) */
+#define FX_MV_HISTORY 30    /* slots of the volts history kept */
+#define FX_MV_SLOT_S 180    /* seconds in each: 30 of them are 90 minutes */
 
 /* Two readings of a link (signal_log's or conn_log's) as one: down if
  * either was, else the weaker dBm, else idle, else 0 (not known). */
@@ -195,6 +197,10 @@ struct fx_debug {
      * signal_log, or FX_CONN_IDLE, or for the computer FX_CONN_USB over USB
      * (FX_SIGNAL_DOWN when USB isn't ready, idle when the computer sleeps) */
     int8_t conn_log[3][FX_CONN_HISTORY];
+    /* the halves' battery and the dongle's supply over a longer time: the
+     * millivolts at the end of each FX_MV_SLOT_S seconds, the newest last
+     * and still filling; left, right, the dongle; 0 not known */
+    uint16_t mv_log[3][FX_MV_HISTORY];
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
     bool dongle_temp_known;
     int8_t dongle_temp_c;  /* the dongle's chip temperature */

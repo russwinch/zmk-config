@@ -240,6 +240,12 @@ int main(int argc, char **argv) {
         debug.conn_log[1][i] = idle ? FX_CONN_IDLE : i == 26 ? FX_SIGNAL_DOWN : i % 7 == 3 ? -79 : -70;
         debug.conn_log[2][i] = idle ? FX_CONN_IDLE : i == 31 ? FX_SIGNAL_DOWN : -50;
     }
+    /* and the volts: the halves running down, the right faster; the dongle steady */
+    for (int i = 0; i < FX_MV_HISTORY; i++) {
+        debug.mv_log[0][i] = (uint16_t)(3912 + (FX_MV_HISTORY - 1 - i) * 4 + i % 3);
+        debug.mv_log[1][i] = (uint16_t)(i < 4 ? 0 : 3874 + (FX_MV_HISTORY - 1 - i) * 9);
+        debug.mv_log[2][i] = (uint16_t)(3312 + i % 4 - 2);
+    }
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);

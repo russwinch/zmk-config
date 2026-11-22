@@ -659,6 +659,8 @@ static struct {
     uint8_t wpm_log[FX_HISTORY];
     int8_t conn_log[3][FX_CONN_HISTORY];
     uint16_t conn_seconds; /* into the newest slot */
+    uint16_t mv_log[3][FX_MV_HISTORY];
+    uint16_t mv_seconds; /* into the newest slot */
 } readings; /* under debug_lock */
 
 static K_THREAD_STACK_DEFINE(readings_stack, READINGS_STACK);
@@ -693,6 +695,11 @@ static void readings_cb(struct k_work *work) {
     const bool active = zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE &&
                         !(usb_out && zmk_usb_get_status() == USB_DC_SUSPEND);
     const enum zmk_usb_conn_state usb_state = zmk_usb_get_conn_state();
+    uint16_t mv[3] = {0};
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
+    mv[0] = dongle_half_millivolts(0);
+    mv[1] = dongle_half_millivolts(1);
+#endif
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
         memcpy(readings.half_reads, half_reads, sizeof(half_reads));
@@ -725,6 +732,20 @@ static void readings_cb(struct k_work *work) {
                                                       : 0;
             int8_t *slot = &readings.conn_log[i][FX_CONN_HISTORY - 1];
             *slot = fx_conn_worse(*slot, now);
+        }
+        /* and the volts, the latest known in each slot, idle or not */
+        if (++readings.mv_seconds > FX_MV_SLOT_S) {
+            readings.mv_seconds = 1;
+            for (int i = 0; i < 3; i++) {
+                memmove(readings.mv_log[i], readings.mv_log[i] + 1, sizeof(readings.mv_log[i][0]) * (FX_MV_HISTORY - 1));
+                readings.mv_log[i][FX_MV_HISTORY - 1] = 0;
+            }
+        }
+        mv[2] = dongle_readings.mv;
+        for (int i = 0; i < 3; i++) {
+            if (mv[i]) {
+                readings.mv_log[i][FX_MV_HISTORY - 1] = mv[i];
+            }
         }
     }
     k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
@@ -813,6 +834,7 @@ static void read_debug(void) {
         memcpy(d->signal_log, readings.signal_log, sizeof(d->signal_log));
         memcpy(d->wpm_log, readings.wpm_log, sizeof(d->wpm_log));
         memcpy(d->conn_log, readings.conn_log, sizeof(d->conn_log));
+        memcpy(d->mv_log, readings.mv_log, sizeof(d->mv_log));
         d->dongle_mv = dongle_readings.mv;
         d->dongle_temp_known = dongle_readings.temp_known;
         d->dongle_temp_c = dongle_readings.temp_c;
