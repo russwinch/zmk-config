@@ -19,7 +19,7 @@ The screen, theme and brightness are remembered once left for 30 seconds.
 | --- | --- | --- |
 | 1 | Debug | a page of readings for chasing faults: [below](#debug) |
 | 2 | Status | batteries, signal and typing speed as graphs and bars: [below](#status) |
-| 3 | Keys | the board as it is, its keys lighting as you type: [below](#keys) |
+| 3 | Typist | your typing speed, and the board as it is, its keys lighting as you type: [below](#typist) |
 | 4 | Thermal | the board through a heat camera; from 50 wpm the keys catch fire |
 | 5 | Tracker | a motion tracker: contacts close in with typing speed |
 | 6 | Terminal | what you type, fading out (passwords included, while it is showing) |
@@ -34,7 +34,7 @@ brings it back.
 
 The animations show the batteries and the output along the bottom. A half's
 level is amber at 15% or under, red and flashing slowly at 10%, fast at 5%.
-A bolt means the half is on USB power; while charging, the Keys, Status and
+A bolt means the half is on USB power; while charging, the Typist, Status and
 Debug screens show the dongle's estimate of its level with an amber `~`
 (ZMK's own reads near 100 from the charger).
 
@@ -43,7 +43,7 @@ backspaces, five to a word, over the last 10 seconds.
 
 ## Colour themes
 
-Keys, Status, Debug, Tracker and Terminal take the theme's colours; the name
+Typist, Status, Debug, Tracker and Terminal take the theme's colours; the name
 shows for a moment when it changes. Every theme keeps green, amber and red
 for good, weak and lost.
 
@@ -54,13 +54,15 @@ SOLARIZED, GAME BOY, NORTON, AMIGA, COBALT2.
 
 They are one line each in `colors.h`.
 
-## Keys
+## Typist
 
 | Part | Shows |
 | --- | --- |
 | top left, top right | each half's battery, and under it its signal's bars (green, amber, red) |
-| top middle | on Bluetooth the five profiles (filled: connected, ring: paired, dot: free; the selected one underlined), over USB `USB` (green: listening, amber: computer asleep); the typing speed under them |
+| top middle | the typing speed, big |
 | the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them, the Waterfowl's rollers rolling |
+| lights | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
+| along the foot | each half's key presses since the dongle started, at its side; `BEST` the fastest of the last 90 seconds |
 
 ## Status
 
@@ -69,7 +71,7 @@ Laid out like a racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
-| left and right | each half's keys as they are on the board, lit as on Keys; the speed big between them, where the controllers are |
+| left and right | each half's keys as they are on the board, lit as on Typist; the speed big between them, where the controllers are |
 | signals | each link's dBm (`--` in red when down), the computer's in the middle (over USB: `USB`, green when ready, amber when the computer sleeps) |
 | connection strips | under each link, its last 80 minutes, 2 minutes a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |

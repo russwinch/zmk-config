@@ -43,4 +43,4 @@ Draws the left half's nice!view screen for a few made-up states, into
 Draws each keyboard to scale, from the measurements it keeps of its makers'
 CAD files, into `docs/boards/` for the README (no packages needed).
 `--header` also writes `src/screen_fx/boards.h`, the same shapes for the
-dongle's Keys screen.
+dongle's Typist and Status screens.

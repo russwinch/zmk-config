@@ -8,7 +8,7 @@ draw, without flashing anything:
     tools/fx_preview.py              # every animation -> fx_preview_out/*.gif
     tools/fx_preview.py --fps 30     # what a faster screen link would give
     tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
-    tools/fx_preview.py --power keys # the panel going off and coming on, on Keys
+    tools/fx_preview.py --power typist # the panel going off and coming on, on Typist
     tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
     tools/fx_preview.py --stills     # a still of each screen -> fx_preview_out/<n>_<name>.png
     tools/fx_preview.py --contrast   # every theme's contrast ratios, the low ones flagged
@@ -183,7 +183,7 @@ def main() -> None:
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
     parser.add_argument("--board", choices=["forager", "urchin", "waterfowl", "corne"], default="forager",
-                        help="the keyboard the Keys and Debug screens draw (default forager)")
+                        help="the keyboard the Typist, Status and Debug screens draw (default forager)")
     parser.add_argument("--stills", action="store_true",
                         help="instead: a PNG of each screen mid-typing (Status over USB), 4x the panel's size "
                              "(to draw over)")

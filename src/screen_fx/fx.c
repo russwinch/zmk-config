@@ -2191,15 +2191,15 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
     board_fade(in);
 }
 
-/* --- keys: the keyboard as it is, and how it is doing --------------------------- */
+/* --- typist: the typing speed, and the board as it is -------------------------- */
 
 /*
  * The board drawn as it is (boards.h, as the README's pictures): its PCB,
  * the cover over its controller, its screen, and each key where it is,
  * coloured as `board` has them; encoders as knobs, a roller's ribs rolling
  * as it turns. Along the top, each half's battery big at its side with its
- * signal's bars under it, the output between them and the typing speed under
- * that.
+ * signal's bars under it, the typing speed bigger between them; along the
+ * foot, the speed as lights, each half's key presses and the fastest lately.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
@@ -2207,6 +2207,9 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
 #define SIGNAL_W 40 /* Status's link blocks */
 #define KEYS_BOARD_TOP 28
 #define KEYS_SPLIT 6 /* pixels between the halves */
+#define TYPIST_LIGHTS 15
+#define TYPIST_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
+#define TYPIST_LIGHTS_Y 99
 
 static float keys_time; /* 30ths of a second */
 
@@ -2222,7 +2225,7 @@ static int keys_block_x(int place) {
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale);
 
 /* Along the top: each half's level, big, at its side with its signal's bars
- * under it; the output between them, and under that the typing speed. */
+ * under it, and the typing speed bigger between them. */
 static void keys_top(uint8_t *fb, const struct fx_input *in) {
     const struct fx_debug *d = in->debug;
     const int inset = fx_corner_inset(3, 26) + 1;
@@ -2251,15 +2254,40 @@ static void keys_top(uint8_t *fb, const struct fx_input *in) {
         charging_bolt(fb, half ? x - 7 : x + wide + 2, 10, in->status, half);
         signal_bars(fb, half ? FX_W - inset - 7 : inset, 19, &d->half[half]);
     }
-    if (in->status && in->status->usb) {
-        put(fb, (FX_W - 15 + 1) / 2, 4, "USB", d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
-    } else {
-        profiles(fb, d, in->status, (FX_W - (FX_DEBUG_PROFILES * 8 - 3)) / 2, 4);
+    /* the typing speed, big, between them */
+    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, 3, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
+}
+
+/* Along the foot: the typing speed as a row of lights, green then red then
+ * violet, a light for each TYPIST_LIGHT_WPM; under them each half's key
+ * presses since power-up at its side and the fastest of the last FX_HISTORY
+ * seconds between them. */
+static void typist_foot(uint8_t *fb, const struct fx_debug *d) {
+    const int lights_x = (FX_W - (TYPIST_LIGHTS * 8 - 2)) / 2;
+    for (int i = 0; i < TYPIST_LIGHTS; i++) {
+        const int at = (i + 1) * TYPIST_LIGHT_WPM;
+        const uint8_t on = i < 5 ? DBG_GOOD : i < 10 ? DBG_BAD : DBG_LAYER;
+        fill(fb, lights_x + i * 8, TYPIST_LIGHTS_Y, 6, 5, d->wpm >= at ? on : DBG_DIM);
     }
-    {
-        snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-        put_big(fb, (FX_W - (10 * (int)strlen(buf) - 2)) / 2, 13, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 2);
+    char buf[16];
+    const int y = TYPIST_LIGHTS_Y + 8, inset = fx_corner_inset(y, y + 5) + 1;
+    for (int half = 0; half < 2; half++) {
+        snprintf(buf, sizeof(buf), "%lu", (unsigned long)d->presses[half]);
+        if (half) {
+            put_right(fb, FX_W - inset, y, buf, DBG_TEXT);
+        } else {
+            put(fb, inset, y, buf, DBG_TEXT);
+        }
     }
+    int best = d->wpm;
+    for (int i = 0; i < FX_HISTORY; i++) {
+        best = d->wpm_log[i] > best ? d->wpm_log[i] : best;
+    }
+    snprintf(buf, sizeof(buf), "%d", best);
+    const int wide = 24 + 5 * (int)strlen(buf) - 1, x = (FX_W - wide) / 2;
+    put(fb, x, y, "BEST", DBG_LABEL);
+    put(fb, x + 24, y, buf, best ? DBG_TEXT : DBG_LABEL);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -2269,11 +2297,12 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     }
     keys_time += in->step;
     keys_top(fb, in);
-    const struct view v = shape_view(0, KEYS_BOARD_TOP, FX_W, FX_H - 6 - KEYS_BOARD_TOP, KEYS_SPLIT, true);
+    const struct view v = shape_view(0, KEYS_BOARD_TOP, FX_W, TYPIST_LIGHTS_Y - 3 - KEYS_BOARD_TOP, KEYS_SPLIT, true);
     shape_board(fb, in, &v, true);
+    typist_foot(fb, in->debug);
 }
 
-/* --- status: halfway between Keys and Debug ---------------------------------- */
+/* --- status: halfway between Typist and Debug ---------------------------------- */
 
 /*
  * The readings worth glancing at, set out like a racing car's steering
@@ -2566,7 +2595,7 @@ static const struct {
 } effects[] = {
     {"DEBUG", debug_start, debug_frame, debug_colors, NULL, {0}, .debug = true},
     {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
-    {"KEYS", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
+    {"TYPIST", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
     {"THERMAL", thermal_start, thermal_frame, NULL, &thermal_text, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
     {"TRACKER", tracker_start, tracker_frame, tracker_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
     {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
