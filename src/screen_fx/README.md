@@ -70,10 +70,9 @@ Laid out like a racing car's steering wheel display.
 
 | Part | Shows |
 | --- | --- |
-| top | the typing speed |
-| the keys | as they are on the board, lit as on Typist |
-| signals | each link's dBm (`--` in red when down), the computer's in the middle (over USB: `USB`, green when ready, amber when the computer sleeps) |
+| signals along the top | each link's dBm (`--` in red when down), the computer's in the middle (over USB: `USB`, green when ready, amber when the computer sleeps) |
 | connection strips | under each link, its last 80 minutes, 2 minutes a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
+| the keys | as they are on the board, lit as on Typist; the typing speed between the halves |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
 | boxes along the foot | `BT`+profile or `USB`; `DR` drops since start; the dongle's supply volts and temperature; the worst trouble (`HANG`, `CRSH`, `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken) or `OK` |
 

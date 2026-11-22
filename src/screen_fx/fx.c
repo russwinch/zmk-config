@@ -2284,15 +2284,14 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * wheel display: lights across the top, the big figure in the middle, bars
  * and graphs rather than columns of numbers. Top to bottom:
  *
- *   the typing speed, small (Typist has it big);
- *
- *   the board's keys as they are;
- *
  *   each link's latest dBm, the halves' over their batteries and the
  *   computer's between (over USB, USB in its place); under each a strip of
  *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: green, amber
  *   or red by the weakest signal in it, red where the link was down, a dim
  *   line where the keyboard was idle (so the halves may have been asleep);
+ *
+ *   the board's keys as they are, the typing speed small between the halves
+ *   (Typist has it big);
  *
  *   each half's battery at its side: its level, big, and beside it its
  *   volts and average draw, their units between the halves; under them a
@@ -2305,12 +2304,12 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
-#define STATUS_WPM_Y 3
-#define STATUS_KEYS_TOP 11 /* the board's keys */
-#define STATUS_KEYS_H 40
-#define STATUS_SIGNAL_Y 54 /* each link's dBm */
-#define STATUS_CONN_Y 63   /* and under it its connection strip, this high: */
+#define STATUS_SIGNAL_Y 4 /* each link's dBm */
+#define STATUS_CONN_Y 13  /* and under it its connection strip, this high: */
 #define STATUS_CONN_H 5
+#define STATUS_KEYS_TOP 22 /* the board's keys, the speed small between the halves */
+#define STATUS_KEYS_H 51
+#define STATUS_WPM_GAP 18
 #define STATUS_BATTERY_Y 77
 #define STATUS_BOX_Y 104 /* along the foot */
 #define STATUS_BATTERY_W 61
@@ -2428,13 +2427,13 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const bool usb_out = in->status && in->status->usb;
     char buf[16];
 
-    /* the speed, and the keys as they are */
-    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    const int wpm_x = (FX_W - (5 * (int)strlen(buf) + 1 + 14)) / 2;
-    put(fb, wpm_x, STATUS_WPM_Y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL);
-    put(fb, wpm_x + 5 * (int)strlen(buf) + 1, STATUS_WPM_Y, "WPM", DBG_LABEL);
-    const struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, KEYS_SPLIT, false);
+    /* the keys as they are, and the speed small between the halves, its unit under it */
+    const struct view v = shape_view(2, STATUS_KEYS_TOP, FX_W - 4, STATUS_KEYS_H, STATUS_WPM_GAP, false);
     shape_board(fb, in, &v, false);
+    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+    const int wpm_y = STATUS_KEYS_TOP + (STATUS_KEYS_H - 14) / 2;
+    put(fb, (FX_W - (5 * (int)strlen(buf) - 1)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL);
+    put(fb, (FX_W - 14) / 2, wpm_y + 8, "WPM", DBG_LABEL);
 
     /* the boxes: the output, the drops, the dongle's supply and temperature,
      * then the worst trouble there is, if any; in from the sides, clear of
