@@ -58,11 +58,11 @@ They are one line each in `colors.h`.
 
 | Part | Shows |
 | --- | --- |
-| top left, top right | each half's battery, and under it its signal's bars (green, amber, red) |
-| top middle | the typing speed, big |
-| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them, the Waterfowl's rollers rolling |
-| lights | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
-| along the foot | each half's key presses since the dongle started, at its side; `BEST` the fastest of the last 90 seconds |
+| lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
+| under them | the typing speed, big |
+| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them, the Waterfowl's rollers rolling sideways |
+| bottom left, bottom right | each half's battery, its signal's bars (green, amber, red) beside it |
+| bottom middle | `BT`+profile (green when connected) or `USB` (green: listening, amber: computer asleep) |
 
 ## Status
 

@@ -2162,15 +2162,15 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
             fill_poly(fb, pts, 4, color);
         }
         if (kind == FX_PART_ROLLER) {
-            /* ribs across it, rolling as it turns */
+            /* ribs down it, rolling sideways as it turns, as it does under a thumb */
             const float turned = encoder >= 0 ? knob_shown[encoder] : 0;
             const float cx = right ? v->right_x - p->x * v->scale : v->left_x + p->x * v->scale;
-            const float cy = v->top + p->y * v->scale, half_h = p->h * v->scale / 2 - 1;
-            const float half_w = p->w * v->scale / 2 - 1.5f;
-            const float phase = fmodf(turned / 30, 3);
-            for (float y = -half_h + (phase < 0 ? phase + 3 : phase); y < half_h; y += 3) {
-                line(fb, (int)lroundf(cx - half_w), (int)lroundf(cy + y), (int)lroundf(cx + half_w) - 1,
-                     (int)lroundf(cy + y), encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_BG);
+            const float cy = v->top + p->y * v->scale, half_h = p->h * v->scale / 2 - 1.5f;
+            const float half_w = p->w * v->scale / 2 - 0.5f;
+            const float phase = fmodf((right ? -turned : turned) / 30, 2);
+            for (float x = -half_w + (phase < 0 ? phase + 2 : phase); x < half_w; x += 2) {
+                line(fb, (int)lroundf(cx + x), (int)lroundf(cy - half_h), (int)lroundf(cx + x),
+                     (int)lroundf(cy + half_h) - 1, encoder >= 0 && knob_heat[encoder] ? DBG_BRIGHT : DBG_BG);
             }
         }
     }
@@ -2183,19 +2183,20 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
  * The board drawn as it is (boards.h, as the README's pictures): its PCB,
  * the cover over its controller, its screen, and each key where it is,
  * coloured as `board` has them; encoders as knobs, a roller's ribs rolling
- * as it turns. Along the top, each half's battery big at its side with its
- * signal's bars under it, the typing speed bigger between them; along the
- * foot, the speed as lights, each half's key presses and the fastest lately.
+ * as it turns. Over it the typing speed as lights and big; along the foot
+ * each half's battery and signal, and the output.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
 
 #define SIGNAL_W 40 /* Status's link blocks */
-#define KEYS_BOARD_TOP 28
 #define KEYS_SPLIT 6 /* pixels between the halves */
 #define TYPIST_LIGHTS 15
 #define TYPIST_LIGHT_WPM 8 /* each light: the 15th is lit at 120 */
-#define TYPIST_LIGHTS_Y 99
+#define TYPIST_LIGHTS_Y 3
+#define TYPIST_WPM_Y 12
+#define TYPIST_BOARD_TOP 37
+#define TYPIST_FOOT_Y 102
 
 static float keys_time; /* 30ths of a second */
 
@@ -2210,11 +2211,12 @@ static int keys_block_x(int place) {
 
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale);
 
-/* Along the top: each half's level, big, at its side with its signal's bars
- * under it, and the typing speed bigger between them. */
-static void keys_top(uint8_t *fb, const struct fx_input *in) {
+/* Along the foot: each half's level, big, in its corner with its signal's
+ * bars beside it (and a bolt while on USB power), the output small between
+ * them. */
+static void typist_foot(uint8_t *fb, const struct fx_input *in) {
     const struct fx_debug *d = in->debug;
-    const int inset = fx_corner_inset(3, 26) + 1;
+    const int y = TYPIST_FOOT_Y, inset = fx_corner_inset(y, y + 13) + 1;
     char buf[8];
     for (int half = 0; half < 2; half++) {
         bool estimate;
@@ -2229,51 +2231,24 @@ static void keys_top(uint8_t *fb, const struct fx_input *in) {
         const int x = half ? FX_W - inset - wide : inset;
         if ((in->status && in->status->charging[half]) ||
             !fx_battery_flash_off(level, (uint32_t)(keys_time * 1000 / 30))) {
-            put_big(fb, x, 3, buf, color, 2);
+            put_big(fb, x, y, buf, color, 2);
             if (level) {
-                put(fb, x + wide - 4, 10, "%", color);
+                put(fb, x + wide - 4, y + 7, "%", color);
                 if (estimate) {
-                    put(fb, x + wide - 4, 3, "~", DBG_WARN);
+                    put(fb, x + wide - 4, y, "~", DBG_WARN);
                 }
             }
         }
-        charging_bolt(fb, half ? x - 7 : x + wide + 2, 10, in->status, half);
-        signal_bars(fb, half ? FX_W - inset - 7 : inset, 19, &d->half[half]);
+        const int bars = half ? x - 4 - 7 : x + wide + 4;
+        signal_bars(fb, bars, y + 7, &d->half[half]);
+        charging_bolt(fb, half ? bars - 7 : bars + 9, y + 7, in->status, half);
     }
-    /* the typing speed, big, between them */
-    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, 3, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
-}
-
-/* Along the foot: the typing speed as a row of lights, green then red then
- * violet, a light for each TYPIST_LIGHT_WPM; under them each half's key
- * presses since power-up at its side and the fastest of the last FX_HISTORY
- * seconds between them. */
-static void typist_foot(uint8_t *fb, const struct fx_debug *d) {
-    const int lights_x = (FX_W - (TYPIST_LIGHTS * 8 - 2)) / 2;
-    for (int i = 0; i < TYPIST_LIGHTS; i++) {
-        const int at = (i + 1) * TYPIST_LIGHT_WPM;
-        const uint8_t on = i < 5 ? DBG_GOOD : i < 10 ? DBG_BAD : DBG_LAYER;
-        fill(fb, lights_x + i * 8, TYPIST_LIGHTS_Y, 6, 5, d->wpm >= at ? on : DBG_DIM);
+    if (in->status && in->status->usb) {
+        put(fb, (FX_W - 14) / 2, y + 7, "USB", d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
+    } else {
+        snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
+        put(fb, (FX_W - 14) / 2, y + 7, buf, d->host.up ? DBG_GOOD : DBG_LABEL);
     }
-    char buf[16];
-    const int y = TYPIST_LIGHTS_Y + 8, inset = fx_corner_inset(y, y + 5) + 1;
-    for (int half = 0; half < 2; half++) {
-        snprintf(buf, sizeof(buf), "%lu", (unsigned long)d->presses[half]);
-        if (half) {
-            put_right(fb, FX_W - inset, y, buf, DBG_TEXT);
-        } else {
-            put(fb, inset, y, buf, DBG_TEXT);
-        }
-    }
-    int best = d->wpm;
-    for (int i = 0; i < FX_HISTORY; i++) {
-        best = d->wpm_log[i] > best ? d->wpm_log[i] : best;
-    }
-    snprintf(buf, sizeof(buf), "%d", best);
-    const int wide = 24 + 5 * (int)strlen(buf) - 1, x = (FX_W - wide) / 2;
-    put(fb, x, y, "BEST", DBG_LABEL);
-    put(fb, x + 24, y, buf, best ? DBG_TEXT : DBG_LABEL);
 }
 
 static void keys_frame(uint8_t *fb, const struct fx_input *in) {
@@ -2281,11 +2256,22 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
     if (in->debug == NULL) {
         return;
     }
+    const struct fx_debug *d = in->debug;
     keys_time += in->step;
-    keys_top(fb, in);
-    const struct view v = shape_view(0, KEYS_BOARD_TOP, FX_W, TYPIST_LIGHTS_Y - 3 - KEYS_BOARD_TOP, KEYS_SPLIT, true);
+    /* the speed: as lights along the top, green then red then violet, a
+     * light for each TYPIST_LIGHT_WPM, and big under them */
+    const int lights_x = (FX_W - (TYPIST_LIGHTS * 8 - 2)) / 2;
+    for (int i = 0; i < TYPIST_LIGHTS; i++) {
+        const uint8_t on = i < 5 ? DBG_GOOD : i < 10 ? DBG_BAD : DBG_LAYER;
+        fill(fb, lights_x + i * 8, TYPIST_LIGHTS_Y, 6, 5, d->wpm >= (i + 1) * TYPIST_LIGHT_WPM ? on : DBG_DIM);
+    }
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
+    put_big(fb, (FX_W - (15 * (int)strlen(buf) - 3)) / 2, TYPIST_WPM_Y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 3);
+    const struct view v =
+        shape_view(0, TYPIST_BOARD_TOP, FX_W, TYPIST_FOOT_Y - 4 - TYPIST_BOARD_TOP, KEYS_SPLIT, true);
     shape_board(fb, in, &v, true);
-    typist_foot(fb, in->debug);
+    typist_foot(fb, in);
 }
 
 /* --- status: halfway between Typist and Debug ---------------------------------- */
