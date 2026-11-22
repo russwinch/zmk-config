@@ -1740,10 +1740,11 @@ static uint8_t signal_text(char *buf, size_t size, const struct fx_link *link) {
     return DBG_BAD;
 }
 
-/* Millivolts as text, or why not (`why`, else "--"). */
+/* Millivolts as volts to the millivolt, or why not (`why`, else "--"). */
 static void mv_text(char *buf, size_t size, unsigned mv, const char *why) {
     if (mv) {
-        snprintf(buf, size, "%u", mv > 9999 ? 9999 : mv);
+        mv = mv > 9999 ? 9999 : mv;
+        snprintf(buf, size, "%u.%03u", mv / 1000, mv % 1000);
     } else {
         snprintf(buf, size, "%s", why && why[0] ? why : "--");
     }
@@ -1912,7 +1913,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     for (int col = 0; col < 3; col++) {
         put_col(fb, col, title_y, titles[col], links[col]->up || (col == 1 && usb_out) ? DBG_BRIGHT : DBG_BAD);
     }
-    static const char *const labels[] = {"dBm", "90S", "DROPS", "mV", "90MIN", "CHG", "mW"};
+    static const char *const labels[] = {"dBm", "90S", "DROPS", "V", "90MIN", "CHG", "mW"};
     static const int label_y[] = {29, 37, 45, 54, 62, 70, 78};
     for (unsigned i = 0; i < sizeof(labels) / sizeof(labels[0]); i++) {
         put(fb, 5, label_y[i], labels[i], DBG_LABEL);

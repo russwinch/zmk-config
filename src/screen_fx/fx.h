@@ -91,7 +91,7 @@ struct fx_theme {
 #define FX_HISTORY 94      /* seconds of each link's signal and the typing speed kept */
 #define FX_SIGNAL_DOWN (-128) /* in the signal history: a second the link was down */
 #define FX_CONN_HISTORY 40  /* slots of each link's connection history kept */
-#define FX_CONN_SLOT_S 120  /* seconds in each: 40 of them are 80 minutes */
+#define FX_CONN_SLOT_S 60   /* seconds in each: 40 of them are 40 minutes */
 #define FX_CONN_IDLE 1      /* in it: the keyboard idle the whole slot (the halves may be asleep) */
 #define FX_CONN_USB (-1)    /* and for the computer over USB: ready to type (no radio to read) */
 #define FX_MV_HISTORY 30    /* slots of the volts history kept */

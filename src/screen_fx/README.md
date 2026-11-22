@@ -71,7 +71,7 @@ Laid out like a racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | signals along the top | each link's dBm (`--` in red when down), the computer's in the middle (over USB: `USB`, green when ready, amber when the computer sleeps) |
-| connection strips | under each link, its last 80 minutes, 2 minutes a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
+| connection strips | under each link, its last 40 minutes, a minute a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | the keys | as they are on the board, lit as on Typist; the typing speed between the halves |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
 | boxes along the foot | `BT`+profile or `USB`; `DR` drops since start; the dongle's supply volts and temperature; the worst trouble (`HANG`, `CRSH`, `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken) or `OK` |
@@ -97,7 +97,7 @@ speed and battery levels are on Typist and Status.
 | `dBm` | signal: green above -75, amber to -85, red below (packets start going missing). `E` and a code when the radio wouldn't say; `USB` while typing over it |
 | `90S` | the signal's last 90 seconds, the weakest of each 3; a red dot where the link was down |
 | `DROPS` | times the link was lost since the dongle started, then why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
-| `mV` | the battery's millivolts (dim while charging: the charger's); the dongle's own 3.3 V supply |
+| `V` | the battery's volts, to the millivolt (dim while charging: the charger's); the dongle's own 3.3 V supply |
 | `90MIN` | the last 90 minutes of them, 3 minutes a dot, scaled to fit (at least 60 mV top to bottom) |
 | `CHG` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q`, `R`, `S` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO`. A bolt while on USB power. For the dongle, its temperature |
 | `mW` | each half's average draw (`~` while still rough) |
