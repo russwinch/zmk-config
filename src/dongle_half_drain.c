@@ -41,7 +41,7 @@
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
 #define SETTLE_FALL_MV 8
 #define NOMINAL_MV 3700     // to turn mAh into mWh
-#define TREND_N 240         // the last four hours of readings, for the Status screen
+#define TREND_N (SETTLE_MIN + 1) // the readings back to SETTLE_MIN ago
 
 // A typical lithium polymer cell resting: millivolts, and the percent of its
 // charge left there. Above the first, full; below the last, empty.
@@ -139,16 +139,6 @@ static void sample_cb(struct k_work *work) {
         trend_at = (trend_at + 1) % TREND_N;
     }
     k_work_schedule(&sample_work, K_SECONDS(SAMPLE_EVERY_S));
-}
-
-void dongle_half_trend(int half, uint16_t *mv, int n, int every_min) {
-    K_SPINLOCK(&lock) {
-        for (int i = 0; i < n; i++) {
-            // the newest is the one before trend_at; each before it every_min older
-            const int ago = (n - 1 - i) * every_min + 1;
-            mv[i] = half >= 0 && half < 2 && ago <= TREND_N ? trend[half][(trend_at - ago + TREND_N) % TREND_N] : 0;
-        }
-    }
 }
 
 int dongle_half_drain_hundredths_mw(int half, bool *rough) {

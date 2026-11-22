@@ -759,7 +759,6 @@ static void read_debug(void) {
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         d->half_mv[half] = dongle_half_millivolts(half);
         d->drain_hundredths_mw[half] = dongle_half_drain_hundredths_mw(half, &d->drain_rough[half]);
-        dongle_half_trend(half, d->half_trend[half], FX_TREND, FX_TREND_MIN);
 #else
         d->drain_hundredths_mw[half] = -1;
 #endif
