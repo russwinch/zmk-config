@@ -225,6 +225,14 @@ int main(int argc, char **argv) {
         debug.signal_log[2][i] = i >= 30 && i < 34 ? FX_SIGNAL_DOWN : (int8_t)(-50 + (i * 3 % 5) - 2);
         debug.wpm_log[i] = (uint8_t)(i < 20 ? 0 : 40 + (i * 11 % 30));
     }
+    /* and the longer connection history: an idle stretch (the halves asleep),
+     * the right half weak at times and down once, the computer down once */
+    for (int i = 0; i < FX_CONN_HISTORY; i++) {
+        const bool idle = i >= 8 && i < 19;
+        debug.conn_log[0][i] = idle ? FX_CONN_IDLE : (int8_t)(-55 - i % 5);
+        debug.conn_log[1][i] = idle ? FX_CONN_IDLE : i == 26 ? FX_SIGNAL_DOWN : i % 7 == 3 ? -79 : -70;
+        debug.conn_log[2][i] = idle ? FX_CONN_IDLE : i == 31 ? FX_SIGNAL_DOWN : -50;
+    }
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);

@@ -70,9 +70,9 @@ Laid out like a racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88. A white light marks the fastest lately |
-| graph under them | the typing speed lately; dotted where the lights turn red (40) and violet (80) |
 | left and right | each half's keys, as on Keys; the speed big between them |
-| signals | each link's latest dBm and a graph of it lately, the weakest each column, on a shared scale; red full height where it was down. Over USB only the halves'. Paused while the keyboard is idle, so sleeping halves don't show as drops |
+| signals | each link as on Keys, the computer's in the middle (over USB: `USB` and a graph of the typing speed) |
+| connection strips | under each link, its last 80 minutes, 2 minutes a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
 | boxes along the foot | `BT`+profile or `USB`; `DR` drops since start; the dongle's supply volts and temperature; the worst trouble (`HANG`, `CRSH`, `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken) or `OK` |
 

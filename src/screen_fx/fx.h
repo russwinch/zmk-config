@@ -90,6 +90,25 @@ struct fx_theme {
 #define FX_DEBUG_PROFILES 5
 #define FX_HISTORY 94      /* seconds of each link's signal and the typing speed kept */
 #define FX_SIGNAL_DOWN (-128) /* in the signal history: a second the link was down */
+#define FX_CONN_HISTORY 40  /* slots of each link's connection history kept */
+#define FX_CONN_SLOT_S 120  /* seconds in each: 40 of them are 80 minutes */
+#define FX_CONN_IDLE 1      /* in it: the keyboard idle the whole slot (the halves may be asleep) */
+#define FX_CONN_USB (-1)    /* and for the computer over USB: ready to type (no radio to read) */
+
+/* Two readings of a link (signal_log's or conn_log's) as one: down if
+ * either was, else the weaker dBm, else idle, else 0 (not known). */
+static inline int8_t fx_conn_worse(int8_t a, int8_t b) {
+    if (a == FX_SIGNAL_DOWN || b == FX_SIGNAL_DOWN) {
+        return FX_SIGNAL_DOWN;
+    }
+    if (b == 0 || b == FX_CONN_IDLE) {
+        return a == 0 ? b : a;
+    }
+    if (a == 0 || a == FX_CONN_IDLE) {
+        return b;
+    }
+    return a < b ? a : b;
+}
 #define FX_MAX_ENCODERS 4
 
 #define FX_CRASH_HANG 1
@@ -171,6 +190,11 @@ struct fx_debug {
      * computer's while typing over USB), FX_SIGNAL_DOWN down */
     int8_t signal_log[3][FX_HISTORY];
     uint8_t wpm_log[FX_HISTORY]; /* and the typing speed, 255 at most */
+    /* each link's connection over a longer time: the worst of each
+     * FX_CONN_SLOT_S seconds, the newest last and still filling; as
+     * signal_log, or FX_CONN_IDLE, or for the computer FX_CONN_USB over USB
+     * (FX_SIGNAL_DOWN when USB isn't ready, idle when the computer sleeps) */
+    int8_t conn_log[3][FX_CONN_HISTORY];
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
     bool dongle_temp_known;
     int8_t dongle_temp_c;  /* the dongle's chip temperature */

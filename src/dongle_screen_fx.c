@@ -657,6 +657,8 @@ static struct {
     uint8_t half_err[2];
     int8_t signal_log[3][FX_HISTORY];
     uint8_t wpm_log[FX_HISTORY];
+    int8_t conn_log[3][FX_CONN_HISTORY];
+    uint16_t conn_seconds; /* into the newest slot */
 } readings; /* under debug_lock */
 
 static K_THREAD_STACK_DEFINE(readings_stack, READINGS_STACK);
@@ -687,7 +689,10 @@ static void readings_cb(struct k_work *work) {
     /* while the keyboard is idle the panel is off and the halves go on to
      * sleep, dropping their links: the histories wait, rather than fill
      * with links that are only down because the halves are asleep */
-    const bool active = zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE;
+    /* a computer asleep counts as idle in the connection history */
+    const bool active = zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE &&
+                        !(usb_out && zmk_usb_get_status() == USB_DC_SUSPEND);
+    const enum zmk_usb_conn_state usb_state = zmk_usb_get_conn_state();
     K_SPINLOCK(&debug_lock) {
         memcpy(readings.link, link, sizeof(link));
         memcpy(readings.half_reads, half_reads, sizeof(half_reads));
@@ -703,6 +708,23 @@ static void readings_cb(struct k_work *work) {
         if (active) {
             memmove(readings.wpm_log, readings.wpm_log + 1, FX_HISTORY - 1);
             readings.wpm_log[FX_HISTORY - 1] = (uint8_t)MIN(atomic_get(&wpm), 255);
+        }
+        /* and in the longer connection history, idle seconds too */
+        if (++readings.conn_seconds > FX_CONN_SLOT_S) {
+            readings.conn_seconds = 1;
+            for (int i = 0; i < 3; i++) {
+                memmove(readings.conn_log[i], readings.conn_log[i] + 1, FX_CONN_HISTORY - 1);
+                readings.conn_log[i][FX_CONN_HISTORY - 1] = 0;
+            }
+        }
+        for (int i = 0; i < 3; i++) {
+            const int8_t now = !active                ? FX_CONN_IDLE
+                               : i == 2 && usb_out ? (usb_state == ZMK_USB_CONN_HID ? FX_CONN_USB : FX_SIGNAL_DOWN)
+                               : !link[i].up          ? FX_SIGNAL_DOWN
+                               : link[i].rssi_known   ? (int8_t)CLAMP(link[i].rssi, -127, -2)
+                                                      : 0;
+            int8_t *slot = &readings.conn_log[i][FX_CONN_HISTORY - 1];
+            *slot = fx_conn_worse(*slot, now);
         }
     }
     k_work_schedule_for_queue(&readings_q, &readings_work, K_MSEC(READINGS_EVERY_MS));
@@ -790,6 +812,7 @@ static void read_debug(void) {
         memcpy(d->half_err, readings.half_err, sizeof(d->half_err));
         memcpy(d->signal_log, readings.signal_log, sizeof(d->signal_log));
         memcpy(d->wpm_log, readings.wpm_log, sizeof(d->wpm_log));
+        memcpy(d->conn_log, readings.conn_log, sizeof(d->conn_log));
         d->dongle_mv = dongle_readings.mv;
         d->dongle_temp_known = dongle_readings.temp_known;
         d->dongle_temp_c = dongle_readings.temp_c;
