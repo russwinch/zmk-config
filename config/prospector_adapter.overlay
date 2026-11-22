@@ -1,0 +1,29 @@
+/*
+ * Devicetree for every Prospector dongle (XIAO nRF52840): ZMK reads this in
+ * place of default.overlay for builds with the prospector_adapter shield, so
+ * it includes that first.
+ */
+#include "default.overlay"
+
+/*
+ * Where the dongle last crashed, kept through the restart
+ * (src/dongle_screen_fx.c, crash_spot). The restart goes through the Adafruit
+ * bootloader, which uses RAM from 0x20007F7C up (and the MBR the first
+ * 8 bytes), so Zephyr's RAM starts 1 KB in, and the note sits in that first
+ * KB, which nothing else touches. 1 KB so that Zephyr's RAM stays a whole
+ * number of KB (CONFIG_SRAM_SIZE).
+ */
+/ {
+    chosen {
+        zephyr,sram = &dongle_sram;
+    };
+
+    dongle_sram: memory@20000400 {
+        compatible = "mmio-sram";
+        reg = <0x20000400 DT_SIZE_K(255)>;
+    };
+
+    crash_spot_ram: memory@20000100 {
+        reg = <0x20000100 0x10>;
+    };
+};

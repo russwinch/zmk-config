@@ -135,6 +135,7 @@ struct fx_debug {
      * itself: crash_code FX_HANG_AT_START or FX_HANG_AFTER_WAKE) or
      * FX_CRASH_FAULT (crashed, with Zephyr's reason in crash_code) */
     uint8_t crash, crash_code;
+    uint32_t crash_pc; /* FX_CRASH_FAULT: where (the program counter), 0 not known */
     uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */
     bool usb_asleep;      /* the computer has suspended the port: it is asleep */

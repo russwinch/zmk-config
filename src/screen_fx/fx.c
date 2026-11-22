@@ -1777,16 +1777,27 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     snprintf(buf, sizeof(buf), "%uF %uMS", d->fps, d->frame_ms);
     put_right(fb, FX_W - top_inset, 5, buf, DBG_TEXT);
 
-    x = put(fb, 7, 12, "RST", DBG_LABEL) + 3;
+    /* a crash's address leaves no room for RST: CRSH says it */
+    const bool crash_pc = d->crash == FX_CRASH_FAULT && d->crash_pc;
+    x = crash_pc ? 7 : put(fb, 7, 12, "RST", DBG_LABEL) + 3;
     if (d->crash == FX_CRASH_HANG) {
         /* no picture came after power-up (1) or waking (2): it restarted itself */
         x = put(fb, x, 12, "HANG", DBG_BAD) + 3;
         snprintf(buf, sizeof(buf), "%u", (unsigned)d->crash_code);
         put(fb, x, 12, buf, DBG_LABEL);
     } else if (d->crash == FX_CRASH_FAULT) {
-        x = put(fb, x, 12, "CRASH", DBG_BAD) + 3;
+        x = put(fb, x, 12, crash_pc ? "CRSH" : "CRASH", DBG_BAD) + 3;
         snprintf(buf, sizeof(buf), "%02X", (unsigned)d->crash_code);
-        put(fb, x, 12, buf, DBG_LABEL);
+        x = put(fb, x, 12, buf, DBG_LABEL) + 3;
+        if (crash_pc) {
+            /* in flash, 5 hex digits; anywhere else (RAM) won't fit */
+            if (d->crash_pc < 0x100000) {
+                snprintf(buf, sizeof(buf), "%05X", (unsigned)d->crash_pc);
+            } else {
+                strcpy(buf, "RAM");
+            }
+            put(fb, x, 12, buf, DBG_TEXT);
+        }
     } else {
         const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
         x = put(fb, x, 12, reset_name(d->reset_cause), fault ? DBG_BAD : DBG_TEXT) + 3;

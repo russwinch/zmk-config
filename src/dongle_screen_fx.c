@@ -398,6 +398,27 @@ static __noinit struct {
     uint8_t troubled;    /* restarts in a row before a first picture */
 } boot_note;
 static uint8_t last_crash, last_crash_code; /* how the run before this one ended */
+
+/*
+ * Where a crash happened (the program counter), for the Debug screen to show
+ * beside the reason, to look up in that build. Kept in the first KB of RAM,
+ * which the dongle's Zephyr leaves out (config/prospector_adapter.overlay):
+ * the Adafruit bootloader the restart goes through only uses RAM from
+ * 0x20007F7C up (and the MBR the first 8 bytes), so this lasts through it
+ * where boot_note in .noinit may not.
+ */
+#if DT_NODE_EXISTS(DT_NODELABEL(crash_spot_ram))
+#define CRASH_SPOT_MAGIC 0xc5a5f0a7U
+struct crash_spot {
+    uint32_t magic, pc;
+};
+#define CRASH_SPOT ((volatile struct crash_spot *)DT_REG_ADDR(DT_NODELABEL(crash_spot_ram)))
+BUILD_ASSERT(sizeof(struct crash_spot) <= DT_REG_SIZE(DT_NODELABEL(crash_spot_ram)));
+BUILD_ASSERT(DT_REG_ADDR(DT_NODELABEL(crash_spot_ram)) + DT_REG_SIZE(DT_NODELABEL(crash_spot_ram)) <=
+                 CONFIG_SRAM_BASE_ADDRESS,
+             "crash_spot_ram must be outside Zephyr's RAM");
+#endif
+static uint32_t last_crash_pc; /* where the run before this one crashed, 0 not known */
 static bool safe_start;                     /* that run never showed a picture */
 static atomic_t pictured;                   /* this run has shown one */
 
@@ -424,6 +445,12 @@ static void boot_note_take(void) {
     last_crash = boot_note.crash;
     last_crash_code = boot_note.code;
     boot_note.crash = boot_note.code = 0;
+#ifdef CRASH_SPOT
+    if (last_crash == FX_CRASH_FAULT && CRASH_SPOT->magic == CRASH_SPOT_MAGIC) {
+        last_crash_pc = CRASH_SPOT->pc;
+    }
+    CRASH_SPOT->magic = 0;
+#endif
     safe_start = boot_note.troubled > 0;
     boot_note_keep(); /* just the restarts in a row, now */
 }
@@ -466,8 +493,13 @@ static K_WORK_DELAYABLE_DEFINE(wake_watch_work, wake_watch_cb);
 
 /* In place of Zephyr's, which halts: note it and restart. Any context. */
 void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf) {
-    ARG_UNUSED(esf);
     boot_note_valid();
+#ifdef CRASH_SPOT
+    CRASH_SPOT->pc = esf != NULL ? esf->basic.pc : 0;
+    CRASH_SPOT->magic = CRASH_SPOT_MAGIC;
+#else
+    ARG_UNUSED(esf);
+#endif
     boot_note.crash = FX_CRASH_FAULT;
     boot_note.code = (uint8_t)MIN(reason, 0xff);
     if (!atomic_get(&pictured)) {
@@ -720,6 +752,7 @@ static void read_debug(void) {
     d->reset_cause = reset_cause;
     d->crash = last_crash;
     d->crash_code = last_crash_code;
+    d->crash_pc = last_crash_pc;
     d->activity = (uint8_t)zmk_activity_get_state();
     d->wpm = (uint16_t)atomic_get(&wpm);
     read_keys(d);
