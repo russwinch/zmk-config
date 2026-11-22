@@ -1670,6 +1670,7 @@ static void read_keys(struct fx_debug *d) {
     d->layer_name = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(d->layer));
     d->layers = zmk_keymap_layer_state();
     d->keyboard = CONFIG_ZMK_KEYBOARD_NAME;
+    d->battery_mah = CONFIG_HALF_BATTERY_MAH;
     d->held_mod = d->held_layer = 0;
     for (int key = 0; key < KEY_INFOS; key++) {
         if (!(held & BIT64(key))) {

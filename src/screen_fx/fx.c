@@ -1736,6 +1736,20 @@ static void drain_text(char *buf, size_t size, int hundredths, bool rough) {
     }
 }
 
+/* A settled draw's colour, by how long a full battery would last at it
+ * (at a nominal 3.7 V): green four weeks or more, amber under a week, red
+ * under two days. Rough or not known, plain. */
+static uint8_t drain_color(int hundredths, bool rough, uint16_t mah) {
+    if (hundredths < 0) {
+        return DBG_LABEL;
+    }
+    if (rough || mah == 0) {
+        return DBG_TEXT;
+    }
+    const uint32_t hours = hundredths ? (uint32_t)mah * 370 / (uint32_t)hundredths : UINT32_MAX;
+    return hours >= 28 * 24 ? DBG_GOOD : hours >= 7 * 24 ? DBG_TEXT : hours >= 2 * 24 ? DBG_WARN : DBG_BAD;
+}
+
 /* the ~ before a rough draw: on for 0.6 s, off 0.4 s */
 static float drain_clock; /* 30ths of a second */
 static bool drain_flash_off(void) { return (int)drain_clock % 30 >= 18; }
@@ -1887,7 +1901,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         if (rough && !drain_flash_off()) {
             put(fb, x, 76, "~", DBG_WARN);
         }
-        x = put(fb, x, 76, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT) + 3;
+        x = put(fb, x, 76, buf, drain_color(hundredths, rough, d->battery_mah)) + 3;
     }
     put(fb, x - 2, 76, "mW", DBG_LABEL);
     if (d->dongle_temp_known) {
@@ -2335,7 +2349,7 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     if (rough && !drain_flash_off()) {
         put(fb, right - 10 - 5 * (int)strlen(buf), y + 20, "~", DBG_WARN); /* in the space before it */
     }
-    put_right(fb, right - 10, y + 20, buf, hundredths < 0 ? DBG_LABEL : DBG_TEXT);
+    put_right(fb, right - 10, y + 20, buf, drain_color(hundredths, rough, d->battery_mah));
     put_right(fb, right, y + 20, "mW", DBG_LABEL);
 
     /* the volts over four hours, stretched across: from the lowest to the
