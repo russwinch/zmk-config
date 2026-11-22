@@ -8,7 +8,7 @@ each board's own file only adds its extras.
 | --- | --- | --- | --- |
 | Urchin | nice!nano v2 | RGB LED widget (no screens) | optional Prospector dongle |
 | splitkb Aurora Corne | nice!nano v2 | nice!view on the left half, RGB LED widget | 2 encoders, outer thumb keys, an outer column per side; optional Prospector dongle |
-| Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, 2 extra thumb keys per side; optional Prospector dongle |
+| Waterfowl | nice!nano v2 | nice!view on the left half, RGB LED widget | 4 encoders, an extra thumb key per side; optional Prospector dongle |
 | Forager | Seeed XIAO nRF52840 | onboard RGB LED widget | optional Prospector dongle |
 
 More lives beside what it describes:
@@ -23,6 +23,19 @@ More lives beside what it describes:
 
 Redrawn by the "Draw keymap" workflow whenever the keymap changes. Modifiers
 are drawn with Mac symbols; on the Windows layer read ⌘ as Win.
+
+Every board has those 34 keys; what each adds is in amber:
+
+| [![Urchin](docs/boards/urchin.svg)](docs/boards/urchin.svg) | [![Forager](docs/boards/forager.svg)](docs/boards/forager.svg) | [![Aurora Corne](docs/boards/corne.svg)](docs/boards/corne.svg) | [![Waterfowl](docs/boards/waterfowl.svg)](docs/boards/waterfowl.svg) |
+| :---: | :---: | :---: | :---: |
+| Urchin | Forager | Aurora Corne | Waterfowl |
+
+Drawn to scale from each maker's CAD files by `tools/boards.py`.
+
+| Board | Encoders (turn) | Extra keys |
+| --- | --- | --- |
+| Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right); outer columns, top to bottom: Tab, Esc (hold: Ctrl), Shift on the left, Del, ', Enter (hold: Shift) on the right |
+| Waterfowl | left roller: scroll up/down; left dial: volume; right dial: up/down (page up/down on Lower); right roller: scroll left/right | pushes: left roller Home, right roller End, left dial mute, right dial play/pause; the outer thumb keys repeat the thumb next to them. Over Bluetooth the computer has to forget and re-pair the keyboard before it scrolls |
 
 | Layer | How to get there | What's on it |
 | --- | --- | --- |
@@ -53,13 +66,6 @@ Every board deep-sleeps after an hour without a key (never on USB power); the
 next key wakes it (that key isn't typed) and it reconnects in a second or so.
 A nice!view stays on. The dongle never sleeps; its panel goes off after an
 hour idle.
-
-### Board extras
-
-| Board | Encoders (turn) | Extra keys |
-| --- | --- | --- |
-| Aurora Corne | left: volume; right: up/down (page up/down on Lower) | outer thumbs: mute (left), play/pause (right); outer columns, top to bottom: Tab, Esc (hold: Ctrl), Shift on the left, Del, ', Enter (hold: Shift) on the right |
-| Waterfowl | left roller: scroll up/down; left dial: volume; right dial: up/down (page up/down on Lower); right roller: scroll left/right | pushes: left roller Home, right roller End, left dial mute, right dial play/pause; the outer thumb keys repeat the thumb next to them. Over Bluetooth the computer has to forget and re-pair the keyboard before it scrolls |
 
 ## Flashing
 
