@@ -3,9 +3,10 @@
  *
  *   ┌──────────┐
  *   │    85%   │  this half's battery, big (the % half the size)
- *   │ L [████ ]│  and as a bar; just a big bolt on USB power
- *   │    60%   │  other half's battery, from the dongle (-- = unknown)
- *   │ R [███  ]│  (a big bolt while it is on USB power)
+ *   │ L [████ ]│  and as a bar; just a big bolt on USB power, or the
+ *   │    60%   │  dongle's estimate with a bolt flashing in place of the L
+ *   │ R [███  ]│  other half's battery, from the dongle (-- = unknown),
+ *                 the same while it is on USB power
  *   ├──────────┤
  *   │  ᛒ (2)   │  dongle's output: Bluetooth and its active profile
  *   └──────────┘  (filled = connected, dashed = paired, plain = free),
@@ -89,18 +90,21 @@ static void arc(lv_obj_t *canvas, int32_t x, int32_t y, int32_t r, int32_t start
     lv_canvas_finish_layer(canvas, &layer);
 }
 
-// One battery: the number big, then "L [bar]" under it.
+// One battery: the number big, then "L [bar]" under it. `estimate`: the
+// level is the dongle's estimate, so while charging it is shown, with the
+// bolt flashing in place of the label (not shown when `bolt_off`).
 static void battery(lv_obj_t *canvas, int32_t y, const char *label, uint8_t level,
-                    bool charging) {
+                    bool charging, bool estimate, bool bolt_off) {
     const bool known = level != HALF_STATUS_DRAW_UNKNOWN;
     if (known && level > 100) {
         level = 100;
     }
 
     const int32_t bar_y = y + BAR_Y;
-    text(canvas, 0, bar_y - 2, 14, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT, fg, label);
+    text(canvas, 0, bar_y - 2, 14, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT, fg,
+         charging && estimate ? (bolt_off ? "" : LV_SYMBOL_CHARGE) : label);
 
-    if (charging) {
+    if (charging && !estimate) {
         // On USB power the reading is the charger's voltage, not the battery's
         // (near 100 whatever the charge), so it isn't shown: a big bolt instead,
         // down across the bar's row.
@@ -192,10 +196,10 @@ void half_status_draw(lv_obj_t *canvas, const struct half_status_view *view, lv_
     bg = bg_color;
     lv_canvas_fill_bg(canvas, bg, LV_OPA_COVER);
 
-    battery(canvas, 0, "L", view->own_battery, view->charging);
+    battery(canvas, 0, "L", view->own_battery, view->charging, view->estimate, view->bolt_off);
     const bool other = view->linked && view->valid;
     battery(canvas, BATTERY_H, "R", other ? view->other_battery : HALF_STATUS_DRAW_UNKNOWN,
-            other && view->other_charging);
+            other && view->other_charging, other && view->other_estimate, view->bolt_off);
 
     rect(canvas, 0, DIVIDER_Y, W, 2, fg);
     output(canvas, view);

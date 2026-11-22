@@ -178,8 +178,8 @@ shows a small status screen in place of ZMK's stock picture
 
 | Part | Shows |
 | --- | --- |
-| Top: `L` | this half's battery, as a big number with a small `%` and a bar (100 a size smaller, to fit). On USB power just a big bolt: the reading is then the charger's voltage (near 100 whatever the charge), so unplug for a minute or so to see the real level |
-| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it. A big bolt in its place while the right half is on USB power: on its own the left half reads that from the right half as the dongle does (`src/dongle_half_info.c`); behind the dongle, the dongle passes it on (a dongle on older firmware never does) |
+| Top: `L` | this half's battery, as a big number with a small `%` and a bar (100 a size smaller, to fit). On USB power the reading is the charger's voltage (near 100 whatever the charge): behind the dongle, the dongle's estimate instead (see [Debug screen](#debug-screen)), with a bolt flashing slowly (a second on, a second off) in place of the `L`, kept after unplugging until the voltage has settled; on its own, or until the dongle has an estimate (up to a minute after plugging in), just a big bolt, so unplug for a minute or so to see the real level |
+| Middle: `R` | the right half's battery (`--` until it has been heard from): on its own the left half fetches it; behind the dongle, the dongle sends it. A big bolt in its place while the right half is on USB power: on its own the left half reads that from the right half as the dongle does (`src/dongle_half_info.c`); behind the dongle, the dongle passes it on (a dongle on older firmware never does), with its estimate of the level, shown as for `L` |
 | Bottom | the output (the keyboard's own, or the dongle's): the USB symbol, or Bluetooth and the active profile's number (filled circle: connected; dashed: paired, not connected; plain: not paired). ↻ while waiting for the dongle's first status, ✕ when this half isn't connected to the dongle |
 
 On its own the left half is the central and knows all of this itself. Behind

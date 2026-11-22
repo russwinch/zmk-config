@@ -29,6 +29,11 @@
 #define HALF_STATUS_OUTPUT_USB BIT(12)                // dongle is typing over USB
 #define HALF_STATUS_OTHER_CHARGING BIT(13)            // other half is on USB power (left 0 by
                                                       // dongles from before it: not charging)
+#define HALF_STATUS_OTHER_ESTIMATE BIT(14)            // the other half's battery is the dongle's estimate,
+                                                      // as it charges (src/dongle_half_drain.c)
+#define HALF_STATUS_OWN_ESTIMATE BIT(15)              // and this half's: in OWN_BATTERY (ZMK's own
+                                                      // reads high under the charger)
+#define HALF_STATUS_OWN_BATTERY_MASK GENMASK(23, 16)  // 0xFF = not known
 #define HALF_STATUS_OTHER_BATTERY_UNKNOWN 0xFF
 
 // param2

@@ -25,6 +25,10 @@ struct half_status_view {
     uint8_t other_battery; // right half, from the dongle
     bool charging;         // this half is on USB power
     bool other_charging;   // the right half is
+    bool estimate;         // own_battery is the dongle's estimate (ZMK's reads high under the
+                           // charger): shown, with a flashing bolt while charging, not just a bolt
+    bool other_estimate;   // and other_battery
+    bool bolt_off;         // those bolts are in the off half of their flash
     bool linked;           // this half is connected to the dongle
     bool valid;            // the dongle has sent its status since then
     bool usb;              // the dongle is typing over USB

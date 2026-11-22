@@ -63,6 +63,9 @@ struct remote_state {
     bool valid; // false until the dongle has sent something, and after a disconnect
     uint8_t other_battery;
     bool other_charging;
+    bool other_estimate;
+    bool own_estimate; // this half's level is the dongle's estimate, own_battery
+    uint8_t own_battery;
     uint8_t profile;
     bool usb;
     uint8_t connected; // bit per profile
@@ -124,6 +127,9 @@ static int half_status_pressed(struct zmk_behavior_binding *binding,
     next.valid = true;
     next.other_battery = FIELD_GET(HALF_STATUS_OTHER_BATTERY_MASK, binding->param1);
     next.other_charging = (binding->param1 & HALF_STATUS_OTHER_CHARGING) != 0;
+    next.other_estimate = (binding->param1 & HALF_STATUS_OTHER_ESTIMATE) != 0;
+    next.own_estimate = (binding->param1 & HALF_STATUS_OWN_ESTIMATE) != 0;
+    next.own_battery = FIELD_GET(HALF_STATUS_OWN_BATTERY_MASK, binding->param1);
     next.profile = FIELD_GET(HALF_STATUS_PROFILE_MASK, binding->param1);
     next.usb = (binding->param1 & HALF_STATUS_OUTPUT_USB) != 0;
     next.connected = FIELD_GET(HALF_STATUS_CONNECTED_MASK, binding->param2);
@@ -214,6 +220,11 @@ static lv_obj_t *panel_canvas;   // shown, rotated copy
 static struct half_status_view shown;
 static bool drawn;
 
+#define BOLT_FLASH_MS 1000 // an estimated level's bolt: on this long, then off as long
+static bool flash_off;
+static void flash_work_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(flash_work, flash_work_cb);
+
 static struct half_status_view current_view(void) {
     struct half_status_view v;
     memset(&v, 0, sizeof(v)); // padding too, for the memcmp in redraw()
@@ -249,6 +260,11 @@ static struct half_status_view current_view(void) {
     if (r.valid) {
         v.other_battery = r.other_battery;
         v.other_charging = r.other_charging;
+        v.other_estimate = r.other_estimate;
+        if (r.own_estimate) { // ZMK's own reads high under the charger
+            v.own_battery = r.own_battery;
+            v.estimate = true;
+        }
         v.usb = r.usb;
         v.profile = r.profile;
         v.profile_connected = (r.connected & BIT(r.profile)) != 0;
@@ -265,6 +281,13 @@ static void redraw(void) {
         return; // screen not built yet
     }
     struct half_status_view v = current_view();
+    // a bolt beside an estimated level flashes: drawn again for each change
+    if ((v.charging && v.estimate) || (v.other_charging && v.other_estimate)) {
+        v.bolt_off = flash_off;
+        k_work_schedule_for_queue(zmk_display_work_q(), &flash_work, K_MSEC(BOLT_FLASH_MS));
+    } else {
+        flash_off = false;
+    }
     if (drawn && memcmp(&v, &shown, sizeof(v)) == 0) {
         return; // nothing on screen would change
     }
@@ -284,6 +307,11 @@ static void redraw(void) {
 }
 
 static void redraw_work_cb(struct k_work *work) { redraw(); }
+
+static void flash_work_cb(struct k_work *work) {
+    flash_off = !flash_off;
+    redraw();
+}
 
 // Called by ZMK's display code (on the display thread) to build the screen.
 lv_obj_t *zmk_display_status_screen(void) {

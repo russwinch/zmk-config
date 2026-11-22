@@ -44,6 +44,18 @@ static uint8_t other_battery(uint8_t source) {
     return level;
 }
 
+// While a half charges (and until it has settled after), the dongle's
+// estimate of its level: `estimate` set, and the percent, or
+// HALF_STATUS_OTHER_BATTERY_UNKNOWN when not known.
+static uint8_t charge_estimate(uint8_t half, bool *estimate) {
+    *estimate = false;
+    uint8_t level = 0;
+#if IS_ENABLED(CONFIG_DONGLE_HALF_INFO) && IS_ENABLED(CONFIG_DONGLE_SCREEN_FX)
+    level = dongle_half_charge_estimate(half, estimate);
+#endif
+    return level ? level : HALF_STATUS_OTHER_BATTERY_UNKNOWN;
+}
+
 static bool other_charging(uint8_t source) {
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
     return dongle_half_charging(source ^ 1);
@@ -73,10 +85,17 @@ static void send_status(struct k_work *work) {
     const uint32_t param2 = profiles_param();
 
     for (uint8_t source = 0; source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; source++) {
+        bool other_estimate, own_estimate;
+        const uint8_t other_level = charge_estimate(source ^ 1, &other_estimate);
+        const uint8_t own_level = charge_estimate(source, &own_estimate);
         struct zmk_behavior_binding binding = {
             .behavior_dev = HALF_STATUS_BEHAVIOR_NAME,
-            .param1 = common | FIELD_PREP(HALF_STATUS_OTHER_BATTERY_MASK, other_battery(source)) |
-                      (other_charging(source) ? HALF_STATUS_OTHER_CHARGING : 0),
+            .param1 = common |
+                      FIELD_PREP(HALF_STATUS_OTHER_BATTERY_MASK,
+                                 other_estimate ? other_level : other_battery(source)) |
+                      (other_charging(source) ? HALF_STATUS_OTHER_CHARGING : 0) |
+                      (other_estimate ? HALF_STATUS_OTHER_ESTIMATE : 0) |
+                      (own_estimate ? HALF_STATUS_OWN_ESTIMATE | FIELD_PREP(HALF_STATUS_OWN_BATTERY_MASK, own_level) : 0),
             .param2 = param2,
         };
         struct zmk_behavior_binding_event event = {
