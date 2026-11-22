@@ -1646,19 +1646,18 @@ static uint8_t half_level(const struct fx_input *in, int half, bool *estimate) {
     return *estimate ? in->debug->battery_estimate[half] : in->status ? in->status->battery[half] : 0;
 }
 
-/* A little chart at (x, y), DBG_CHART_W across and 7 high, over a dim
- * line along its foot: each reading a dot `high` of 7 up (0: not known, no
- * dot) in `color[i]`, joined to the one before. */
+/* A little chart at (x, y), DBG_CHART_W across and 7 high, as Keys had
+ * them: each reading a column `high` of 7 up from a dim line along the foot
+ * (0: not known, nothing), dim topped in `color[i]`, or solid when that is
+ * amber or red, so the bad minutes stand out. */
 static void chart(uint8_t *fb, int x, int y, const uint8_t *high, const uint8_t *color) {
-    line(fb, x, y + 6, x + DBG_CHART_W - 1, y + 6, DBG_DIM);
     for (int i = 0; i < DBG_CHART_W; i++) {
-        if (high[i] == 0) {
-            continue;
+        const int h = high[i] > 7 ? 7 : high[i];
+        const bool trouble = color[i] == DBG_WARN || color[i] == DBG_BAD;
+        plot(fb, x + i, y + 6, DBG_DIM);
+        for (int up = 0; up < h; up++) {
+            plot(fb, x + i, y + 6 - up, trouble || up == h - 1 ? color[i] : DBG_DIM);
         }
-        const int at = y + 7 - (high[i] > 7 ? 7 : high[i]);
-        const int was = i && high[i - 1] ? y + 7 - (high[i - 1] > 7 ? 7 : high[i - 1]) : at;
-        line(fb, x + i, was < at ? was + 1 : was > at ? was - 1 : at, x + i, at, color[i]);
-        plot(fb, x + i, at, color[i]);
     }
 }
 
@@ -1672,11 +1671,11 @@ static void signal_chart(uint8_t *fb, int x, int y, const int8_t *log) {
         const int8_t worst = log[FX_CONN_HISTORY - DBG_CHART_W + i];
         if (worst == FX_SIGNAL_DOWN || worst == FX_CONN_USB) {
             high[i] = 7;
-            color[i] = worst == FX_CONN_USB ? DBG_GOOD : DBG_BAD;
+            color[i] = worst == FX_CONN_USB ? DBG_TEXT : DBG_BAD;
         } else if (worst < 0) {
             const int h = 1 + (worst + 95) * 6 / 55;
             high[i] = (uint8_t)(h < 1 ? 1 : h > 7 ? 7 : h);
-            color[i] = worst > SIGNAL_GOOD_DBM ? DBG_GOOD : worst > SIGNAL_WARN_DBM ? DBG_WARN : DBG_BAD;
+            color[i] = worst > SIGNAL_GOOD_DBM ? DBG_TEXT : worst > SIGNAL_WARN_DBM ? DBG_WARN : DBG_BAD;
         } else {
             high[i] = 0;
             color[i] = DBG_DIM;
