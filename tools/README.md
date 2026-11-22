@@ -37,3 +37,10 @@ tools/fx_preview.py --contrast        # each theme's contrast ratios, low ones f
 
 Draws the left half's nice!view screen for a few made-up states, into
 `half_status_preview_out/half_status.png` (needs gcc, git and Pillow).
+
+## boards.py
+
+Draws each keyboard to scale, from the measurements it keeps of its makers'
+CAD files, into `docs/boards/` for the README (no packages needed).
+`--header` also writes `src/screen_fx/boards.h`, the same shapes for the
+dongle's Keys screen.
