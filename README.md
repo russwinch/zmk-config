@@ -480,7 +480,7 @@ The link rows' columns:
 | `V` | the half's battery in volts, to the millivolt (`3.912`), the average of ZMK's last 16 readings (a minute apart), sent when it moves by 1 mV (dim while charging: it is the charger's then; `--` for a half whose firmware doesn't send it). On `H`, the dongle's own supply, its 3.3 V regulator's output (the USB 5 V is only detected: nothing on the board can measure it) |
 | `DR` | times the link has dropped since the dongle started |
 | `RS` | Bluetooth's reason for the last drop, in hex: `08` the other end went silent (out of range, flat battery, switched off), `13` the other end closed it, `16` the dongle closed it, `3E` it never got going |
-| `CH` | for a half (blank on `H`), where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows in place of the level while it is plugged in, and its volts come; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
+| `CH` | for a half (blank on `H`), where the dongle has got with its charging state (`src/dongle_half_info.c`): `OK` (green) subscribed, so a bolt shows in place of the level while it is plugged in, and its volts come; while it is on USB power, for a half that reads its charger's status pin (the Forager: P0.17, `CONFIG_HALF_CHARGER_STATUS_PIN`), that pin as read instead, `LO` or `HI` (also green): reportedly low while charging, so `HI` means its charger has finished and the estimate shows 100; on the way, in amber, `WT` waiting for ZMK to finish setting the link up, `Q1` queued behind the other half or waiting to try again, `R1` reading, `S1` subscribing (the figure is the try); `NF` the half's firmware doesn't have it; in red `E` and the last error in hex (an ATT error code, or from `80` a Zephyr errno plus `80`) after 5 tries, or `TO` a request with no answer in 10 s, left until the half next connects |
 | `KEY` | key presses from that half since the dongle started; on `H`, both halves together. Shortened past 999: `1.2K`, `12K`, `1.2M` |
 
 The `mW` figures are each half's average draw, to compare boards and
@@ -521,7 +521,12 @@ until it is unplugged, as a half can't say when its charger has finished.
 After unplugging the estimate stays as it was until the voltage has settled
 (as for the draw), then ZMK's level is right again; plugged in again before
 that, it carries on from there. When nothing was heard from the half before
-it was plugged in (the dongle started while it charged) it is `--`.
+it was plugged in (the dongle started while it charged) it is `--`. A half
+whose charger says it has finished (the Forager, whose half reads the
+charger's status pin while on USB power, every 30 seconds, and leaves it
+unconnected off it, as reading it then reportedly costs about 400 µA) is at
+100, known or not, and stays there after unplugging until the voltage has
+settled.
 
 Key timings are taken when an event reaches the
 dongle, and a half sends at most once per connection interval, so a bounce

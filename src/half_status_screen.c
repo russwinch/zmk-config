@@ -281,8 +281,9 @@ static void redraw(void) {
         return; // screen not built yet
     }
     struct half_status_view v = current_view();
-    // a bolt beside an estimated level flashes: drawn again for each change
-    if ((v.charging && v.estimate) || (v.other_charging && v.other_estimate)) {
+    // a bolt beside an estimated level flashes until 100: drawn again for each change
+    if ((v.charging && v.estimate && v.own_battery < 100) ||
+        (v.other_charging && v.other_estimate && v.other_battery < 100)) {
         v.bolt_off = flash_off;
         k_work_schedule_for_queue(zmk_display_work_q(), &flash_work, K_MSEC(BOLT_FLASH_MS));
     } else {

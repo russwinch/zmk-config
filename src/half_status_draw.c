@@ -92,7 +92,7 @@ static void arc(lv_obj_t *canvas, int32_t x, int32_t y, int32_t r, int32_t start
 
 // One battery: the number big, then "L [bar]" under it. `estimate`: the
 // level is the dongle's estimate, so while charging it is shown, with the
-// bolt flashing in place of the label (not shown when `bolt_off`).
+// bolt in place of the label, flashing (not shown when `bolt_off`) until 100.
 static void battery(lv_obj_t *canvas, int32_t y, const char *label, uint8_t level,
                     bool charging, bool estimate, bool bolt_off) {
     const bool known = level != HALF_STATUS_DRAW_UNKNOWN;
@@ -102,7 +102,7 @@ static void battery(lv_obj_t *canvas, int32_t y, const char *label, uint8_t leve
 
     const int32_t bar_y = y + BAR_Y;
     text(canvas, 0, bar_y - 2, 14, &lv_font_montserrat_16, LV_TEXT_ALIGN_LEFT, fg,
-         charging && estimate ? (bolt_off ? "" : LV_SYMBOL_CHARGE) : label);
+         charging && estimate ? (bolt_off && level < 100 ? "" : LV_SYMBOL_CHARGE) : label);
 
     if (charging && !estimate) {
         // On USB power the reading is the charger's voltage, not the battery's

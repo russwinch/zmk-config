@@ -34,7 +34,9 @@
  * charger has finished. Once unplugged the estimate stays as it was until
  * the voltage has settled, then ZMK's level is right again. Plugged in again
  * before then, it carries on from there. Nothing heard before it was plugged
- * in (the dongle started while it charged): not known.
+ * in (the dongle started while it charged): not known. A half whose
+ * charger says it has finished (its status pin high, the Forager's) is at
+ * 100, known or not.
  */
 
 #include <zephyr/kernel.h>
@@ -106,6 +108,7 @@ static bool estimating[2];     // from plugging in until the voltage has settled
 static uint8_t start_level[2]; // the level it started charging from; 0 not known
 static uint32_t plugged_ms[2]; // uptime then
 static uint8_t held_level[2];  // and once unplugged, the estimate then
+static bool finished[2];       // its charger said it had finished, at the last reading while charging
 
 // The level after charging from `from` for `ms`.
 static uint8_t charged_level(uint8_t from, uint32_t ms) {
@@ -121,6 +124,9 @@ static uint8_t charged_level(uint8_t from, uint32_t ms) {
 static uint8_t estimate_now(int half, uint32_t now) {
     if (!was_charging[half]) {
         return held_level[half];
+    }
+    if (dongle_half_charger_pin(half) == 1) {
+        return 100; // its charger has finished
     }
     return start_level[half] ? charged_level(start_level[half], now - plugged_ms[half]) : 0;
 }
@@ -146,13 +152,14 @@ static void sample_cb(struct k_work *work) {
                 estimating[half] = true;
             }
             if (charging) {
+                finished[half] = dongle_half_charger_pin(half) == 1;
                 fits[half] = (struct fit){0}; // starts again once unplugged
                 was_charging[half] = true;
                 K_SPINLOCK_BREAK;
             }
             if (was_charging[half] && mv != 0) {
                 // unplugged (heard as a voltage with no charging)
-                held_level[half] = estimate_now(half, now);
+                held_level[half] = finished[half] ? 100 : estimate_now(half, now);
                 was_charging[half] = false;
                 settling[half] = true;
             }

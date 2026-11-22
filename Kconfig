@@ -97,6 +97,18 @@ config HALF_CHARGING_STATUS
       and its Identifier field to the battery's millivolts, for the
       dongle's figure of the half's draw.
 
+config HALF_CHARGER_STATUS_PIN
+    int "The charger's status output, a gpio0 pin, or -1 for none"
+    default -1
+    help
+      A half that is a peripheral reads it while on USB power and sends it
+      to the dongle with its charging state (src/half_charging.c), so the
+      dongle can show the level at 100 once the charger has finished. Off
+      USB power the pin is left unconnected (read then, it reportedly costs
+      about 400 uA). Set per keyboard in config/<keyboard>.conf: the
+      Forager's XIAO nRF52840 has its BQ25101's CHG on P0.17. Defined for
+      every build, so that setting it there is never an error.
+
 config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power"
     default y

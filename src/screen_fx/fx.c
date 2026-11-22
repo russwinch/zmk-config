@@ -1662,7 +1662,8 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
     count_text(buf, sizeof(buf), presses);
     put_right(fb, DBG_COL_PRESSES, y, buf, presses ? DBG_TEXT : DBG_LABEL);
     /* a half's charging state: where the dongle has got with it (see
-     * dongle_half_info_progress): OK green, WT/Q/R/S on the way in amber,
+     * dongle_half_info_progress): OK green (or, on USB power, the charger's
+     * status pin as read, LO or HI), WT/Q/R/S on the way in amber,
      * NF (firmware without it) dim, E and its error or TO in red */
     if (reads && reads[0]) {
         const bool bad = reads[0] == 'E' || reads[0] == 'T';
@@ -1672,7 +1673,10 @@ static void debug_link(uint8_t *fb, int y, char name, const struct fx_link *link
             snprintf(buf, sizeof(buf), "%s", reads);
         }
         put_right(fb, DBG_COL_CHARGE, y, buf,
-                  bad ? DBG_BAD : reads[0] == 'O' ? DBG_GOOD : reads[0] == 'N' ? DBG_LABEL : DBG_WARN);
+                  bad                                                       ? DBG_BAD
+                  : reads[0] == 'O' || reads[0] == 'L' || reads[0] == 'H' ? DBG_GOOD
+                  : reads[0] == 'N'                                       ? DBG_LABEL
+                                                                          : DBG_WARN);
     }
 }
 

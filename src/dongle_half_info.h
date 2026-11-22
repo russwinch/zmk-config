@@ -13,6 +13,12 @@ bool dongle_half_charging(int half);
 // before it sent them.
 uint16_t dongle_half_millivolts(int half);
 
+// The level of the half's charger's status pin while it is on USB power, as
+// last heard: 0 low, 1 high, -1 not known (off USB power, no such pin, or
+// firmware before it). On the Forager, reportedly low while charging, so
+// high once its charger has finished.
+int dongle_half_charger_pin(int half);
+
 // The half's average draw in hundredths of a milliwatt, from its voltage since it
 // was last unplugged (or the dongle started), or -1 until there is enough
 // of it; `rough` while it may still be well out (or settling after unplugging).
@@ -32,6 +38,7 @@ uint8_t dongle_half_charge_estimate(int half, bool *estimate);
 //   Q1  queued (behind the other half, or waiting to retry), and the try
 //   R1  the read is out; S1 the subscription is out
 //   OK  subscribed: the half says when it changes
+//   LO  the same, and its charger's status pin reads low (HI high), on USB
 //   NF  the half has no such characteristic (firmware before it)
 //   E   gave up after a few tries: `err` says why
 //   TO  a request had no answer in 10 s: left alone until it reconnects
