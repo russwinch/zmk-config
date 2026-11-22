@@ -54,6 +54,30 @@ number>`, and that it is a prerelease if it is a branch build), which devices
 need it (a keymap or dongle-screen change only needs the central: the dongle,
 or the left half without one) and whether a settings reset is needed.
 
+### Settings-reset tags
+
+From now on, when a commit needs a settings reset, tag it so the app turns its
+reset on by itself (README, Flashing): a plain tag (not `git tag -a`, which
+the app ignores) named `settings-reset/<why>`, `<why>` a few words joined by
+hyphens that the app shows ("dongle-central", "more-bt-profiles"):
+
+    git tag settings-reset/<why> <commit> && git push origin settings-reset/<why>
+
+- A reset is needed when what a device keeps in flash no longer fits the new
+  firmware: its split role changes (central to peripheral or back, e.g.
+  moving to or from the dongle), a half or device is added to or removed from
+  the split, a peripheral's identity or the BLE pairing/bonding settings
+  change (`CONFIG_ZMK_SPLIT_BLE_*`, `CONFIG_BT_MAX_PAIRED`,
+  `CONFIG_BT_MAX_CONN`, `CONFIG_ZMK_BLE_*` profiles), or the halves no longer
+  pair. A keymap, behaviour or screen change does not.
+- Tag the commit that makes the change, once it is pushed; every later build
+  contains it. Only rebasing changes it: if the tagged commit gets rebased
+  before reaching `main`, move the tag to the new one (`git tag -f`, then
+  `git push -f origin settings-reset/<why>`).
+- Pushing a tag builds nothing (`build.yml` only builds branches).
+- Still say in the flashing summary that a reset is needed, and that the app
+  will have switched it on.
+
 ### With `tools/flash.py`
 
 Only when the user asks for it, and only possible when Claude runs on the

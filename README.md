@@ -113,6 +113,18 @@ downloads the one chosen. The firmware here includes its
 module (`config/west.yml`, `config/default.overlay`) so the app can identify
 each device and start its bootloader over USB.
 
+A change that needs a settings reset has its commit tagged
+`settings-reset/<why>` (a plain tag, not `git tag -a`):
+
+```sh
+git tag settings-reset/dongle-central <commit>
+git push origin settings-reset/dongle-central
+```
+
+Keyboard Writer then turns on its reset for every build with that commit in
+its history, until each device has had one on that Mac. Pushing a tag doesn't
+start a build.
+
 `tools/flash.py` does the copying from a terminal: it waits for each bootloader drive
 and copies the right file, in order, so you only double-tap reset. It needs
 Python 3.9+ and nothing else.
