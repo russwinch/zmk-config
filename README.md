@@ -108,7 +108,16 @@ A keymap or screen change only needs the dongle flashed. If a half stops
 sending keys after connecting, reset it
 ([zmk#3156](https://github.com/zmkfirmware/zmk/issues/3156)).
 
-The dongle's screens: [`src/screen_fx/README.md`](src/screen_fx/README.md).
+The dongle's screens, as this commit draws them (redrawn by the "Draw screens"
+workflow); what each shows: [`src/screen_fx/README.md`](src/screen_fx/README.md).
+
+| <img src="docs/screens/1_debug.png" width="260" alt="Debug"> | <img src="docs/screens/2_status.png" width="260" alt="Status"> | <img src="docs/screens/3_keys.png" width="260" alt="Keys"> |
+| :---: | :---: | :---: |
+| Debug | Status | Keys |
+| <img src="docs/screens/4_thermal.png" width="260" alt="Thermal"> | <img src="docs/screens/5_tracker.png" width="260" alt="Tracker"> | <img src="docs/screens/6_terminal.png" width="260" alt="Terminal"> |
+| Thermal | Tracker | Terminal |
+| <img src="docs/screens/7_warp.png" width="260" alt="Warp"> | <img src="docs/screens/8_code.png" width="260" alt="Code"> | <img src="docs/screens/9_life.png" width="260" alt="Life"> |
+| Warp (screensaver) | Code (screensaver) | Life (screensaver) |
 
 ### The left half's nice!view
 
