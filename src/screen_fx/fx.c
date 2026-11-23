@@ -1466,13 +1466,14 @@ static void put_right(uint8_t *fb, int right, int y, const char *s, uint8_t colo
 
 /*
  * How a link's signal is coloured, on the Debug and Keys screens. The
- * nRF52840 still hears a packet at about -95 dBm (1M PHY), so green is
- * anything with 20 dB or more in hand, plenty for a hand or a body passing
- * through the path; amber still works but has less to spare; red is within
- * 10 dB, where a dip loses packets (sent again, so later) and then the link.
+ * nRF52840 still hears a packet at about -95 dBm (1M PHY). Across a desk
+ * -50 to -80 is usual and loses nothing, so that is green; amber, within
+ * 10 dB, is where a hand or a body in the way starts to cost packets (sent
+ * again, so later): worth moving the dongle; red, within 5 dB, is where
+ * the link drops.
  */
-#define SIGNAL_GOOD_DBM -75 /* above it: green */
-#define SIGNAL_WARN_DBM -85 /* above it: amber; red at and below */
+#define SIGNAL_GOOD_DBM -85 /* above it: green */
+#define SIGNAL_WARN_DBM -90 /* above it: amber; red at and below */
 
 static uint8_t signal_color(const struct fx_link *link) {
     return link->rssi > SIGNAL_GOOD_DBM ? DBG_GOOD : link->rssi > SIGNAL_WARN_DBM ? DBG_WARN : DBG_BAD;
@@ -2443,7 +2444,7 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
             const float turned = encoder >= 0 ? knob_shown[encoder] : 0;
             /* a rib every 3 pixels, stepping one along for each 10 degrees
              * the mark turns: three steps to come round, so the way it rolls shows */
-            const int step = (int)floorf((right ? -turned : turned) / 10);
+            const int step = (int)floorf(turned / 10); /* the same way on both halves, as on the board */
             const int phase = (step % 3 + 3) % 3;
             for (int rib = phase; rib < wide; rib += 3) {
                 line(fb, x + rib, y + 1, x + rib, y + high - 2,
