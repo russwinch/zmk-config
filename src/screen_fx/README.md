@@ -60,7 +60,7 @@ They are one line each in `colors.h`.
 | --- | --- |
 | lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
 | under them | the typing speed, big |
-| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them, the Waterfowl's rollers rolling sideways |
+| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer; all of a half red while it isn't connected. Encoders are knobs that turn with them, the Waterfowl's rollers rolling sideways |
 | bottom left, bottom right | each half's battery, its signal's bars (green, amber, red) beside it |
 | bottom middle | the waves and the profile number (green when connected, white when paired, dim when free) or `USB` (green: listening, amber: computer asleep); after you switch profile, the new one flashes here for 3 s, even over USB |
 
@@ -90,7 +90,7 @@ speed is on Typist, the battery levels on Typist and Status.
 | `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
 | `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
 | last line | the last key, keycode or encoder event, with the ms since the one before |
-| key map | every key, lit while held. A key that doesn't light isn't reaching the dongle |
+| key map | every key, lit while held; all of a half red while it isn't connected. A key that doesn't light isn't reaching the dongle |
 
 | Row | Shows |
 | --- | --- |

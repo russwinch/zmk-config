@@ -1584,6 +1584,9 @@ static void board_fade(const struct fx_input *in) {
     }
 }
 
+/* Whether a half isn't connected: its keys, knobs and rollers then all red. */
+static bool half_down(const struct fx_debug *d, int half) { return !d->half[half].up; }
+
 /* A key's colour: white held (orange holding a modifier, violet a layer), glowing after. */
 static uint8_t key_color(const struct fx_debug *d, int key) {
     const uint64_t bit = 1ull << key;
@@ -1602,8 +1605,13 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
         const int kx = left + col * pitch + (col >= board_cols / 2 ? split : 0), ky = top + row * (high + gap);
         const uint64_t bit = 1ull << key;
         const bool held = (d->held & bit) != 0;
-        const uint8_t color = key_color(d, key);
+        const bool down = half_down(d, col >= board_cols / 2);
+        const uint8_t color = down ? DBG_BAD : key_color(d, key);
         const int encoder = key_encoder(key);
+        if (down && encoder >= 0) {
+            knob(fb, kx, ky, pitch - gap, high, DBG_BG, DBG_BAD, DBG_BAD, knob_shown[encoder]);
+            continue;
+        }
         if (encoder >= 0) {
             const int heat = knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
             knob(fb, kx, ky, pitch - gap, high, held || debug_heat[key] ? color : DBG_BG,
@@ -2428,12 +2436,17 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
     for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
         const struct fx_part *p = &shape->keys[key];
         const bool right = p->kind & FX_PART_RIGHT;
-        const uint8_t color = key_color(d, key);
+        const bool down = half_down(d, right);
+        const uint8_t color = down ? DBG_BAD : key_color(d, key);
         const bool held = (d->held >> key) & 1;
         const int encoder = key_encoder(key);
         const int kind = p->kind & FX_PART_KIND;
         int x, y, wide, high;
         part_rect(v, kind == FX_PART_KEY ? &g : NULL, p, &x, &y, &wide, &high);
+        if (kind == FX_PART_DIAL && down) {
+            knob(fb, x, y, wide, wide, DBG_BG, DBG_BAD, DBG_BAD, encoder >= 0 ? knob_shown[encoder] : 0);
+            continue;
+        }
         if (kind == FX_PART_DIAL) {
             const int heat = encoder >= 0 && knob_heat[encoder] > debug_heat[key] ? knob_heat[encoder] : debug_heat[key];
             knob(fb, x, y, wide, wide,

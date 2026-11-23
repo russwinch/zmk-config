@@ -16,7 +16,7 @@
  * So is the status: the left half full and the right one flat, on Bluetooth
  * profile 1 with the computer connected, profile 2 from 30% of the way
  * through, then (from 55%) not connected, then (from 80%) over USB, and
- * there profile 3 from 88%.
+ * there profile 3 from 88%; the right half not connected from 92%.
  *
  *   main saver <animation showing> <screensaver animation> <frames per second>
  *
@@ -341,6 +341,9 @@ int main(int argc, char **argv) {
                                     (int)(f * 1000 / fps) % 1000 >= 600;
         }
         status.profile_connected = at >= 0.8f && at < 0.88f;
+        /* and from 92% the right half not connected */
+        status.half_connected[1] = at < 0.92f;
+        debug.half[1].up = status.half_connected[1];
         status.profile = at < 0.3f ? 1 : at < 0.88f ? 2 : 3;
         const bool plain = fx_is_debug(fx) || fx_shows_keys(fx);
         if (!plain) {
