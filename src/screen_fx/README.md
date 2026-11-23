@@ -83,9 +83,9 @@ speed and battery levels are on Typist and Status.
 
 | Line | Shows |
 | --- | --- |
-| `B149 1:12:51 ACT 15FPS` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; this screen's frames a second |
-| `RESET SOFT  BOUNCE 18MS` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`, or `HANG`/`CRASH` with a code and address); the quickest any key has come back down, red under 30 ms: a bouncing switch |
-| `LEFT`, `DONGLE`, `RIGHT` | a column each, red when its link is down (the dongle's is to the computer): rows below |
+| `B149 1:12:51 ACT 40ms` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; how long this screen takes to draw a frame |
+| `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, red under 30 ms: a bouncing switch |
+| `LEFT`, the keyboard's name, `RIGHT` | a column each for the halves and the dongle, red when its link is down (the dongle's is to the computer): rows below |
 | profiles, `USB` | the five profiles (filled: connected, ring: paired, dot: free; the one in use underlined); USB `--`, `PWR` or `HID` |
 | `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
 | `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
@@ -97,10 +97,11 @@ speed and battery levels are on Typist and Status.
 | `dBm` | signal: green above -75, amber to -85, red below (packets start going missing). `E` and a code when the radio wouldn't say; `USB` while typing over it |
 | chart under `dBm` | the signal's last 30 minutes, a column a minute (the weakest in it): weak minutes solid amber or red, a full red column where the link was down, full over USB, nothing while idle |
 | `DROPS` | times the link was lost since the dongle started, then why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
+| `%` | the battery's level: amber at 15 or under, red at 10; the dongle's estimate with a `~` while charging (ZMK's reads high), a bolt while on USB power |
 | `V` | the battery's volts, to the millivolt (dim while charging: the charger's); the dongle's own 3.3 V supply |
 | chart under `V` | the last 30 minutes of them, a column a minute, scaled to fit (at least 60 mV top to bottom) |
-| `CHG` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q`, `R`, `S` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO`. A bolt while on USB power. For the dongle, its temperature |
 | `mW` | each half's average draw (`~` while still rough) |
+| `CHG` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q`, `R`, `S` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO`. For the dongle, its temperature |
 
 The draw (mW) is coloured by how long a full battery would last: green four
 weeks or more, plain a week or more, amber under a week, red under two days.
