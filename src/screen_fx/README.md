@@ -62,7 +62,7 @@ They are one line each in `colors.h`.
 | under them | the typing speed, big |
 | the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer. Encoders are knobs that turn with them, the Waterfowl's rollers rolling sideways |
 | bottom left, bottom right | each half's battery, its signal's bars (green, amber, red) beside it |
-| bottom middle | `BT`+profile (green when connected) or `USB` (green: listening, amber: computer asleep); after you switch profile, the new one flashes here for 3 s, even over USB |
+| bottom middle | the waves and the profile number (green when connected, white when paired, dim when free) or `USB` (green: listening, amber: computer asleep); after you switch profile, the new one flashes here for 3 s, even over USB |
 
 ## Status
 
@@ -70,7 +70,7 @@ Laid out like a racing car's steering wheel display.
 
 | Part | Shows |
 | --- | --- |
-| signals along the top | each link's dBm (`--` in red when down); in the middle `BT`+profile (green when connected) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
+| signals along the top | each link's dBm (`--` in red when down); in the middle the waves and the profile number (coloured as on Typist) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
 | connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | the keys | as they are on the board, lit as on Typist |
 | over the right battery | only if something has gone wrong, worst on the right: `HANG` or `CRSH` (the dongle restarted), `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken, `DR` links dropped, the dongle's temperature from 60 °C |

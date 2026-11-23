@@ -1753,21 +1753,20 @@ static void waves(uint8_t *fb, int x, int y, uint8_t color) {
     }
 }
 
-static bool profile_flash(const struct fx_input *in, char *buf, size_t size, uint8_t *color);
+static bool profile_flash(const struct fx_input *in, bool *off);
 
-/* The Bluetooth profile in use, from (x, y): the waves and its number, green
- * when its computer is connected, dim when nothing is paired on it;
- * flashing for a moment when it has just been picked. */
+/* The Bluetooth profile in use, from (x, y), PROFILE_MARK_W across: the
+ * waves and its number, green when its computer is connected, dim when
+ * nothing is paired on it; flashing for a moment when it has just been
+ * picked. */
+#define PROFILE_MARK_W 13
 static void profile_mark(uint8_t *fb, const struct fx_input *in, int x, int y) {
-    if (in->status == NULL) {
+    bool off;
+    if (in->status == NULL || (profile_flash(in, &off) && off)) {
         return;
     }
-    char buf[8];
-    uint8_t color;
-    if (profile_flash(in, buf, sizeof(buf), &color) && !buf[0]) {
-        return; /* the off part of the flash */
-    }
-    color = in->status->profile_connected ? DBG_GOOD : in->status->host_open ? DBG_LABEL : DBG_TEXT;
+    char buf[4];
+    const uint8_t color = in->status->profile_connected ? DBG_GOOD : in->status->host_open ? DBG_LABEL : DBG_TEXT;
     waves(fb, x, y + 1, color);
     snprintf(buf, sizeof(buf), "%u", in->status->profile);
     put(fb, x + 9, y, buf, color);
@@ -2520,18 +2519,13 @@ static void profile_track(const struct fx_input *in) {
     profile_seen = in->status->profile;
 }
 
-/* Whether the output's place shows the profile just picked: then into buf
- * "BT" and its number, or "" in the off part of the flash, and its colour. */
-static bool profile_flash(const struct fx_input *in, char *buf, size_t size, uint8_t *color) {
+/* Whether the profile has just been picked, and so flashes where the
+ * output is shown (even over USB); `off` in the off part of the flash. */
+static bool profile_flash(const struct fx_input *in, bool *off) {
     if (in->status == NULL || profile_since >= PROFILE_SHOWN) {
         return false;
     }
-    if ((int)profile_since % PROFILE_FLASH < PROFILE_FLASH * 2 / 3) {
-        snprintf(buf, size, "BT%u", in->status->profile);
-    } else {
-        buf[0] = '\0';
-    }
-    *color = in->status->profile_connected ? DBG_GOOD : DBG_TEXT;
+    *off = (int)profile_since % PROFILE_FLASH >= PROFILE_FLASH * 2 / 3;
     return true;
 }
 
@@ -2570,14 +2564,11 @@ static void typist_foot(uint8_t *fb, const struct fx_input *in) {
         }
         signal_bars(fb, half ? x - 4 - 7 : x + wide + 4, y + 7, &d->half[half]);
     }
-    uint8_t flash_color;
-    if (profile_flash(in, buf, sizeof(buf), &flash_color)) {
-        put(fb, (FX_W - 14) / 2, y + 7, buf, flash_color);
-    } else if (in->status && in->status->usb) {
+    bool off;
+    if (in->status && in->status->usb && !profile_flash(in, &off)) {
         put(fb, (FX_W - 14) / 2, y + 7, "USB", d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
     } else {
-        snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-        put(fb, (FX_W - 14) / 2, y + 7, buf, d->host.up ? DBG_GOOD : DBG_LABEL);
+        profile_mark(fb, in, (FX_W - PROFILE_MARK_W) / 2, y + 7);
     }
 }
 
@@ -2615,8 +2606,8 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * board big in the middle. Top to bottom:
  *
  *   each link's latest dBm, the halves' over their batteries and the
- *   computer's between after the output, BT and the profile (over USB,
- *   USB in its place, and no strip); under each a strip of
+ *   computer's between after the profile in use, its waves and number
+ *   (over USB, USB in its place, and no strip); under each a strip of
  *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: green, amber
  *   or red by the weakest signal in it, red where the link was down, a dim
  *   line where the keyboard was idle (so the halves may have been asleep);
@@ -2743,35 +2734,29 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     shape_board(fb, in, &v, false);
 
     /* each link's latest dBm, and under it its connection strip; in the
-     * middle the output before the computer's: the profile picked flashing
-     * for a moment, then BT and its profile, or USB */
-    uint8_t flash_color;
-    char flash[8];
-    const bool flashing = profile_flash(in, flash, sizeof(flash), &flash_color);
+     * middle the profile in use before the computer's, or USB (the profile
+     * flashing there for a moment after a switch) */
+    bool off;
+    const bool flashing = profile_flash(in, &off);
     const struct fx_link *links[3] = {&d->half[0], &d->half[1], &d->host};
     for (int link = 0; link < 3; link++) {
         const int mid = keys_block_x(link == 2 ? 1 : link * 2) + SIGNAL_W / 2;
-        if (link == 2) {
-            const char *out = flash;
-            uint8_t out_color = flash_color;
-            if (!flashing && usb_out) {
-                out = "USB";
-                out_color = d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD;
-            } else if (!flashing) {
-                snprintf(flash, sizeof(flash), "BT%u", in->status ? in->status->profile : 0);
-                out_color = d->host.up ? DBG_GOOD : DBG_TEXT;
+        if (link == 2 && usb_out) {
+            if (flashing) {
+                profile_mark(fb, in, mid - PROFILE_MARK_W / 2, STATUS_SIGNAL_Y);
+            } else {
+                put(fb, mid - 7, STATUS_SIGNAL_Y, "USB",
+                    d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
             }
-            if (usb_out) {
-                put(fb, mid - 7, STATUS_SIGNAL_Y, out, out_color);
-                continue;
-            }
-            /* over Bluetooth: the output, then the dBm without its unit (7 across) */
-            put(fb, mid - 17, STATUS_SIGNAL_Y, out, out_color);
+        } else if (link == 2) {
+            /* the mark, then the dBm without its unit (14 across) */
+            const int left = mid - (PROFILE_MARK_W + 4 + 14) / 2;
+            profile_mark(fb, in, left, STATUS_SIGNAL_Y);
             if (!links[link]->up) {
-                put(fb, mid + 3, STATUS_SIGNAL_Y, "--", DBG_BAD);
+                put(fb, left + PROFILE_MARK_W + 4, STATUS_SIGNAL_Y, "--", DBG_BAD);
             } else if (links[link]->rssi_known) {
                 snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
-                put(fb, mid + 3, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
+                put(fb, left + PROFILE_MARK_W + 4, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
             }
         } else if (!links[link]->up) {
             put(fb, mid - 5, STATUS_SIGNAL_Y, "--", DBG_BAD);
