@@ -2370,6 +2370,41 @@ static int keys_block_x(int place) {
 
 static void put_big(uint8_t *fb, int x, int y, const char *s, uint8_t color, int scale);
 
+/* A change of Bluetooth profile, for the screens that show the output as
+ * text: for PROFILE_SHOWN 30ths of a second after it, the new profile
+ * flashes in the output's place, even over USB. Timed in fx_frame. */
+#define PROFILE_SHOWN 90
+#define PROFILE_FLASH 15 /* on two thirds of this, off the rest */
+static int profile_seen = -1;
+static float profile_since = PROFILE_SHOWN;
+
+static void profile_track(const struct fx_input *in) {
+    if (in->status == NULL) {
+        return;
+    }
+    if (profile_seen >= 0 && in->status->profile != profile_seen) {
+        profile_since = 0;
+    } else if (profile_since < PROFILE_SHOWN) {
+        profile_since += in->step;
+    }
+    profile_seen = in->status->profile;
+}
+
+/* Whether the output's place shows the profile just picked: then into buf
+ * "BT" and its number, or "" in the off part of the flash, and its colour. */
+static bool profile_flash(const struct fx_input *in, char *buf, size_t size, uint8_t *color) {
+    if (in->status == NULL || profile_since >= PROFILE_SHOWN) {
+        return false;
+    }
+    if ((int)profile_since % PROFILE_FLASH < PROFILE_FLASH * 2 / 3) {
+        snprintf(buf, size, "BT%u", in->status->profile);
+    } else {
+        buf[0] = '\0';
+    }
+    *color = in->status->profile_connected ? DBG_GOOD : DBG_TEXT;
+    return true;
+}
+
 /* Along the foot: each half's level, big, in its corner (a bolt over its %
  * while on USB power) with its signal's bars beside it, the output small
  * between them. */
@@ -2405,7 +2440,10 @@ static void typist_foot(uint8_t *fb, const struct fx_input *in) {
         }
         signal_bars(fb, half ? x - 4 - 7 : x + wide + 4, y + 7, &d->half[half]);
     }
-    if (in->status && in->status->usb) {
+    uint8_t flash_color;
+    if (profile_flash(in, buf, sizeof(buf), &flash_color)) {
+        put(fb, (FX_W - 14) / 2, y + 7, buf, flash_color);
+    } else if (in->status && in->status->usb) {
         put(fb, (FX_W - 14) / 2, y + 7, "USB", d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
     } else {
         snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
@@ -2447,7 +2485,8 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  * and graphs rather than columns of numbers. Top to bottom:
  *
  *   each link's latest dBm, the halves' over their batteries and the
- *   computer's between (over USB, USB in its place); under each a strip of
+ *   computer's between (over USB, USB in its place, and no strip); under
+ *   each a strip of
  *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: green, amber
  *   or red by the weakest signal in it, red where the link was down, a dim
  *   line where the keyboard was idle (so the halves may have been asleep);
@@ -2627,7 +2666,12 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
      * then the worst trouble there is, if any; in from the sides, clear of
      * the panel's rounded corners */
     int x = 6;
-    if (usb_out) {
+    uint8_t flash_color;
+    char flash[8];
+    const bool flashing = profile_flash(in, flash, sizeof(flash), &flash_color);
+    if (flashing) {
+        status_box(fb, x, STATUS_BOX_Y, 19, flash, flash_color, DBG_BG);
+    } else if (usb_out) {
         status_box(fb, x, STATUS_BOX_Y, 19, "USB", in->status->host_connected ? DBG_GOOD : DBG_WARN, DBG_BG);
     } else {
         snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
@@ -2680,7 +2724,9 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const struct fx_link *links[3] = {&d->half[0], &d->half[1], &d->host};
     for (int link = 0; link < 3; link++) {
         const int mid = keys_block_x(link == 2 ? 1 : link * 2) + SIGNAL_W / 2;
-        if (link == 2 && usb_out) {
+        if (link == 2 && flashing) {
+            put(fb, mid - 7, STATUS_SIGNAL_Y, flash, flash_color);
+        } else if (link == 2 && usb_out) {
             put(fb, mid - 7, STATUS_SIGNAL_Y, "USB",
                 d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
         } else if (!links[link]->up) {
@@ -2692,8 +2738,9 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
             put(fb, left + 5 * (int)strlen(buf), STATUS_SIGNAL_Y, "dBm", DBG_LABEL);
         }
     }
+    /* not the computer's over USB: it would only ever be green */
     static const int place[3] = {0, 2, 1};
-    for (int link = 0; link < 3; link++) {
+    for (int link = 0; link < (usb_out ? 2 : 3); link++) {
         const int x = keys_block_x(place[link]);
         for (int px = 0; px < FX_CONN_HISTORY && px < SIGNAL_W; px++) {
             const int v = d->conn_log[link][FX_CONN_HISTORY - SIGNAL_W + px];
@@ -2804,6 +2851,7 @@ void fx_start(int fx, uint16_t *palette) {
 }
 
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
+    profile_track(in);
     if (fx >= 0 && fx < FX_COUNT) {
         effects[fx].frame(fb, in);
     }
