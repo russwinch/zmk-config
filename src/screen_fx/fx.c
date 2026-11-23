@@ -2600,26 +2600,23 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 /*
  * The readings worth glancing at, set out like a racing car's steering
- * wheel display: lights across the top, the big figure in the middle, bars
- * and graphs rather than columns of numbers. Top to bottom:
+ * wheel display: bars and graphs rather than columns of numbers, and the
+ * board big in the middle. Top to bottom:
  *
  *   each link's latest dBm, the halves' over their batteries and the
- *   computer's between (over USB, USB in its place, and no strip); under
- *   each a strip of
+ *   computer's between after the output, BT and the profile (over USB,
+ *   USB in its place, and no strip); under each a strip of
  *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: green, amber
  *   or red by the weakest signal in it, red where the link was down, a dim
  *   line where the keyboard was idle (so the halves may have been asleep);
  *
- *   the board's keys as they are, the typing speed small between the halves
- *   (Typist has it big);
+ *   the board's keys as they are, as big as they go;
+ *
+ *   what has gone wrong, if anything, over the right battery;
  *
  *   each half's battery at its side: its level, big, and beside it its
  *   volts and average draw, their units between the halves; under them a
- *   bar;
- *
- *   along the foot, a row of boxes: the output, the drops, the dongle's
- *   supply and temperature, and the worst of what has gone wrong (filled
- *   red or amber).
+ *   bar.
  *
  * It takes the whole screen, so the status text isn't drawn over it.
  */
@@ -2627,12 +2624,9 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_SIGNAL_Y 4 /* each link's dBm */
 #define STATUS_CONN_Y 13  /* and under it its connection strip, this high: */
 #define STATUS_CONN_H 5
-#define STATUS_KEYS_TOP 22 /* the board's keys, the speed small between the halves */
-#define STATUS_KEYS_H 51
-#define STATUS_WPM_GAP 18
-#define STATUS_WPM_H 25 /* the speed twice the size (14), a gap, its unit (7), a row clear each side */
-#define STATUS_BATTERY_Y 77
-#define STATUS_BOX_Y 104 /* along the foot */
+#define STATUS_KEYS_TOP 22 /* the board's keys */
+#define STATUS_KEYS_H 64
+#define STATUS_BATTERY_Y 91
 #define STATUS_BATTERY_W 61
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
 
@@ -2659,21 +2653,6 @@ static void fill(uint8_t *fb, int x, int y, int wide, int high, uint8_t color) {
     for (int dy = 0; dy < high; dy++) {
         line(fb, x, y + dy, x + wide - 1, y + dy, color);
     }
-}
-
-/* A box `wide` across at (x, y), 9 high, with `text` in the middle: an
- * outline when `fill_color` is DBG_BG, else filled and the text dark. */
-static void status_box(uint8_t *fb, int x, int y, int wide, const char *text, uint8_t color, uint8_t fill_color) {
-    if (fill_color != DBG_BG) {
-        fill(fb, x, y, wide, 9, fill_color);
-        color = DBG_BG;
-    } else {
-        line(fb, x, y, x + wide - 1, y, DBG_DIM);
-        line(fb, x, y + 8, x + wide - 1, y + 8, DBG_DIM);
-        line(fb, x, y, x, y + 8, DBG_DIM);
-        line(fb, x + wide - 1, y, x + wide - 1, y + 8, DBG_DIM);
-    }
-    put(fb, x + (wide - (5 * (int)strlen(text) - 1)) / 2, y + 1, text, color);
 }
 
 /* Text against `edge` from the middle's side: the left half's ends at it,
@@ -2748,106 +2727,41 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     const bool usb_out = in->status && in->status->usb;
     char buf[16];
 
-    /* the keys as they are, and the speed small between the halves, its unit under it */
-    const struct view v = shape_view(1, STATUS_KEYS_TOP, FX_W - 2, STATUS_KEYS_H, STATUS_WPM_GAP, false);
+    /* the keys as they are, as big as they go */
+    const struct view v = shape_view(1, STATUS_KEYS_TOP, FX_W - 2, STATUS_KEYS_H, KEYS_SPLIT, false);
     shape_board(fb, in, &v, false);
-    /* the speed twice the size: where the room between the halves is widest
-     * for it (three figures, 28 across) and its unit under it, highest first */
-    int free[STATUS_KEYS_H];
-    for (int row = 0; row < STATUS_KEYS_H; row++) {
-        const uint8_t *px = fb + (STATUS_KEYS_TOP + row) * FX_W;
-        int left = FX_W / 2, right = FX_W / 2;
-        while (left > 0 && px[left - 1] == DBG_BG) {
-            left--;
-        }
-        while (right < FX_W - 1 && px[right] == DBG_BG) {
-            right++;
-        }
-        free[row] = 2 * (FX_W / 2 - left < right - FX_W / 2 ? FX_W / 2 - left : right - FX_W / 2);
-    }
-    int wpm_y = STATUS_KEYS_TOP, best = -1;
-    for (int top = 0; top + STATUS_WPM_H <= STATUS_KEYS_H; top++) {
-        int room = FX_W;
-        for (int row = top; row < top + STATUS_WPM_H; row++) {
-            room = free[row] < room ? free[row] : room;
-        }
-        if (room > best) {
-            best = room;
-            wpm_y = STATUS_KEYS_TOP + top;
-        }
-    }
-    wpm_y += 1;
-    snprintf(buf, sizeof(buf), "%u", d->wpm > 999 ? 999 : d->wpm);
-    put_big(fb, (FX_W - (10 * (int)strlen(buf) - 2)) / 2, wpm_y, buf, d->wpm ? DBG_BRIGHT : DBG_LABEL, 2);
-    put(fb, (FX_W - 14) / 2, wpm_y + 16, "WPM", DBG_LABEL);
 
-    /* the boxes: the output, the drops, the dongle's supply and temperature,
-     * then the worst trouble there is, if any; in from the sides, clear of
-     * the panel's rounded corners */
-    int x = 6;
+    /* each link's latest dBm, and under it its connection strip; in the
+     * middle the output before the computer's: the profile picked flashing
+     * for a moment, then BT and its profile, or USB */
     uint8_t flash_color;
     char flash[8];
     const bool flashing = profile_flash(in, flash, sizeof(flash), &flash_color);
-    if (flashing) {
-        status_box(fb, x, STATUS_BOX_Y, 19, flash, flash_color, DBG_BG);
-    } else if (usb_out) {
-        status_box(fb, x, STATUS_BOX_Y, 19, "USB", in->status->host_connected ? DBG_GOOD : DBG_WARN, DBG_BG);
-    } else {
-        snprintf(buf, sizeof(buf), "BT%u", in->status ? in->status->profile : 0);
-        status_box(fb, x, STATUS_BOX_Y, 19, buf, d->host.up ? DBG_GOOD : DBG_TEXT, DBG_BG);
-    }
-    x += 21;
-    const int drops = d->half[0].drops + d->half[1].drops + d->host.drops;
-    snprintf(buf, sizeof(buf), "DR%d", drops > 99 ? 99 : drops);
-    status_box(fb, x, STATUS_BOX_Y, 24, buf, DBG_LABEL, drops ? DBG_WARN : DBG_BG);
-    x += 26;
-    if (d->dongle_mv) {
-        const unsigned mv = d->dongle_mv > 9999 ? 9999 : d->dongle_mv;
-        snprintf(buf, sizeof(buf), "%u.%03uV", mv / 1000, mv % 1000);
-    } else {
-        snprintf(buf, sizeof(buf), "%sV", d->dongle_mv_why[0] ? d->dongle_mv_why : "--");
-    }
-    status_box(fb, x, STATUS_BOX_Y, 34, buf, d->dongle_mv ? DBG_TEXT : DBG_LABEL, DBG_BG);
-    x += 36;
-    if (d->dongle_temp_known) {
-        const int c = d->dongle_temp_c < -9 ? -9 : d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c;
-        snprintf(buf, sizeof(buf), "%dC", c);
-        status_box(fb, x, STATUS_BOX_Y, 19, buf, DBG_TEXT, c >= 60 ? DBG_WARN : DBG_BG);
-    } else {
-        status_box(fb, x, STATUS_BOX_Y, 19, "--C", DBG_LABEL, DBG_BG);
-    }
-    x += 21;
-    /* the worst: a restart that hung or crashed, a bouncing switch, a half's
-     * charging state that failed, USB reports the computer didn't take */
-    const char *trouble = NULL;
-    uint8_t trouble_color = DBG_BAD;
-    if (d->crash == FX_CRASH_HANG) {
-        trouble = "HANG";
-    } else if (d->crash == FX_CRASH_FAULT) {
-        trouble = "CRSH";
-    } else if (d->bounce_ms && d->bounce_ms < 30) {
-        snprintf(buf, sizeof(buf), "B%u", d->bounce_ms);
-        trouble = buf;
-    } else if (d->half_reads[0][0] == 'E' || d->half_reads[0][0] == 'T' || d->half_reads[1][0] == 'E' ||
-               d->half_reads[1][0] == 'T') {
-        trouble = "CH";
-    } else if (d->usb_errors) {
-        snprintf(buf, sizeof(buf), "UE%u", d->usb_errors > 9 ? 9 : d->usb_errors);
-        trouble = buf;
-        trouble_color = DBG_WARN;
-    }
-    status_box(fb, x, STATUS_BOX_Y, FX_W - 6 - x, trouble ? trouble : "OK", trouble ? DBG_BG : DBG_GOOD,
-               trouble ? trouble_color : DBG_BG);
-
-    /* each link's latest dBm, and under it its connection strip */
     const struct fx_link *links[3] = {&d->half[0], &d->half[1], &d->host};
     for (int link = 0; link < 3; link++) {
         const int mid = keys_block_x(link == 2 ? 1 : link * 2) + SIGNAL_W / 2;
-        if (link == 2 && flashing) {
-            put(fb, mid - 7, STATUS_SIGNAL_Y, flash, flash_color);
-        } else if (link == 2 && usb_out) {
-            put(fb, mid - 7, STATUS_SIGNAL_Y, "USB",
-                d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD);
+        if (link == 2) {
+            const char *out = flash;
+            uint8_t out_color = flash_color;
+            if (!flashing && usb_out) {
+                out = "USB";
+                out_color = d->usb_asleep ? DBG_WARN : in->status->host_connected ? DBG_GOOD : DBG_BAD;
+            } else if (!flashing) {
+                snprintf(flash, sizeof(flash), "BT%u", in->status ? in->status->profile : 0);
+                out_color = d->host.up ? DBG_GOOD : DBG_TEXT;
+            }
+            if (usb_out) {
+                put(fb, mid - 7, STATUS_SIGNAL_Y, out, out_color);
+                continue;
+            }
+            /* over Bluetooth: the output, then the dBm without its unit (7 across) */
+            put(fb, mid - 17, STATUS_SIGNAL_Y, out, out_color);
+            if (!links[link]->up) {
+                put(fb, mid + 3, STATUS_SIGNAL_Y, "--", DBG_BAD);
+            } else if (links[link]->rssi_known) {
+                snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
+                put(fb, mid + 3, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
+            }
         } else if (!links[link]->up) {
             put(fb, mid - 5, STATUS_SIGNAL_Y, "--", DBG_BAD);
         } else if (links[link]->rssi_known) {
@@ -2870,8 +2784,73 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
                                       : v == FX_CONN_USB || v > SIGNAL_GOOD_DBM ? DBG_GOOD
                                       : v > SIGNAL_WARN_DBM ? DBG_WARN
                                                             : DBG_BAD;
-                line(fb, x + px, STATUS_CONN_Y, x + px, STATUS_CONN_Y + STATUS_CONN_H - 1, color);
+                line(fb, x + px, STATUS_CONN_Y, x + px, STATUS_CONN_H + STATUS_CONN_Y - 1, color);
             }
+        }
+    }
+
+    /* what has gone wrong, if anything, worst first, from the right: a
+     * restart that hung or crashed, a bouncing switch, a half's charging
+     * state that failed, USB reports the computer didn't take, dropped
+     * links, the dongle running hot. Over the right battery, as low as
+     * the keys leave room for. */
+    struct {
+        char text[6];
+        uint8_t color;
+    } trouble[6];
+    int n = 0;
+    if (d->crash == FX_CRASH_HANG || d->crash == FX_CRASH_FAULT) {
+        strcpy(trouble[n].text, d->crash == FX_CRASH_HANG ? "HANG" : "CRSH");
+        trouble[n++].color = DBG_BAD;
+    }
+    if (d->bounce_ms && d->bounce_ms < 30) {
+        snprintf(trouble[n].text, sizeof(trouble[n].text), "B%u", d->bounce_ms);
+        trouble[n++].color = DBG_BAD;
+    }
+    if (d->half_reads[0][0] == 'E' || d->half_reads[0][0] == 'T' || d->half_reads[1][0] == 'E' ||
+        d->half_reads[1][0] == 'T') {
+        strcpy(trouble[n].text, "CH");
+        trouble[n++].color = DBG_BAD;
+    }
+    if (d->usb_errors) {
+        snprintf(trouble[n].text, sizeof(trouble[n].text), "UE%u", d->usb_errors > 99 ? 99 : d->usb_errors);
+        trouble[n++].color = DBG_WARN;
+    }
+    const int drops = d->half[0].drops + d->half[1].drops + d->host.drops;
+    if (drops) {
+        snprintf(trouble[n].text, sizeof(trouble[n].text), "DR%d", drops > 99 ? 99 : drops);
+        trouble[n++].color = DBG_WARN;
+    }
+    if (d->dongle_temp_known && d->dongle_temp_c >= 60) {
+        snprintf(trouble[n].text, sizeof(trouble[n].text), "%dC", d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c);
+        trouble[n++].color = DBG_WARN;
+    }
+    if (n) {
+        /* as many as fit in the right half's width, the worst rightmost */
+        int wide = -1, shown = 0;
+        while (shown < n && wide + 1 + 5 * (int)strlen(trouble[shown].text) <= STATUS_BATTERY_W) {
+            wide += 1 + 5 * (int)strlen(trouble[shown].text);
+            shown++;
+        }
+        const int x1 = FX_W - 4, x0 = x1 - wide;
+        int y = STATUS_BATTERY_Y - 9;
+        for (int top = y; top >= STATUS_KEYS_TOP; top--) {
+            bool clear = true;
+            for (int row = top - 1; clear && row <= top + 7; row++) {
+                for (int x = x0 - 1; clear && x <= x1; x++) {
+                    clear = fb[row * FX_W + x] == DBG_BG;
+                }
+            }
+            if (clear) {
+                y = top;
+                break;
+            }
+        }
+        int x = x1;
+        for (int i = 0; i < shown; i++) {
+            x -= 5 * (int)strlen(trouble[i].text) - 1;
+            put(fb, x, y, trouble[i].text, trouble[i].color);
+            x -= 6;
         }
     }
 

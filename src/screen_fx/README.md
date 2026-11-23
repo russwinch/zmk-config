@@ -70,16 +70,16 @@ Laid out like a racing car's steering wheel display.
 
 | Part | Shows |
 | --- | --- |
-| signals along the top | each link's dBm (`--` in red when down), the computer's in the middle (over USB: `USB`, green when ready, amber when the computer sleeps); after you switch profile, the new one flashes here and in the first box for 3 s |
+| signals along the top | each link's dBm (`--` in red when down); in the middle `BT`+profile (green when connected) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
 | connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
-| the keys | as they are on the board, lit as on Typist; the typing speed between the halves |
+| the keys | as they are on the board, lit as on Typist |
+| over the right battery | only if something has gone wrong, worst on the right: `HANG` or `CRSH` (the dongle restarted), `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken, `DR` links dropped, the dongle's temperature from 60 °C |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
-| boxes along the foot | `BT`+profile or `USB`; `DR` drops since start; the dongle's supply volts and temperature; the worst trouble (`HANG`, `CRSH`, `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken) or `OK` |
 
 ## Debug
 
 Whether each part of the keyboard works, and what has gone wrong. The typing
-speed and battery levels are on Typist and Status.
+speed is on Typist, the battery levels on Typist and Status.
 
 | Line | Shows |
 | --- | --- |
