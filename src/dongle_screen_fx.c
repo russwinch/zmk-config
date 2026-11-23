@@ -807,10 +807,6 @@ static void read_debug(void) {
     read_keys(d);
     d->usb = (uint8_t)zmk_usb_get_conn_state();
     d->usb_asleep = zmk_usb_get_status() == USB_DC_SUSPEND;
-    for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
-        d->profile_state[i] = i >= ZMK_BLE_PROFILE_COUNT || zmk_ble_profile_is_open(i) ? 0
-                              : zmk_ble_profile_is_connected(i) ? 2 : 1;
-    }
 
 #if IS_ENABLED(CONFIG_SYS_HEAP_RUNTIME_STATS) && !IS_ENABLED(CONFIG_LV_Z_MEM_POOL_HEAP_LIB_C)
     struct sys_memory_stats heap = {0};

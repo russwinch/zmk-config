@@ -222,7 +222,7 @@ int main(int argc, char **argv) {
                  {.up = true, .rssi_known = true, .rssi = -71}},
         .host = {.up = true, .rssi_known = true, .rssi = -48, .drops = 1, .reason = 0x13},
         .usb_reports = 18342, .usb_errors = 0, .presses = {1180, 1093},
-        .half_reads = {"OK", "E"}, .half_err = {0, 0x85}, .half_mv = {3912, 3874}, .drain_hundredths_mw = {62, 93}, .drain_rough = {false, true}, .battery_mah = 200, .dongle_mv = 3312, .dongle_temp_known = true, .dongle_temp_c = 31, .profile_state = {1, 2, 0, 1, 0}, .usb = 1, .layer = 3, .layer_name = "Nav",
+        .half_reads = {"OK", "E"}, .half_err = {0, 0x85}, .half_mv = {3912, 3874}, .drain_hundredths_mw = {62, 93}, .drain_rough = {false, true}, .battery_mah = 200, .dongle_mv = 3312, .dongle_temp_known = true, .dongle_temp_c = 31, .usb = 1, .layer = 3, .layer_name = "Nav",
         .layers = 0x9, .bounce_ms = 18, .bounce_key = 23,
     };
     /* the signal and speed histories the dongle keeps, already full when a screen is turned to */

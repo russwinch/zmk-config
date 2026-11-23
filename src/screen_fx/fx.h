@@ -87,7 +87,6 @@ struct fx_theme {
 /* --- what the Debug screen shows -------------------------------------------- */
 
 #define FX_DEBUG_LOG 3
-#define FX_DEBUG_PROFILES 5
 #define FX_HISTORY 94      /* seconds of each link's signal and the typing speed kept */
 #define FX_SIGNAL_DOWN (-128) /* in the signal history: a second the link was down */
 #define FX_CONN_HISTORY 40  /* slots of each link's connection history kept */
@@ -157,7 +156,6 @@ struct fx_debug {
      * FX_CRASH_FAULT (crashed, with Zephyr's reason in crash_code) */
     uint8_t crash, crash_code;
     uint32_t crash_pc; /* FX_CRASH_FAULT: where (the program counter), 0 not known */
-    uint8_t profile_state[FX_DEBUG_PROFILES]; /* 0 open, 1 paired, 2 connected */
     uint8_t usb;          /* 0 no, 1 powered, 2 ready to type */
     bool usb_asleep;      /* the computer has suspended the port: it is asleep */
     uint8_t layer;        /* the highest one active */

@@ -1399,7 +1399,7 @@ static void life_frame(uint8_t *fb, const struct fx_input *in) {
 /*
  * Not an animation: a page of readings for finding faults with connections,
  * switches and the firmware (src/screen_fx/README.md, "Debug"). Top to bottom: the
- * dongle itself; a table of the three Bluetooth links; the profiles, USB
+ * dongle itself; a table of the three Bluetooth links; the profile in use, USB
  * and the output in use; layer, typing speed and modifiers; then the last
  * few raw events beside a map of the keys (`board`), and the worst key
  * bounce seen.
@@ -1741,25 +1741,36 @@ static void mv_text(char *buf, size_t size, unsigned mv, const char *why) {
     }
 }
 
-/* The five Bluetooth profiles, from (x, y): a filled circle is connected, a
- * ring paired, a dot free; the one in use is underlined. */
-static void profiles(uint8_t *fb, const struct fx_debug *d, const struct fx_status *status, int x, int y) {
-    static const char *const shapes[3][5] = {{".....", ".....", "..o..", ".....", "....."},
-                                             {".ooo.", "o...o", "o...o", "o...o", ".ooo."},
-                                             {".ooo.", "ooooo", "ooooo", "ooooo", ".ooo."}};
-    for (int i = 0; i < FX_DEBUG_PROFILES; i++) {
-        const int state = d->profile_state[i] > 2 ? 2 : d->profile_state[i], cx = x + i * 8;
-        for (int row = 0; row < 5; row++) {
-            for (int col = 0; col < 5; col++) {
-                if (shapes[state][row][col] == 'o') {
-                    plot(fb, cx + col, y + row, state == 2 ? DBG_GOOD : state == 1 ? DBG_TEXT : DBG_LABEL);
-                }
+/* The output's waves, as over the animations, 7 by 5 from (x, y). */
+static void waves(uint8_t *fb, int x, int y, uint8_t color) {
+    static const char *const rows[5] = {".ooooo.", "o.....o", "..ooo..", ".o...o.", "...o..."};
+    for (int row = 0; row < 5; row++) {
+        for (int col = 0; col < 7; col++) {
+            if (rows[row][col] == 'o') {
+                plot(fb, x + col, y + row, color);
             }
         }
-        if (status && status->profile == i) {
-            line(fb, cx, y + 6, cx + 4, y + 6, DBG_BRIGHT);
-        }
     }
+}
+
+static bool profile_flash(const struct fx_input *in, char *buf, size_t size, uint8_t *color);
+
+/* The Bluetooth profile in use, from (x, y): the waves and its number, green
+ * when its computer is connected, dim when nothing is paired on it;
+ * flashing for a moment when it has just been picked. */
+static void profile_mark(uint8_t *fb, const struct fx_input *in, int x, int y) {
+    if (in->status == NULL) {
+        return;
+    }
+    char buf[8];
+    uint8_t color;
+    if (profile_flash(in, buf, sizeof(buf), &color) && !buf[0]) {
+        return; /* the off part of the flash */
+    }
+    color = in->status->profile_connected ? DBG_GOOD : in->status->host_open ? DBG_LABEL : DBG_TEXT;
+    waves(fb, x, y + 1, color);
+    snprintf(buf, sizeof(buf), "%u", in->status->profile);
+    put(fb, x + 9, y, buf, color);
 }
 
 /* A raw event as text: the time since the one before, then what it was. */
@@ -1831,7 +1842,7 @@ static uint8_t drain_color(int hundredths, bool rough, uint16_t mah) {
  * dongle and the right half, as on Status: each link's signal with its last
  * 90 seconds, drops and why the last; each half's battery volts and the
  * dongle's supply with their last 90 minutes, the charging-state reads and
- * the dongle's temperature, the draw; the profiles and USB, the reports sent
+ * the dongle's temperature, the draw; the profile in use and USB, the reports sent
  * over it; the layer and modifiers, the last event, and every key, lit while
  * held.
  */
@@ -2014,9 +2025,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    /* the output: the profiles and USB's state */
+    /* the output: the Bluetooth profile in use and USB's state */
     const int out_y = 89;
-    profiles(fb, d, in->status, 6, out_y + 1);
+    profile_mark(fb, in, 6, out_y);
     x = put(fb, 48, out_y, "USB", DBG_LABEL) + 3;
     put(fb, x, out_y, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--",
         d->usb == 2 ? (usb_out && in->status->host_connected ? DBG_GOOD : DBG_TEXT) : DBG_TEXT);
