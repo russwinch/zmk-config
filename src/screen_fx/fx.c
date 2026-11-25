@@ -2680,11 +2680,10 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    /* what has gone wrong, if anything, worst first, from the right: a
+    /* what has gone wrong, if anything, worst first: a
      * restart that hung or crashed, a bouncing switch, a half's charging
      * state that failed, USB reports the computer didn't take, dropped
-     * links, the dongle running hot. Over the right battery, as low as
-     * the keys leave room for. */
+     * links, the dongle running hot. */
     struct {
         char text[6];
         uint8_t color;
@@ -2716,33 +2715,26 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         snprintf(trouble[n].text, sizeof(trouble[n].text), "%dC", d->dongle_temp_c > 99 ? 99 : d->dongle_temp_c);
         trouble[n++].color = DBG_WARN;
     }
-    if (n) {
-        /* as many as fit in the right half's width, the worst rightmost */
-        int wide = -1, shown = 0;
-        while (shown < n && wide + 1 + 5 * (int)strlen(trouble[shown].text) <= STATUS_BATTERY_W) {
-            wide += 1 + 5 * (int)strlen(trouble[shown].text);
-            shown++;
-        }
-        const int x1 = FX_W - 4, x0 = x1 - wide;
-        int y = STATUS_BATTERY_Y - 9;
-        for (int top = y; top >= STATUS_KEYS_TOP; top--) {
+    /* one a line, worst at the top, in the gap between the halves under
+     * the middle's connection strip, each as high as the keys leave room */
+    for (int i = 0, y = STATUS_CONN_Y + STATUS_CONN_H + 3; i < n; i++) {
+        const int wide = 5 * (int)strlen(trouble[i].text) - 1, x0 = FX_W / 2 - wide / 2, x1 = x0 + wide - 1;
+        for (; y <= STATUS_BATTERY_Y - 9; y++) {
             bool clear = true;
-            for (int row = top - 1; clear && row <= top + 7; row++) {
-                for (int x = x0 - 1; clear && x <= x1; x++) {
+            for (int row = y - 1; clear && row <= y + 7; row++) {
+                for (int x = x0 - 2; clear && x <= x1 + 2; x++) {
                     clear = fb[row * FX_W + x] == DBG_BG;
                 }
             }
             if (clear) {
-                y = top;
                 break;
             }
         }
-        int x = x1;
-        for (int i = 0; i < shown; i++) {
-            x -= 5 * (int)strlen(trouble[i].text) - 1;
-            put(fb, x, y, trouble[i].text, trouble[i].color);
-            x -= 6;
+        if (y > STATUS_BATTERY_Y - 9) {
+            break; /* no room for the rest */
         }
+        put(fb, x0, y, trouble[i].text, trouble[i].color);
+        y += 8;
     }
 
     /* each half's battery */
