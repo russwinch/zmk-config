@@ -2516,6 +2516,8 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 #define STATUS_KEYS_H 64
 #define STATUS_BATTERY_Y 91
 #define STATUS_BATTERY_W 61
+#define STATUS_CHARGE_STEP 18 /* 30ths of a second: each step of a charging half's bar filling */
+#define STATUS_CHARGE_REST 3  /* steps' worth it rests full before starting again */
 #define STATUS_MID_W 57 /* from a half's outer side to its readings' inner end */
 
 static void status_start(uint16_t *palette) { debug_start(palette); }
@@ -2574,9 +2576,21 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     if (level) {
         put(fb, level_x + level_w - 4, y + 7, "%", battery_color(level));
     }
+    /* while charging, the steps above the level fill one by one, unhurried,
+     * rest a moment full, and start again */
+    static float charge_clock[2];
     const int lit = !level ? 0 : level < 15 ? 1 : (level + 5) / 10;
+    int filling = 0;
+    if (charging && level && lit < 10) {
+        const int stops = 10 - lit + 1 + STATUS_CHARGE_REST;
+        charge_clock[half] = fmodf(charge_clock[half] + in->step, (float)(stops * STATUS_CHARGE_STEP));
+        filling = (int)(charge_clock[half] / STATUS_CHARGE_STEP);
+        filling = filling > 10 - lit ? 10 - lit : filling;
+    } else {
+        charge_clock[half] = 0;
+    }
     for (int step = 0; step < 10; step++) {
-        const bool on = step < lit;
+        const bool on = step < lit + filling;
         fill(fb, (half ? x + 2 : x) + step * 6, y + 18, 5, 3,
              !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
     }
