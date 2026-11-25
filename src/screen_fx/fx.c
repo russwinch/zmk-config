@@ -2147,92 +2147,6 @@ static void part_quad(const struct view *v, const struct fx_part *p, bool right,
     }
 }
 
-/* An angled key, sharp rather than exact: at this size a slope other than
- * 1 in 1 steps unevenly, so the key goes upright under 23 degrees and on
- * its corner, a 45 degree rectangle of the same size, from there; smaller by
- * `shrink` pixels a side, to keep clear of its neighbours (sharp_shrink).
- * Upright: (x, y) its top left, a by b. At 45: (x, y) its middle pixel,
- * |dx + dy| <= a along its width, |dy - dx| <= b along its height. Worked
- * out for the left half and mirrored, so the halves match pixel for pixel. */
-struct sharp {
-    bool diagonal;
-    int x, y, a, b;
-};
-
-static struct sharp sharp_shape(const struct view *v, const struct fx_part *p, int shrink) {
-    const float cx = v->left_x + p->x * v->scale, cy = v->top + p->y * v->scale;
-    const int rot = (p->rot < 0 ? -p->rot : p->rot) % 180;
-    const float w = p->w * v->scale - 1, h = p->h * v->scale - 1;
-    struct sharp s;
-    if (rot < 23 || rot > 157 || (rot > 67 && rot < 113)) {
-        const bool turned = rot > 67 && rot < 113;
-        s.diagonal = false;
-        s.a = (int)lroundf(turned ? h : w) - shrink;
-        s.b = (int)lroundf(turned ? w : h) - shrink;
-        s.x = (int)lroundf(cx - s.a / 2.0f);
-        s.y = (int)lroundf(cy - s.b / 2.0f);
-    } else {
-        const bool turned = rot > 90; /* on its other corner: width and height change places */
-        s.diagonal = true;
-        s.a = (int)lroundf((turned ? h : w) / 1.4142f) - shrink;
-        s.b = (int)lroundf((turned ? w : h) / 1.4142f) - shrink;
-        s.x = (int)floorf(cx);
-        s.y = (int)floorf(cy);
-    }
-    s.a = s.a < 1 ? 1 : s.a;
-    s.b = s.b < 1 ? 1 : s.b;
-    return s;
-}
-
-static bool sharp_in(const struct sharp *s, int x, int y) {
-    if (!s->diagonal) {
-        return x >= s->x && x < s->x + s->a && y >= s->y && y < s->y + s->b;
-    }
-    const int u = x - s->x + y - s->y, w = y - s->y - (x - s->x);
-    return u >= -s->a && u <= s->a && w >= -s->b && w <= s->b;
-}
-
-/* its box: x0, y0, x1, y1, all inside */
-static void sharp_box(const struct sharp *s, int box[4]) {
-    if (!s->diagonal) {
-        box[0] = s->x, box[1] = s->y, box[2] = s->x + s->a - 1, box[3] = s->y + s->b - 1;
-    } else {
-        const int r = (s->a + s->b) / 2 + 1;
-        box[0] = s->x - r, box[1] = s->y - r, box[2] = s->x + r, box[3] = s->y + r;
-    }
-}
-
-/* Whether any of a's pixels is on or beside one of b's. */
-static bool sharp_touch(const struct sharp *a, const struct sharp *b) {
-    int box[4];
-    sharp_box(a, box);
-    for (int y = box[1]; y <= box[3]; y++) {
-        for (int x = box[0]; x <= box[2]; x++) {
-            if (!sharp_in(a, x, y)) {
-                continue;
-            }
-            for (int d = 0; d < 9; d++) {
-                if (sharp_in(b, x + d % 3 - 1, y + d / 3 - 1)) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-static void sharp_fill(uint8_t *fb, const struct sharp *s, bool right, int axis, uint8_t color) {
-    int box[4];
-    sharp_box(s, box);
-    for (int y = box[1]; y <= box[3]; y++) {
-        for (int x = box[0]; x <= box[2]; x++) {
-            if (sharp_in(s, x, y)) {
-                plot(fb, right ? axis - 1 - x : x, y, color);
-            }
-        }
-    }
-}
-
 /* A half's outline (the left's points, mirrored for the right) in pixels. */
 static int outline_px(const struct view *v, const int16_t *pts, int n, bool right, float *out) {
     for (int i = 0; i < n; i++) {
@@ -2400,39 +2314,6 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
         }
     }
     const struct grid g = shape_grid();
-    const int axis = (int)lroundf(v->left_x + v->right_x);
-    /* the angled keys' shapes, each as big as it can be and still a pixel
-     * clear of the keys around it (on its own half, as if the left) */
-    static struct sharp sharp[sizeof(debug_heat)]; /* off the display thread's stack */
-    for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
-        const struct fx_part *p = &shape->keys[key];
-        if ((p->kind & FX_PART_KIND) != FX_PART_KEY || p->rot == 0) {
-            continue;
-        }
-        for (int shrink = 0; shrink < 6; shrink++) {
-            sharp[key] = sharp_shape(v, p, shrink);
-            bool clear = true;
-            for (int other = 0; clear && other < shape->n_keys && other < (int)sizeof(debug_heat); other++) {
-                const struct fx_part *q = &shape->keys[other];
-                if (other == key || (q->kind & FX_PART_RIGHT) != (p->kind & FX_PART_RIGHT)) {
-                    continue;
-                }
-                struct sharp near;
-                if ((q->kind & FX_PART_KIND) == FX_PART_KEY && q->rot != 0) {
-                    near = other < key ? sharp[other] : sharp_shape(v, q, 0);
-                } else {
-                    const struct fx_part left = {q->x, q->y, q->rot, q->w, q->h, (uint8_t)(q->kind & ~FX_PART_RIGHT)};
-                    near.diagonal = false;
-                    part_rect(v, (q->kind & FX_PART_KIND) == FX_PART_KEY ? &g : NULL, &left, &near.x, &near.y,
-                              &near.a, &near.b);
-                }
-                clear = !sharp_touch(&sharp[key], &near);
-            }
-            if (clear) {
-                break;
-            }
-        }
-    }
     for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
         const struct fx_part *p = &shape->keys[key];
         const bool right = p->kind & FX_PART_RIGHT;
@@ -2460,7 +2341,8 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
              * the same size and the same distance from the next */
             fill(fb, x, y, wide, high, color);
         } else {
-            sharp_fill(fb, &sharp[key], right, axis, color);
+            part_quad(v, p, right, 0.5f, pts);
+            fill_poly(fb, pts, 4, color);
         }
         if (kind == FX_PART_ROLLER) {
             /* ribs down it, rolling sideways as it turns, as it does under a thumb */
