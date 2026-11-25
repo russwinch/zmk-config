@@ -2554,8 +2554,8 @@ static void status_text(uint8_t *fb, int half, int edge, int y, const char *s, u
 }
 
 /* A half's battery, STATUS_BATTERY_W across from (x, y): its level, big
- * at its own side (while charging, the estimate), a bar
- * with the bolt at its inner end, and its latest volts and draw. */
+ * at its own side (while charging, the estimate, with a bolt over the %),
+ * a bar, and its latest volts and draw. */
 static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x, int y) {
     const struct fx_debug *d = in->debug;
     const int right = x + STATUS_BATTERY_W;
@@ -2580,7 +2580,7 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
         fill(fb, (half ? x + 2 : x) + step * 6, y + 18, 5, 3,
              !on ? DBG_DIM : level <= FX_WARN_BATTERY ? battery_color(level) : DBG_GOOD);
     }
-    charging_bolt(fb, half ? x - 4 : right, y + 16, in->status, half); /* at the bar's inner end, under the mW */
+    charging_bolt(fb, level ? level_x + level_w - 4 : level_x + level_w + 2, y, in->status, half); /* over the % */
 
     /* beside the level its latest volts (the charger's while charging, so
      * dim then) and draw, aligned to the middle, where their units are;
