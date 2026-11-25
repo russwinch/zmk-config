@@ -35,8 +35,8 @@ brings it back.
 The animations show the batteries and the output along the bottom. A half's
 level is amber at 15% or under, red and flashing slowly at 10%, fast at 5%.
 A bolt means the half is on USB power; while charging, the Typist, Status and
-Debug screens show the dongle's estimate of its level with an amber `~`
-(ZMK's own reads near 100 from the charger).
+Debug screens show the dongle's estimate of its level (ZMK's own reads near
+100 from the charger).
 
 The typing speed is counted as a typing test does: characters less
 backspaces, five to a word, over the last 10 seconds.
@@ -85,7 +85,7 @@ speed is on Typist, the battery levels on Typist and Status.
 | Line | Shows |
 | --- | --- |
 | `B149 1:12:51 ACT 40ms` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; how long this screen takes to draw a frame |
-| `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, amber under 30 ms: maybe a bouncing switch, but a quick double letter can look the same, as a half sends its keys in batches |
+| `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, amber under 30 ms: maybe a bouncing switch |
 | `LEFT`, the keyboard's name, `RIGHT` | a column each for the halves and the dongle, red when its link is down (the dongle's is to the computer): rows below |
 | waves, `USB` | the Bluetooth profile in use, as over the animations (green: connected, white: paired, dim: free; flashing for 3 s after you switch); USB `--`, `PWR` or `HID` |
 | `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
@@ -98,7 +98,7 @@ speed is on Typist, the battery levels on Typist and Status.
 | `dBm` | signal: green above -85 (all is well), amber to -90 (packets start going missing: move the dongle closer), red below (the link is about to drop). `E` and a code when the radio wouldn't say; `USB` while typing over it |
 | chart under `dBm` | the signal's last 30 minutes, a column a minute (the weakest in it): weak minutes solid amber or red, a full red column where the link was down, full over USB, nothing while idle |
 | `DROPS` | times the link was lost since the dongle started, then why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
-| `%` | the battery's level: amber at 15 or under, red at 10; the dongle's estimate with a `~` while charging (ZMK's reads high), a bolt while on USB power |
+| `%` | the battery's level: amber at 15 or under, red at 10; the dongle's estimate while charging (ZMK's reads high), a bolt while on USB power |
 | `V` | the battery's volts, to the millivolt (dim while charging: the charger's); the dongle's own 3.3 V supply |
 | chart under `V` | the last 30 minutes of them, a column a minute, scaled to fit (at least 60 mV top to bottom) |
 | `mW` | each half's average draw (`~` while still rough) |

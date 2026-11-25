@@ -1983,7 +1983,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         put_col(fb, col, DBG_ROW_V, buf, mv[col] && !charging ? DBG_TEXT : col == 1 && d->dongle_mv_why[0] ? DBG_WARN : DBG_LABEL);
         mv_chart(fb, DBG_COL_X(col) + 1, DBG_ROW_V + 8, mv_logs[col], 60);
         if (col != 1) {
-            /* the level (the dongle's estimate with a ~ while charging, as
+            /* the level (the dongle's estimate while charging, as
              * ZMK's reads high), a bolt after it while on USB power */
             bool estimate;
             const uint8_t level = half_level(in, half, &estimate);
@@ -1994,9 +1994,6 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
             }
             const int left = DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(buf) - 1)) / 2;
             put(fb, left, DBG_ROW_LEVEL, buf, level ? battery_color(level) : DBG_LABEL);
-            if (level && estimate) {
-                put(fb, left - 5, DBG_ROW_LEVEL, "~", DBG_WARN);
-            }
             charging_bolt(fb, left + 5 * (int)strlen(buf), DBG_ROW_LEVEL, in->status, half);
         }
         if (col == 1) {
@@ -2449,14 +2446,8 @@ static void typist_foot(uint8_t *fb, const struct fx_input *in) {
                 put(fb, x + wide - 4, y + 7, "%", color);
             }
         }
-        /* over the %: a bolt while on USB power (flashing until 100), or
-         * after, while the level is still the dongle's estimate, a ~ */
-        const bool charging = in->status && in->status->charging[half];
-        if (charging) {
-            charging_bolt(fb, level ? x + wide - 4 : x + wide + 2, y, in->status, half);
-        } else if (level && estimate) {
-            put(fb, x + wide - 4, y, "~", DBG_WARN);
-        }
+        /* over the %: a bolt while on USB power (flashing until 100) */
+        charging_bolt(fb, level ? x + wide - 4 : x + wide + 2, y, in->status, half);
         signal_bars(fb, half ? x - 4 - 7 : x + wide + 4, y + 7, &d->half[half]);
     }
     bool off;
@@ -2563,7 +2554,7 @@ static void status_text(uint8_t *fb, int half, int edge, int y, const char *s, u
 }
 
 /* A half's battery, STATUS_BATTERY_W across from (x, y): its level, big
- * at its own side (while charging, estimated: with a ~ over the %), a bar
+ * at its own side (while charging, the estimate), a bar
  * with the bolt at its inner end, and its latest volts and draw. */
 static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x, int y) {
     const struct fx_debug *d = in->debug;
@@ -2582,9 +2573,6 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     put_big(fb, level_x, y, buf, level ? battery_color(level) : DBG_LABEL, 2);
     if (level) {
         put(fb, level_x + level_w - 4, y + 7, "%", battery_color(level));
-        if (estimate) {
-            put(fb, level_x + level_w - 4, y, "~", DBG_WARN);
-        }
     }
     const int lit = !level ? 0 : level < 15 ? 1 : (level + 5) / 10;
     for (int step = 0; step < 10; step++) {
