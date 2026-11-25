@@ -1904,7 +1904,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
     if (d->bounce_ms) {
         snprintf(buf, sizeof(buf), "%ums", d->bounce_ms);
-        put_right(fb, FX_W - 6, y2, buf, d->bounce_ms < 30 ? DBG_BAD : DBG_TEXT);
+        put_right(fb, FX_W - 6, y2, buf, d->bounce_ms < 30 ? DBG_WARN : DBG_TEXT); /* a hint, not proof: see the README */
         put_right(fb, FX_W - 6 - 5 * (int)strlen(buf) - 3, y2, "BOUNCE", DBG_LABEL);
     } else {
         put_right(fb, FX_W - 6, y2, "BOUNCE --", DBG_LABEL);
@@ -2680,21 +2680,42 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    /* what has gone wrong, if anything, worst first: a
-     * restart that hung or crashed, a bouncing switch, a half's charging
-     * state that failed, USB reports the computer didn't take, dropped
-     * links, the dongle running hot. */
+    /* each half's dropped links over its battery, at its own side, as low
+     * as the keys leave room for */
+    for (int half = 0; half < 2; half++) {
+        const int drops = d->half[half].drops;
+        if (!drops) {
+            continue;
+        }
+        snprintf(buf, sizeof(buf), "DR%d", drops > 99 ? 99 : drops);
+        const int wide = 5 * (int)strlen(buf) - 1, x0 = half ? FX_W - 4 - wide : 4, x1 = x0 + wide - 1;
+        int y = STATUS_BATTERY_Y - 9;
+        for (int top = y; top >= STATUS_KEYS_TOP; top--) {
+            bool clear = true;
+            for (int row = top - 1; clear && row <= top + 7; row++) {
+                for (int x = x0 - 1; clear && x <= x1 + 1; x++) {
+                    clear = fb[row * FX_W + x] == DBG_BG;
+                }
+            }
+            if (clear) {
+                y = top;
+                break;
+            }
+        }
+        put(fb, x0, y, buf, DBG_WARN);
+    }
+
+    /* what else has gone wrong, if anything, worst first: a restart that
+     * hung or crashed, a half's charging state that failed, USB reports the
+     * computer didn't take, the computer's link dropping, the dongle
+     * running hot. */
     struct {
         char text[6];
         uint8_t color;
-    } trouble[6];
+    } trouble[5];
     int n = 0;
     if (d->crash == FX_CRASH_HANG || d->crash == FX_CRASH_FAULT) {
         strcpy(trouble[n].text, d->crash == FX_CRASH_HANG ? "HANG" : "CRSH");
-        trouble[n++].color = DBG_BAD;
-    }
-    if (d->bounce_ms && d->bounce_ms < 30) {
-        snprintf(trouble[n].text, sizeof(trouble[n].text), "B%u", d->bounce_ms);
         trouble[n++].color = DBG_BAD;
     }
     if (d->half_reads[0][0] == 'E' || d->half_reads[0][0] == 'T' || d->half_reads[1][0] == 'E' ||
@@ -2706,9 +2727,8 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
         snprintf(trouble[n].text, sizeof(trouble[n].text), "UE%u", d->usb_errors > 99 ? 99 : d->usb_errors);
         trouble[n++].color = DBG_WARN;
     }
-    const int drops = d->half[0].drops + d->half[1].drops + d->host.drops;
-    if (drops) {
-        snprintf(trouble[n].text, sizeof(trouble[n].text), "DR%d", drops > 99 ? 99 : drops);
+    if (d->host.drops) {
+        snprintf(trouble[n].text, sizeof(trouble[n].text), "DR%d", d->host.drops > 99 ? 99 : d->host.drops);
         trouble[n++].color = DBG_WARN;
     }
     if (d->dongle_temp_known && d->dongle_temp_c >= 60) {

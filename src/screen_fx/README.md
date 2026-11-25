@@ -73,7 +73,8 @@ Laid out like a racing car's steering wheel display.
 | signals along the top | each link's dBm (`--` in red when down); in the middle the waves and the profile number (coloured as on Typist) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
 | connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
 | the keys | as they are on the board, lit as on Typist |
-| between the halves | only if something has gone wrong, one a line, worst at the top: `HANG` or `CRSH` (the dongle restarted), `B`+ms a bouncing switch, `CH` charging state failed, `UE` USB reports not taken, `DR` links dropped, the dongle's temperature from 60 °C |
+| between the halves | only if something has gone wrong, one a line, worst at the top: `HANG` or `CRSH` (the dongle restarted), `CH` charging state failed, `UE` USB reports not taken, `DR` the computer's link dropped, the dongle's temperature from 60 °C |
+| over each battery | `DR` and how often that half's link has dropped, if it has |
 | batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
 
 ## Debug
@@ -84,7 +85,7 @@ speed is on Typist, the battery levels on Typist and Status.
 | Line | Shows |
 | --- | --- |
 | `B149 1:12:51 ACT 40ms` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; how long this screen takes to draw a frame |
-| `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, red under 30 ms: a bouncing switch |
+| `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, amber under 30 ms: maybe a bouncing switch, but a quick double letter can look the same, as a half sends its keys in batches |
 | `LEFT`, the keyboard's name, `RIGHT` | a column each for the halves and the dongle, red when its link is down (the dongle's is to the computer): rows below |
 | waves, `USB` | the Bluetooth profile in use, as over the animations (green: connected, white: paired, dim: free; flashing for 3 s after you switch); USB `--`, `PWR` or `HID` |
 | `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
