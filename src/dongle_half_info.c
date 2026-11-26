@@ -66,7 +66,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define POWER_STATE_CHARGE_MASK (BIT_MASK(2) << POWER_STATE_CHARGE_SHIFT)
 #define CHARGE_STATE_CHARGING 1
 // Flags bit 0: an Identifier follows the power state (2, little endian):
-// the half's battery millivolts (src/half_charging.c).
+// the half's battery in tenths of a millivolt (src/half_charging.c), or in
+// whole millivolts from older halves (under 10000).
 #define FLAG_IDENTIFIER BIT(0)
 
 #define READY_AFTER_BATTERY_S 2 // after ZMK's first battery reading of the half
@@ -101,7 +102,7 @@ static atomic_t tries[2];
 static atomic_t last_err[2];   // ATT error, or 0x80 | errno; 0 for none
 static atomic_t not_before[2]; // uptime ms: a retry waits until then
 static atomic_t charging;      // bit per half
-static atomic_t millivolts[2]; // the half's battery, as last heard; 0 when not known
+static atomic_t tenths_mv[2]; // the half's battery, as last heard; 0 when not known
 #define IDLE (-1)
 static atomic_t inflight = ATOMIC_INIT(IDLE); // the half whose request is out, or IDLE
 
@@ -109,8 +110,12 @@ bool dongle_half_charging(int half) {
     return half >= 0 && half < 2 && atomic_test_bit(&charging, half);
 }
 
+uint32_t dongle_half_tenths_mv(int half) {
+    return half >= 0 && half < 2 ? (uint32_t)atomic_get(&tenths_mv[half]) : 0;
+}
+
 uint16_t dongle_half_millivolts(int half) {
-    return half >= 0 && half < 2 ? (uint16_t)atomic_get(&millivolts[half]) : 0;
+    return (uint16_t)((dongle_half_tenths_mv(half) + 5) / 10);
 }
 
 void dongle_half_info_progress(int half, char code[3], uint8_t *err) {
@@ -213,7 +218,8 @@ static void take(int half, const void *data, uint16_t length) {
         const uint16_t power = sys_get_le16((const uint8_t *)data + 1);
         on = FIELD_GET(POWER_STATE_CHARGE_MASK, power) == CHARGE_STATE_CHARGING;
         if (length >= 5 && (((const uint8_t *)data)[0] & FLAG_IDENTIFIER)) {
-            atomic_set(&millivolts[half], sys_get_le16((const uint8_t *)data + 3));
+            const uint16_t v = sys_get_le16((const uint8_t *)data + 3);
+            atomic_set(&tenths_mv[half], v >= 10000 ? v : v * 10);
         }
     }
     const bool was = atomic_test_bit(&charging, half);
@@ -403,7 +409,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     }
     k_work_cancel_delayable(&ready_work[half]);
     atomic_set(&stage[half], NOT_CONNECTED);
-    atomic_clear(&millivolts[half]);
+    atomic_clear(&tenths_mv[half]);
     if (atomic_test_and_clear_bit(&charging, half)) {
         charging_changed();
     }

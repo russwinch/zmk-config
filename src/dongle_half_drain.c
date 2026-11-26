@@ -4,20 +4,21 @@
  *
  * From the battery's voltage, which each half sends (src/half_charging.c,
  * src/dongle_half_info.c): once a minute the dongle turns the last voltage
- * heard into the energy left in the battery, from a typical lithium polymer
+ * heard into the charge left in the battery, from a typical lithium polymer
  * cell's resting voltage at each level of charge and the battery's capacity
- * (CONFIG_HALF_BATTERY_MAH, per keyboard, at a nominal 3.7 V). The draw is
- * the slope of a straight line fitted through all of those since the half
- * was last unplugged (or the dongle started), so it averages out the
- * reading's noise and the dips while typing.
+ * (CONFIG_HALF_BATTERY_MAH, per keyboard). The current is the slope of a
+ * straight line fitted through all of those since the half was last
+ * unplugged (or the dongle started), so it averages out the reading's noise;
+ * times the battery's voltage now, that is the draw in mW.
  *
  * It is an estimate: the cell's real curve differs a little from the
  * typical one, through the middle of the charge the voltage moves only a
  * few millivolts for each percent, and a half sends it (an average of its
- * last readings) only when it has moved by STEP_MV. So it is steadier the longer it runs. It shows after
+ * last readings, leaving out those just after a key) only when it has moved
+ * by STEP_TENTHS of a millivolt. So it is steadier the longer it runs. It shows after
  * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
  * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
- * by one STEP_MV over the time it spans, whichever is more.
+ * by one STEP_TENTHS over the time it spans, whichever is more.
  *
  * After unplugging (and when the dongle starts, not knowing) the voltage is
  * still coming down from the charger's, much faster than any half draws. So
@@ -50,10 +51,9 @@
 #define SAMPLE_EVERY_S 60
 #define SHOW_AFTER_MIN 1    // of readings, before there is a figure
 #define ROUGH_PERCENT 25    // rough while it may be out by more than this
-#define STEP_MV 1           // a half sends its voltage when it moves by this (src/half_charging.c)
+#define STEP_TENTHS 1       // a half sends its voltage when it moves by this, 0.1 mV (src/half_charging.c)
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
 #define SETTLE_FALL_MV 8
-#define NOMINAL_MV 3700     // to turn mAh into mWh
 #define TREND_N (SETTLE_MIN + 1) // the readings back to SETTLE_MIN ago
 #define TAPER_PERCENT 80    // charging at half the rate above this
 
@@ -68,8 +68,9 @@ static const struct {
     {3770, 30},  {3750, 25}, {3730, 20}, {3710, 15}, {3690, 10}, {3610, 5},  {3270, 0},
 };
 
-// Energy left at `mv`, in mWh.
-static double energy_mwh(uint16_t mv) {
+// Charge left at `tenths` of a millivolt, in mAh.
+static double charge_mah(uint32_t tenths) {
+    const double mv = tenths / 10.0;
     double percent = 0;
     if (mv >= curve[0].mv) {
         percent = 100;
@@ -82,22 +83,22 @@ static double energy_mwh(uint16_t mv) {
             }
         }
     }
-    return percent / 100.0 * CONFIG_HALF_BATTERY_MAH * NOMINAL_MV / 1000.0;
+    return percent / 100.0 * CONFIG_HALF_BATTERY_MAH;
 }
 
-// A least-squares line through (hours, mWh from the first), as running sums.
+// A least-squares line through (hours, mAh from the first), as running sums.
 struct fit {
     uint32_t n;
     uint32_t start_ms, last_ms; // uptime of the first and last readings
-    double e0;                  // the first reading's mWh
+    double e0;                  // the first reading's mAh
     double t, e, tt, te, ee;
-    uint16_t last_mv;
+    uint32_t last_tenths;       // the last reading, 0.1 mV
 };
 
 static struct fit fits[2];          // under lock
 static bool settling[2] = {true, true}; // until the voltage stops coming down from the charger's
 static bool was_charging[2];
-static uint16_t trend[2][TREND_N]; // under lock: a reading a minute, trend_at the next to write
+static uint16_t trend[2][TREND_N]; // under lock: a reading a minute (0.1 mV), trend_at the next to write
 static int trend_at;
 static struct k_spinlock lock;
 // under lock: the charging estimate
@@ -132,13 +133,13 @@ static void sample_cb(struct k_work *work) {
     const uint32_t now = k_uptime_get_32();
     for (int half = 0; half < 2; half++) {
         const bool charging = dongle_half_charging(half);
-        const uint16_t mv = dongle_half_millivolts(half);
+        const uint32_t tenths = dongle_half_tenths_mv(half); // of a millivolt
         uint8_t level = 0;
         if (half < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT) {
             zmk_split_central_get_peripheral_battery_level(half, &level);
         }
         K_SPINLOCK(&lock) {
-            trend[half][trend_at] = mv;
+            trend[half][trend_at] = (uint16_t)MIN(tenths, UINT16_MAX);
             if (charging && !was_charging[half]) {
                 // just plugged in: from the last level on battery, or where it had got to;
                 // with neither (plugged in before the dongle had a level on battery),
@@ -153,13 +154,13 @@ static void sample_cb(struct k_work *work) {
                 was_charging[half] = true;
                 K_SPINLOCK_BREAK;
             }
-            if (was_charging[half] && mv != 0) {
+            if (was_charging[half] && tenths != 0) {
                 // unplugged (heard as a voltage with no charging)
                 held_level[half] = estimate_now(half, now);
                 was_charging[half] = false;
                 settling[half] = true;
             }
-            if (mv == 0) {
+            if (tenths == 0) {
                 K_SPINLOCK_BREAK; // not connected
             }
             struct fit *f = &fits[half];
@@ -167,7 +168,7 @@ static void sample_cb(struct k_work *work) {
                 // still coming down from the charger's, or just settled: start again from here
                 const uint16_t before = trend[half][(trend_at - SETTLE_MIN + TREND_N) % TREND_N];
                 if (before != 0) {
-                    settling[half] = before >= mv + SETTLE_FALL_MV;
+                    settling[half] = before >= tenths + SETTLE_FALL_MV * 10;
                     *f = (struct fit){0};
                 }
             }
@@ -179,13 +180,13 @@ static void sample_cb(struct k_work *work) {
             }
             if (f->n == 0) {
                 f->start_ms = now;
-                f->e0 = energy_mwh(mv);
+                f->e0 = charge_mah(tenths);
             }
             const double t = (now - f->start_ms) / 3600000.0;
-            const double e = energy_mwh(mv) - f->e0;
+            const double e = charge_mah(tenths) - f->e0;
             f->n++;
             f->last_ms = now;
-            f->last_mv = mv;
+            f->last_tenths = tenths;
             f->t += t;
             f->e += e;
             f->tt += t * t;
@@ -216,15 +217,16 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
         }
         const double sxy = f->te - f->t * f->e / f->n;
         const double syy = f->ee - f->e * f->e / f->n;
-        const double mw = -sxy / sxx; // mWh lost an hour
+        const double ma = -sxy / sxx; // mAh lost an hour
+        const double mw = ma * f->last_tenths / 10000.0; // at the battery's voltage now
         hundredths = (int)CLAMP(mw * 100 + 0.5, 0, 99999);
 
         // how far out it may be: the line's scatter, or one step over its span
         const double sse = MAX(syy - sxy * sxy / sxx, 0);
         const double scatter = f->n > 2 ? sqrt(sse / (f->n - 2) / sxx) : INFINITY;
         const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
-        const double step = (energy_mwh(f->last_mv) - energy_mwh(f->last_mv - STEP_MV)) / span_h;
-        *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * mw;
+        const double step = (charge_mah(f->last_tenths) - charge_mah(f->last_tenths - STEP_TENTHS)) / span_h;
+        *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * ma;
     }
     return hundredths;
 }

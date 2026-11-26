@@ -13,6 +13,10 @@ bool dongle_half_charging(int half);
 // before it sent them.
 uint16_t dongle_half_millivolts(int half);
 
+// The same in tenths of a millivolt, as the half sends it (older halves: whole
+// millivolts, times ten).
+uint32_t dongle_half_tenths_mv(int half);
+
 // The half's average draw in hundredths of a milliwatt, from its voltage since it
 // was last unplugged (or the dongle started), or -1 until there is enough
 // of it; `rough` while it may still be well out (or settling after unplugging).
