@@ -2494,9 +2494,11 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
  *   each link's latest dBm, the halves' over their batteries and the
  *   computer's between after the profile in use, its waves and number
  *   (over USB, USB in its place, and no strip); under each a strip of
- *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: green, amber
- *   or red by the weakest signal in it, red where the link was down, a dim
- *   line where the keyboard was idle (so the halves may have been asleep);
+ *   its last FX_CONN_HISTORY slots of FX_CONN_SLOT_S seconds: a dim line
+ *   while all was well, with nothing else coloured so one bad slot stands
+ *   out: a short amber line for a weak signal, a taller red one for a red
+ *   signal, a full-height red one where the link was down; a gap where the
+ *   keyboard was idle (so the halves may have been asleep);
  *
  *   the board's keys as they are, as big as they go;
  *
@@ -2511,7 +2513,9 @@ static void keys_frame(uint8_t *fb, const struct fx_input *in) {
 
 #define STATUS_SIGNAL_Y 4 /* each link's dBm */
 #define STATUS_CONN_Y 13  /* and under it its connection strip, this high: */
-#define STATUS_CONN_H 5
+#define STATUS_CONN_H 7    /* a minute the link was down; */
+#define STATUS_CONN_LOW 5  /* one with a red signal; */
+#define STATUS_CONN_WEAK 3 /* and one with an amber */
 #define STATUS_KEYS_TOP 22 /* the board's keys */
 #define STATUS_KEYS_H 64
 #define STATUS_BATTERY_Y 91
@@ -2668,17 +2672,19 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     static const int place[3] = {0, 2, 1};
     for (int link = 0; link < (usb_out ? 2 : 3); link++) {
         const int x = keys_block_x(place[link]);
+        const int foot = STATUS_CONN_Y + STATUS_CONN_H - 1;
         for (int px = 0; px < FX_CONN_HISTORY && px < SIGNAL_W; px++) {
             const int v = d->conn_log[link][FX_CONN_HISTORY - SIGNAL_W + px];
-            if (v == FX_CONN_IDLE) {
-                plot(fb, x + px, STATUS_CONN_Y + STATUS_CONN_H - 1, DBG_DIM);
-            } else if (v) {
-                const uint8_t color = v == FX_SIGNAL_DOWN ? DBG_BAD
-                                      : v == FX_CONN_USB || v > SIGNAL_GOOD_DBM ? DBG_GOOD
-                                      : v > SIGNAL_WARN_DBM ? DBG_WARN
-                                                            : DBG_BAD;
-                line(fb, x + px, STATUS_CONN_Y, x + px, STATUS_CONN_H + STATUS_CONN_Y - 1, color);
+            if (v == 0 || v == FX_CONN_IDLE) {
+                continue; /* nothing known, or idle: a gap */
             }
+            if (v == FX_CONN_USB || (v != FX_SIGNAL_DOWN && v > SIGNAL_GOOD_DBM)) {
+                plot(fb, x + px, foot, DBG_DIM);
+                continue;
+            }
+            /* trouble stands up from the line, taller the worse it was */
+            const int high = v == FX_SIGNAL_DOWN ? STATUS_CONN_H : v > SIGNAL_WARN_DBM ? STATUS_CONN_WEAK : STATUS_CONN_LOW;
+            line(fb, x + px, foot - high + 1, x + px, foot, v > SIGNAL_WARN_DBM ? DBG_WARN : DBG_BAD);
         }
     }
 

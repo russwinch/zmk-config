@@ -233,11 +233,11 @@ int main(int argc, char **argv) {
         debug.wpm_log[i] = (uint8_t)(i < 20 ? 0 : 40 + (i * 11 % 30));
     }
     /* and the longer connection history: an idle stretch (the halves asleep),
-     * the right half weak at times and down once, the computer down once */
+     * the right half weak twice (amber, red) and down once, the computer down once */
     for (int i = 0; i < FX_CONN_HISTORY; i++) {
         const bool idle = i >= 8 && i < 19;
         debug.conn_log[0][i] = idle ? FX_CONN_IDLE : (int8_t)(-55 - i % 5);
-        debug.conn_log[1][i] = idle ? FX_CONN_IDLE : i == 26 ? FX_SIGNAL_DOWN : i % 7 == 3 ? -79 : -70;
+        debug.conn_log[1][i] = idle ? FX_CONN_IDLE : i == 26 ? FX_SIGNAL_DOWN : i == 33 ? -87 : i == 22 ? -92 : i % 7 == 3 ? -79 : -70;
         debug.conn_log[2][i] = idle ? FX_CONN_IDLE : i == 31 ? FX_SIGNAL_DOWN : -50;
     }
     /* and the volts: the halves running down, the right faster; the dongle steady */

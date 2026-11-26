@@ -71,7 +71,7 @@ Laid out like a racing car's steering wheel display.
 | Part | Shows |
 | --- | --- |
 | signals along the top | each link's dBm (`--` in red when down); in the middle the waves and the profile number (coloured as on Typist) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
-| connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: green, amber or red by its weakest signal, red where it was down, a dim line where the keyboard was idle (the halves may have been asleep) |
+| connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: a dim line while all was well, and only trouble in colour, taller the worse: a short amber line for a weak signal, a taller red one for a red signal, a full-height red one where the link was down; a gap where the keyboard was idle (the halves may have been asleep) |
 | the keys | as they are on the board, lit as on Typist |
 | between the halves | only if something has gone wrong, one a line, worst at the top: `HANG` or `CRSH` (the dongle restarted), `CH` charging state failed, `UE` USB reports not taken, `DR` the computer's link dropped, the dongle's temperature from 60 °C |
 | over each battery | `DR` and how often that half's link has dropped, if it has |
