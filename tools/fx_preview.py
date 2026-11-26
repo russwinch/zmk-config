@@ -13,6 +13,7 @@ draw, without flashing anything:
     tools/fx_preview.py --stills     # a still of each screen -> fx_preview_out/<n>_<name>.png
     tools/fx_preview.py --contrast   # every theme's contrast ratios, the low ones flagged
     tools/fx_preview.py --board waterfowl  # on the Waterfowl's keys and encoders (or corne)
+                                     # (--stills draws Showroom on the Waterfowl anyway)
 
 The battery levels and the output are drawn over them as on the dongle
 (src/screen_fx/status_overlay.c), in fonts from the Prospector module. Those
@@ -216,8 +217,13 @@ def main() -> None:
             for index, name in enumerate(names()):
                 at = 0.85 if name == "STATUS" else 0.4
                 path = args.out / f"{index + 1}_{name.lower()}.png"
+                # Showroom on the board it was made for, unless another was asked for
+                board = ENV["FX_PREVIEW_BOARD"]
+                if name == "SHOWROOM" and args.board == "forager":
+                    ENV["FX_PREVIEW_BOARD"] = "waterfowl"
                 render(exe, index, frames, args.fps)[int(frames * at)].resize(
                     (WIDTH * 4, HEIGHT * 4), Image.NEAREST).save(path)
+                ENV["FX_PREVIEW_BOARD"] = board
                 print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
             return
         if args.themes:

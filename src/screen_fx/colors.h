@@ -195,6 +195,31 @@ static const struct text_colors code_text = {
     {220, 255, 225}, {110, 170, 145}, {60, 230, 255}, {150, 180, 165}, {255, 70, 50}};
 static const struct text_colors life_text = {
     {255, 255, 255}, {160, 160, 160}, {60, 235, 130}, {208, 208, 208}, {255, 70, 50}};
+static const struct text_colors showroom_text = {
+    {255, 255, 255}, {160, 160, 160}, {255, 150, 60}, {208, 208, 208}, {255, 70, 50}};
+
+/*
+ * Showroom: the board in 3D. The backdrop runs from its edges to where the
+ * spotlight falls, and darker where something's shadow is on it. Each
+ * material is in five bands: turned from the light, half lit, lit, caught
+ * by the light from behind, and a glint sweeping over it. A key just
+ * pressed glows, from its own colour to `showroom_glow`.
+ */
+static const struct color showroom_backdrop[2] = {{3, 4, 9}, {44, 50, 70}};
+static const struct color showroom_shadow[2] = {{1, 2, 4}, {16, 18, 28}};
+static const struct color showroom_materials[][5] = {
+    {{22, 26, 36}, {46, 53, 70}, {78, 88, 112}, {120, 170, 225}, {200, 220, 245}},     /* the case */
+    {{8, 46, 38}, {18, 96, 72}, {36, 156, 112}, {130, 230, 200}, {220, 255, 240}},     /* the cover: mallard green */
+    {{112, 100, 88}, {196, 186, 166}, {246, 238, 220}, {170, 200, 235}, {255, 255, 255}}, /* keycaps: cream */
+    {{120, 44, 10}, {214, 98, 28}, {255, 150, 60}, {255, 200, 150}, {255, 240, 210}},  /* thumb keys: orange */
+    {{58, 60, 68}, {126, 132, 144}, {198, 204, 216}, {150, 190, 235}, {255, 255, 255}}, /* dials: metal */
+    {{16, 16, 20}, {38, 38, 46}, {70, 70, 82}, {100, 140, 185}, {170, 180, 200}},      /* rollers, switches */
+    {{6, 7, 11}, {12, 14, 20}, {24, 28, 38}, {60, 80, 110}, {130, 150, 180}},          /* screens */
+    {{20, 19, 23}, {40, 38, 44}, {64, 61, 70}, {110, 140, 190}, {180, 188, 205}},      /* the dongle */
+};
+static const struct color showroom_glow = {90, 235, 255};
+static const struct color showroom_ink = {2, 3, 6};
+static const struct color showroom_caption = {235, 238, 245};
 
 /* --- on every animation ------------------------------------------------------ */
 

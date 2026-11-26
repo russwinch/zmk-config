@@ -118,6 +118,8 @@ workflow); what each shows: [`src/screen_fx/README.md`](src/screen_fx/README.md)
 | Thermal | Tracker | Terminal |
 | <img src="docs/screens/7_warp.png" width="260" alt="Warp"> | <img src="docs/screens/8_code.png" width="260" alt="Code"> | <img src="docs/screens/9_life.png" width="260" alt="Life"> |
 | Warp (screensaver) | Code (screensaver) | Life (screensaver) |
+| <img src="docs/screens/10_showroom.png" width="260" alt="Showroom"> | | |
+| Showroom (screensaver) | | |
 
 ### The left half's nice!view
 

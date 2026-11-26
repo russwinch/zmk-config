@@ -133,9 +133,13 @@ user's own computer: a cloud session can't see USB drives.
 - Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
   `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
 - The animations place keys on a 10x4 grid (the Waterfowl); Debug uses the
-  matrix transform; Typist and Status draw each board as it is from
+  matrix transform; Typist, Status and Showroom draw each board as it is from
   `src/screen_fx/boards.h`, written by `tools/boards.py --header` (with the
   README's pictures) and picked per dongle shield in `src/dongle_screen_fx.c`.
+- Showroom builds the board in 3D from `boards.h` and draws it back to
+  front with no depth buffer (the canvas holds which solid each pixel is,
+  for the outlines); its way in finds the old picture on the 3D dongle's
+  screen ray by ray (`pullback_row`).
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
   black with captions in the same strong hue; light ones adjust each colour's
   lightness, never its hue. Check `tools/fx_preview.py --contrast`.

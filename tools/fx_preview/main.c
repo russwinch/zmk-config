@@ -195,6 +195,11 @@ static int power_main(int fx, float fps) {
 }
 
 int main(int argc, char **argv) {
+    if (argc > 1 && (strcmp(argv[1], "saver") == 0 || strcmp(argv[1], "power") == 0)) {
+        const int8_t *encoders;
+        int n_encoders;
+        preview_board(&encoders, &n_encoders); /* the board Showroom builds */
+    }
     if (argc > 3 && strcmp(argv[1], "saver") == 0) {
         return saver_main(atoi(argv[2]), atoi(argv[3]), argc > 4 ? atof(argv[4]) : 15);
     }

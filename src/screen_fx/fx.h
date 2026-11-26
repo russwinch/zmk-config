@@ -349,6 +349,7 @@ enum {
     FX_TR_HYPERSPACE, /* into Warp: torn open at the vanishing point, streaking past */
     FX_TR_INFECT,     /* into Life: the picture's bright parts come alive and eat it */
     FX_TR_MELT,       /* into Code: it runs down the screen like wax, and only then is anything written */
+    FX_TR_PULLBACK,   /* into Showroom: the camera pulls back from the picture, on the dongle's screen, to the board */
     FX_TR_GLITCH,     /* `old_palette` is the screen to go back to; `old` isn't used */
     FX_TR_CUT,        /* `old` is the screensaver's last frame */
     FX_TR_CRT_OFF,    /* the panel going off: the picture closes to a line, then a dot, like an old television */
