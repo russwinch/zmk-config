@@ -75,7 +75,7 @@ Laid out like a racing car's steering wheel display.
 | the keys | as they are on the board, lit as on Typist |
 | between the halves | only if something has gone wrong, one a line, worst at the top: `HANG` or `CRSH` (the dongle restarted), `CH` charging state failed, `UE` USB reports not taken, `DR` the computer's link dropped, the dongle's temperature from 60 °C |
 | over each battery | `DR` and how often that half's link has dropped, if it has |
-| batteries | each half's level, volts and average draw in mW (`~` while still rough), a bar, a bolt while on USB power |
+| batteries | each half's level, volts and average draw in mW (`~` while still rough), and a bar, which fills step by step while that half charges; between the bars a bolt while either half is on USB power |
 
 ## Debug
 
