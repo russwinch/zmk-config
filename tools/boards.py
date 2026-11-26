@@ -206,7 +206,7 @@ def header():
         names.append(name)
         parts = []
         for p, right in positions(name):
-            flags = KINDS[p.kind] + (" | FX_PART_RIGHT" if right else "")
+            flags = KINDS[p.kind] + (" | FX_PART_RIGHT" if right else "") + ("" if p.core else " | FX_PART_EXTRA")
             parts.append(f"    {{{q(p.x)}, {q(p.y)}, {int(round(p.rot))}, {q(p.w)}, {q(p.h)}, {flags}}},")
         lines += [f"static const struct fx_part {name}_parts[] = {{", *parts, "};"]
         parts = []

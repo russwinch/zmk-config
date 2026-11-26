@@ -27,9 +27,10 @@ The screen, theme and brightness are remembered once left for 30 seconds.
 After 15 minutes without a key, or when the lock key is let go, a
 screensaver takes over: **Warp** (stars to light speed), **Code** (an alien
 script written down the page), **Life** (Conway's Game of Life) or
-**Showroom** (the keyboard in 3D, cel-shaded and filmed like a car advert:
-the camera pulls back from the dongle's own screen, then cuts between shots
-of the board, its name and parts captioned in the letterbox). Typing reacts
+**Showroom** (the keyboard in 3D, in the colours of the README's pictures,
+cel-shaded and filmed like a car advert: the screen breaks into tiles that
+tumble away with the board behind, then it cuts between shots of the board,
+its name and parts captioned in the letterbox). Typing reacts
 in each (in Showroom the keys go down and glow); the first key starts the
 way back to your screen.
 

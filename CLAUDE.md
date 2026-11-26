@@ -138,8 +138,9 @@ user's own computer: a cloud session can't see USB drives.
   README's pictures) and picked per dongle shield in `src/dongle_screen_fx.c`.
 - Showroom builds the board in 3D from `boards.h` and draws it back to
   front with no depth buffer (the canvas holds which solid each pixel is,
-  for the outlines); its way in finds the old picture on the 3D dongle's
-  screen ray by ray (`pullback_row`).
+  for the outlines); its way in finds the old picture on each falling tile
+  ray by ray (`collapse_row`). Its colours follow `tools/boards.py`'s, and
+  boards.h's `FX_PART_EXTRA` marks the parts drawn amber there.
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
   black with captions in the same strong hue; light ones adjust each colour's
   lightness, never its hue. Check `tools/fx_preview.py --contrast`.

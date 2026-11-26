@@ -268,6 +268,7 @@ enum { FX_PART_KEY, FX_PART_DIAL, FX_PART_ROLLER, FX_PART_SCREEN, FX_PART_CONTRO
 #define FX_PART_KIND 0x0f
 #define FX_PART_RIGHT 0x10 /* a key on the right half */
 #define FX_PART_BOTH 0x20  /* anything else: on both halves, not only the left */
+#define FX_PART_EXTRA 0x40 /* not one of the 34 core keys (amber in the README's pictures, and on Showroom) */
 struct fx_part {
     int16_t x, y; /* its middle */
     int8_t rot;   /* degrees clockwise */
@@ -349,7 +350,7 @@ enum {
     FX_TR_HYPERSPACE, /* into Warp: torn open at the vanishing point, streaking past */
     FX_TR_INFECT,     /* into Life: the picture's bright parts come alive and eat it */
     FX_TR_MELT,       /* into Code: it runs down the screen like wax, and only then is anything written */
-    FX_TR_PULLBACK,   /* into Showroom: the camera pulls back from the picture, on the dongle's screen, to the board */
+    FX_TR_COLLAPSE,   /* into Showroom: the picture breaks into tiles that tumble away, the board behind it */
     FX_TR_GLITCH,     /* `old_palette` is the screen to go back to; `old` isn't used */
     FX_TR_CUT,        /* `old` is the screensaver's last frame */
     FX_TR_CRT_OFF,    /* the panel going off: the picture closes to a line, then a dot, like an old television */

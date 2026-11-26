@@ -199,7 +199,8 @@ static const struct text_colors showroom_text = {
     {255, 255, 255}, {160, 160, 160}, {255, 150, 60}, {208, 208, 208}, {255, 70, 50}};
 
 /*
- * Showroom: the board in 3D. The backdrop runs from its edges to where the
+ * Showroom: the board in 3D, in the colours of the README's pictures
+ * (tools/boards.py). The backdrop runs from its edges to where the
  * spotlight falls, and darker where something's shadow is on it. Each
  * material is in five bands: turned from the light, half lit, lit, caught
  * by the light from behind, and a glint sweeping over it. A key just
@@ -208,16 +209,16 @@ static const struct text_colors showroom_text = {
 static const struct color showroom_backdrop[2] = {{3, 4, 9}, {44, 50, 70}};
 static const struct color showroom_shadow[2] = {{1, 2, 4}, {16, 18, 28}};
 static const struct color showroom_materials[][5] = {
-    {{22, 26, 36}, {46, 53, 70}, {78, 88, 112}, {120, 170, 225}, {200, 220, 245}},     /* the case */
-    {{8, 46, 38}, {18, 96, 72}, {36, 156, 112}, {130, 230, 200}, {220, 255, 240}},     /* the cover: mallard green */
-    {{112, 100, 88}, {196, 186, 166}, {246, 238, 220}, {170, 200, 235}, {255, 255, 255}}, /* keycaps: cream */
-    {{120, 44, 10}, {214, 98, 28}, {255, 150, 60}, {255, 200, 150}, {255, 240, 210}},  /* thumb keys: orange */
-    {{58, 60, 68}, {126, 132, 144}, {198, 204, 216}, {150, 190, 235}, {255, 255, 255}}, /* dials: metal */
-    {{16, 16, 20}, {38, 38, 46}, {70, 70, 82}, {100, 140, 185}, {170, 180, 200}},      /* rollers, switches */
-    {{6, 7, 11}, {12, 14, 20}, {24, 28, 38}, {60, 80, 110}, {130, 150, 180}},          /* screens */
-    {{20, 19, 23}, {40, 38, 44}, {64, 61, 70}, {110, 140, 190}, {180, 188, 205}},      /* the dongle */
+    {{30, 33, 40}, {50, 55, 63}, {72, 79, 90}, {120, 150, 190}, {190, 202, 220}},      /* the case: #3d434c */
+    {{22, 25, 30}, {40, 44, 51}, {58, 64, 73}, {100, 128, 165}, {170, 182, 200}},      /* the cover: #30353c */
+    {{100, 106, 120}, {160, 166, 178}, {205, 211, 220}, {190, 214, 245}, {255, 255, 255}}, /* keycaps: #c4cad3 */
+    {{118, 76, 22}, {190, 130, 44}, {232, 170, 70}, {255, 214, 150}, {255, 245, 222}}, /* the extra keys, dials, rollers: #e3a33c */
+    {{78, 94, 86}, {128, 148, 136}, {164, 186, 171}, {190, 214, 200}, {232, 242, 236}}, /* the halves' screens: #9fb4a6 */
+    {{14, 15, 18}, {28, 30, 35}, {44, 47, 54}, {80, 100, 130}, {140, 150, 170}},      /* switches, rollers' ribs */
+    {{12, 14, 17}, {24, 27, 31}, {36, 40, 46}, {70, 90, 120}, {130, 150, 180}},       /* screen edges: #1d2126 */
+    {{20, 19, 23}, {40, 38, 44}, {64, 61, 70}, {110, 140, 190}, {180, 188, 205}},      /* the dongle, and the tiles' backs */
 };
-static const struct color showroom_glow = {90, 235, 255};
+static const struct color showroom_glow = {110, 230, 255};
 static const struct color showroom_ink = {2, 3, 6};
 static const struct color showroom_caption = {235, 238, 245};
 

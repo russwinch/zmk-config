@@ -2801,9 +2801,9 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
 #define SHOW_MAT (SHOW_SHADOWED + SHOW_BG_N)  /* the materials, SHOW_BANDS each */
 #define SHOW_BANDS 5
 enum { BAND_DARK, BAND_MID, BAND_LIT, BAND_RIM, BAND_GLINT };
-enum { MAT_CASE, MAT_COVER, MAT_CAP, MAT_THUMB, MAT_METAL, MAT_RUBBER, MAT_GLASS, MAT_DONGLE, MAT_HOT, SHOW_MATS = MAT_HOT + 3 };
+enum { MAT_CASE, MAT_COVER, MAT_CAP, MAT_EXTRA, MAT_SCREEN, MAT_RUBBER, MAT_GLASS, MAT_DONGLE, MAT_HOT, SHOW_MATS = MAT_HOT + 3 };
 #define SHOW_INK (SHOW_MAT + SHOW_MATS * SHOW_BANDS)
-#define SHOW_PICTURE (SHOW_INK + 1) /* the dongle's screen on the way in: what was showing */
+#define SHOW_PICTURE (SHOW_INK + 1) /* on the way in: what was showing, on the tiles it breaks into */
 #define SHOW_CAPTION (SHOW_PICTURE + 1) /* SHOW_CAPTION_N levels, faded in */
 #define SHOW_CAPTION_N 8
 
@@ -2837,14 +2837,36 @@ static bool show_intro_now; /* fx_transition_step said so this frame */
 static float show_bw, show_bd, show_gap; /* a half's width and depth; half the gap between them */
 static float show_light[3], show_back[3]; /* to the key light, to the one behind */
 static float show_glint;                  /* where the glint's band is across the screen */
-static uint8_t show_id;                   /* the next solid's number in the canvas */
+static uint8_t show_id;                   /* the last solid's number in the canvas (it stops at 255) */
 static uint8_t show_heat[64];             /* how lately each key was pressed */
 static int show_keys, show_dials, show_rollers;
 static float show_aim[3]; /* the detail shot's subject */
-/* the dongle's screen in the camera's space, for the way in: its top left
- * corner, along its top and down its side, and its normal */
-static float pic_o[3], pic_x[3], pic_y[3], pic_n[3];
-static float pic_shown; /* how much of what was showing is still on it, 0..1 */
+
+/*
+ * The way in: what was showing, as a wall of tiles just in front of the
+ * camera, so that at first it is the picture exactly. A sweep across it
+ * knocks each tile loose: it tips forward, turns over and falls, a slab
+ * with the picture on its face, and the board is behind. Tiles still in
+ * the wall are one solid (no lines between them); each loose one is its
+ * own, and fx_transition_row finds the picture on it ray by ray, from
+ * where it is this frame (its slot: the order it was drawn in).
+ */
+#define TILE_COLS 10
+#define TILE_ROWS 8
+#define TILE_W (FX_W / TILE_COLS)
+#define TILE_H (FX_H / TILE_ROWS)
+#define TILES (TILE_COLS * TILE_ROWS)
+#define TILE_DEPTH 0.32f   /* the wall's distance, of the camera's from its target */
+#define TILE_THICK 8.0f    /* quarter mm */
+#define TILE_FALL 300.0f   /* gravity, quarter mm a second squared: slow motion */
+static float wall_pos[3], wall_r[3], wall_u[3], wall_f[3], wall_focal, wall_d; /* the camera the wall was built for */
+static uint8_t wall_id, loose_from_id, n_loose;
+static struct wall_tile {
+    float o[3], x[3], y[3], n[3]; /* in the camera's space: its top left corner, along its top and side, its face's normal */
+    uint8_t tile, shade;          /* which, and how lit (256ths, less one) */
+} loose[TILES], wall_now; /* wall_now: the wall still standing, as one tile the size of the picture */
+
+static inline void show_next(void) { show_id += show_id < 255; }
 
 static inline float dot3(const float *a, const float *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 
@@ -3059,7 +3081,7 @@ static void show_extrude(uint8_t *fb, const int16_t *outline, int n, float z0, f
         depth[j] = d;
         order[j] = (uint8_t)i;
     }
-    show_id++;
+    show_next();
     for (int w = 0; w < walls; w++) {
         const float *a = top[order[w]], *b = top[(order[w] + 1) % n];
         float normal[3] = {b[1] - a[1], a[0] - b[0], 0};
@@ -3072,7 +3094,7 @@ static void show_extrude(uint8_t *fb, const int16_t *outline, int n, float z0, f
         show_face(fb, quad, 4, normal, mat, FILL_SOLID);
     }
     static const float up[3] = {0, 0, 1};
-    show_id++;
+    show_next();
     show_face(fb, (const float(*)[3])top, n, up, mat, FILL_GLINT);
 }
 
@@ -3102,7 +3124,7 @@ static void show_box(uint8_t *fb, const struct fx_part *p, float hw, float hh, f
         part_point(top[i], p, corner[i][0] * (hw - inset), corner[i][1] * (hh - inset), z1);
     }
     part_point(mid, p, 0, 0, (z0 + z1) / 2);
-    show_id++;
+    show_next();
     for (int i = 0; i < 4; i++) {
         const int j = (i + 1) % 4;
         float side[4][3], n[3];
@@ -3121,7 +3143,7 @@ static void show_box(uint8_t *fb, const struct fx_part *p, float hw, float hh, f
 
 #define DIAL_SIDES 12
 
-/* A dial: a short metal cylinder, a mark on its top. */
+/* A dial: a short cylinder, a mark on its top. */
 static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, float z1) {
     float foot[DIAL_SIDES][3], top[DIAL_SIDES][3], mid[3];
     for (int i = 0; i < DIAL_SIDES; i++) {
@@ -3130,7 +3152,7 @@ static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, f
         part_point(top[i], p, 0.9f * r * cosf(a), 0.9f * r * sinf(a), z1);
     }
     part_point(mid, p, 0, 0, (z0 + z1) / 2);
-    show_id++;
+    show_next();
     for (int i = 0; i < DIAL_SIDES; i++) {
         const int j = (i + 1) % DIAL_SIDES;
         float side[4][3], n[3];
@@ -3139,17 +3161,17 @@ static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, f
         memcpy(side[2], top[j], sizeof(side[0]));
         memcpy(side[3], top[i], sizeof(side[0]));
         show_normal((const float(*)[3])side, mid, n);
-        show_face(fb, (const float(*)[3])side, 4, n, MAT_METAL, FILL_SOLID);
+        show_face(fb, (const float(*)[3])side, 4, n, MAT_EXTRA, FILL_SOLID);
     }
     static const float up[3] = {0, 0, 1};
-    show_id++;
-    show_face(fb, (const float(*)[3])top, DIAL_SIDES, up, MAT_METAL, FILL_GLINT);
+    show_next();
+    show_face(fb, (const float(*)[3])top, DIAL_SIDES, up, MAT_EXTRA, FILL_GLINT);
     float mark[4][3];
     part_point(mark[0], p, -2.5f, -0.25f * r, z1);
     part_point(mark[1], p, 2.5f, -0.25f * r, z1);
     part_point(mark[2], p, 2.5f, -0.8f * r, z1);
     part_point(mark[3], p, -2.5f, -0.8f * r, z1);
-    show_face(fb, (const float(*)[3])mark, 4, up, MAT_THUMB, FILL_SOLID);
+    show_face(fb, (const float(*)[3])mark, 4, up, MAT_CASE, FILL_SOLID);
 }
 
 #define ROLLER_STEPS 8
@@ -3163,7 +3185,7 @@ static void show_roller(uint8_t *fb, const struct fx_part *p, float hw, float r)
         part_point(ring[0][k], p, -hw, r * cosf(a), SHOW_PCB + r * sinf(a));
         part_point(ring[1][k], p, hw, r * cosf(a), SHOW_PCB + r * sinf(a));
     }
-    show_id++;
+    show_next();
     for (int end = 0; end < 2; end++) {
         float n[3], at[3];
         part_point(at, p, end ? hw : -hw, 0, SHOW_PCB);
@@ -3180,8 +3202,8 @@ static void show_roller(uint8_t *fb, const struct fx_part *p, float hw, float r)
         memcpy(strip[2], ring[1][k + 1], sizeof(strip[0]));
         memcpy(strip[3], ring[0][k + 1], sizeof(strip[0]));
         show_normal((const float(*)[3])strip, axis, n);
-        /* ribs: every other strip a band darker */
-        show_face(fb, (const float(*)[3])strip, 4, n, k & 1 ? MAT_RUBBER : MAT_CASE, FILL_SOLID);
+        /* ribs: every other strip dark */
+        show_face(fb, (const float(*)[3])strip, 4, n, k & 1 ? MAT_RUBBER : MAT_EXTRA, FILL_SOLID);
     }
 }
 
@@ -3198,7 +3220,7 @@ static void show_part(uint8_t *fb, const struct fx_input *in, const struct fx_pa
     const float hw = p->w / 2.0f, hh = p->h / 2.0f;
     switch (p->kind & FX_PART_KIND) {
     case FX_PART_KEY: {
-        int mat = p->rot ? MAT_THUMB : MAT_CAP;
+        int mat = p->kind & FX_PART_EXTRA ? MAT_EXTRA : MAT_CAP;
         const float press = show_key_state(in, key, &mat);
         const float foot = SHOW_PCB + SHOW_SWITCH - press;
         show_box(fb, p, hw - 14, hh - 14, 0, SHOW_PCB, foot, MAT_RUBBER, false);
@@ -3219,8 +3241,12 @@ static void show_part(uint8_t *fb, const struct fx_input *in, const struct fx_pa
         for (int i = 0; i < 4; i++) {
             part_point(quad[i], p, corner[i][0] * (hw - 2), corner[i][1] * (hh - 2), z);
         }
-        show_id++;
-        show_face(fb, (const float(*)[3])quad, 4, up, MAT_GLASS, FILL_GLINT);
+        show_next();
+        show_face(fb, (const float(*)[3])quad, 4, up, MAT_GLASS, FILL_SOLID);
+        for (int i = 0; i < 4; i++) {
+            part_point(quad[i], p, corner[i][0] * (hw - 8), corner[i][1] * (hh - 8), z);
+        }
+        show_face(fb, (const float(*)[3])quad, 4, up, MAT_SCREEN, FILL_GLINT);
         break;
     }
     default:
@@ -3315,12 +3341,11 @@ static void dongle_corners(float (*out)[3]) {
     }
 }
 
-/* The dongle: its case, and on it its screen, showing what was on the real
- * one (`picture`) or dark. */
-static void show_dongle(uint8_t *fb, bool picture) {
+/* The dongle: its case, and its screen. */
+static void show_dongle(uint8_t *fb) {
     float c[8][3], mid[3] = {0, DONGLE_FRONT + DONGLE_DEEP / 2, DONGLE_HIGH / 2};
     dongle_corners(c);
-    show_id++;
+    show_next();
     for (int s = 0; s < 2; s++) {
         const float n[3] = {s ? 1.0f : -1.0f, 0, 0};
         const float(*face)[3] = (const float(*)[3])c[s * 4];
@@ -3347,21 +3372,8 @@ static void show_dongle(uint8_t *fb, bool picture) {
             screen[i][k] = at[k] + up[k] * high + (k == 0 ? across : 0);
         }
     }
-    show_id++;
-    show_face(fb, (const float(*)[3])screen, 4, n, picture ? -1 : MAT_GLASS, FILL_GLINT);
-    if (picture) {
-        float tr[3], bl[3];
-        to_cam(screen[0], pic_o);
-        to_cam(screen[1], tr);
-        to_cam(screen[3], bl);
-        for (int k = 0; k < 3; k++) {
-            pic_x[k] = tr[k] - pic_o[k];
-            pic_y[k] = bl[k] - pic_o[k];
-        }
-        pic_n[0] = dot3(n, cam.r);
-        pic_n[1] = dot3(n, cam.u);
-        pic_n[2] = dot3(n, cam.f);
-    }
+    show_next();
+    show_face(fb, (const float(*)[3])screen, 4, n, MAT_GLASS, FILL_GLINT);
 }
 
 /* The shadows on the desk: the dongle's, and each half's. */
@@ -3428,6 +3440,163 @@ static void show_backdrop(uint8_t *fb) {
             int level = (int)(v * (SHOW_BG_N - 1) + bayer[(y & 3) * 4 + (x & 3)] / 16.0f);
             fb[y * FX_W + x] = (uint8_t)(SHOW_BG + (level > SHOW_BG_N - 1 ? SHOW_BG_N - 1 : level));
         }
+    }
+}
+
+static float hashf(int x, int y);
+
+/* The wall goes up in front of the camera as it is now, `dist` from its target. */
+static void wall_build(float dist) {
+    memcpy(wall_pos, cam.pos, sizeof(wall_pos));
+    memcpy(wall_r, cam.r, sizeof(wall_r));
+    memcpy(wall_u, cam.u, sizeof(wall_u));
+    memcpy(wall_f, cam.f, sizeof(wall_f));
+    wall_focal = cam.focal;
+    wall_d = TILE_DEPTH * dist;
+}
+
+/* When tile `i` comes loose, 0..1 through the way in: a sweep from the top
+ * left, ragged. */
+static float tile_loose_at(int i) {
+    const float sweep = 0.6f * (i % TILE_COLS) / (TILE_COLS - 1) + 0.4f * (i / TILE_COLS) / (TILE_ROWS - 1);
+    return 0.06f + 0.62f * (0.85f * sweep + 0.15f * hashf(i, 1));
+}
+
+/* Where tile `i` is `secs` after it came loose (up to 0: in the wall): its
+ * middle, along its top and down its side (its whole width and height), and
+ * its face's normal. */
+static void tile_place(int i, float secs, float *mid, float *ax, float *ay, float *n) {
+    const float k = wall_d / wall_focal;
+    const float cx = ((i % TILE_COLS + 0.5f) * TILE_W - FX_W / 2) * k;
+    const float cy = -((i / TILE_COLS + 0.5f) * TILE_H - FX_H / 2) * k;
+    for (int c = 0; c < 3; c++) {
+        mid[c] = wall_pos[c] + wall_r[c] * cx + wall_u[c] * cy + wall_f[c] * wall_d;
+        ax[c] = wall_r[c] * TILE_W * k;
+        ay[c] = -wall_u[c] * TILE_H * k;
+        n[c] = -wall_f[c];
+    }
+    if (secs <= 0) {
+        return;
+    }
+    /* thrown a little towards the camera and up, then falling; tipping
+     * forward over its top, with some twist */
+    const float toward = 50 + 90 * hashf(i, 2), aside = (hashf(i, 3) - 0.5f) * 70, up = 30 + 60 * hashf(i, 4);
+    for (int c = 0; c < 3; c++) {
+        mid[c] += (-wall_f[c] * toward + wall_r[c] * aside) * secs;
+    }
+    mid[2] += up * secs - 0.5f * TILE_FALL * secs * secs;
+    float axis[3];
+    for (int c = 0; c < 3; c++) {
+        axis[c] = wall_r[c] + wall_u[c] * (hashf(i, 5) - 0.5f) * 0.9f + wall_f[c] * (hashf(i, 6) - 0.5f) * 0.9f;
+    }
+    norm3(axis);
+    const float turn = (1.4f + 1.8f * hashf(i, 7)) * secs, co = cosf(turn), si = sinf(turn);
+    float *const vs[3] = {ax, ay, n};
+    for (int v = 0; v < 3; v++) { /* Rodrigues: about `axis` by `turn` */
+        float x[3];
+        const float along = dot3(axis, vs[v]);
+        cross3(axis, vs[v], x);
+        for (int c = 0; c < 3; c++) {
+            vs[v][c] = vs[v][c] * co + x[c] * si + axis[c] * along * (1 - co);
+        }
+    }
+}
+
+/* A tile's face (`out` > 0) or back, its corners clockwise from top left. */
+static void tile_face(const float *mid, const float *ax, const float *ay, const float *n, float out,
+                      float (*face)[3]) {
+    for (int c = 0; c < 3; c++) {
+        const float at = mid[c] + n[c] * out;
+        face[0][c] = at - ax[c] / 2 - ay[c] / 2;
+        face[1][c] = at + ax[c] / 2 - ay[c] / 2;
+        face[2][c] = at + ax[c] / 2 + ay[c] / 2;
+        face[3][c] = at - ax[c] / 2 + ay[c] / 2;
+    }
+}
+
+/* The wall, `t` through the way in: what is left of it, then each loose
+ * tile, far to near. */
+static void show_wall(uint8_t *fb, float t) {
+    const float secs_in = FX_SAVER_IN_MS / 1000.0f;
+    static uint8_t order[TILES];
+    static float depth[TILES];
+    int n = 0;
+
+    show_next();
+    wall_id = show_id;
+    {
+        float mid[3], ax[3], ay[3], nn[3], quad[4][3];
+        const float *basis[3] = {cam.r, cam.u, cam.f};
+        tile_place(0, 0, mid, ax, ay, nn);
+        tile_face(mid, ax, ay, nn, 0, quad);
+        to_cam(quad[0], wall_now.o);
+        for (int c = 0; c < 3; c++) {
+            wall_now.x[c] = dot3(ax, basis[c]) * TILE_COLS;
+            wall_now.y[c] = dot3(ay, basis[c]) * TILE_ROWS;
+            wall_now.n[c] = dot3(nn, basis[c]);
+        }
+        wall_now.shade = 255;
+        wall_now.tile = 0;
+    }
+    for (int i = 0; i < TILES; i++) {
+        float mid[3], ax[3], ay[3], nn[3], quad[4][3];
+        if (t > tile_loose_at(i)) {
+            tile_place(i, (t - tile_loose_at(i)) * secs_in, mid, ax, ay, nn);
+            const float d[3] = {mid[0] - cam.pos[0], mid[1] - cam.pos[1], mid[2] - cam.pos[2]};
+            const float far = dot3(d, cam.f);
+            int j = n++;
+            for (; j > 0 && depth[j - 1] < far; j--) {
+                depth[j] = depth[j - 1];
+                order[j] = order[j - 1];
+            }
+            depth[j] = far;
+            order[j] = (uint8_t)i;
+            continue;
+        }
+        tile_place(i, 0, mid, ax, ay, nn);
+        tile_face(mid, ax, ay, nn, 0, quad);
+        show_face(fb, (const float(*)[3])quad, 4, nn, -1, FILL_SOLID);
+    }
+
+    n_loose = 0;
+    loose_from_id = (uint8_t)(show_id + 1);
+    for (int k = 0; k < n && show_id < 255; k++) {
+        const int i = order[k];
+        const float secs = (t - tile_loose_at(i)) * secs_in;
+        float mid[3], ax[3], ay[3], nn[3], face[4][3], back[4][3];
+        tile_place(i, secs, mid, ax, ay, nn);
+        tile_face(mid, ax, ay, nn, TILE_THICK / 2, face);
+        tile_face(mid, ax, ay, nn, -TILE_THICK / 2, back);
+        show_next();
+        const float behind[3] = {-nn[0], -nn[1], -nn[2]};
+        show_face(fb, (const float(*)[3])back, 4, behind, MAT_DONGLE, FILL_SOLID);
+        for (int e = 0; e < 4; e++) {
+            float edge[4][3], en[3];
+            memcpy(edge[0], face[e], sizeof(edge[0]));
+            memcpy(edge[1], face[(e + 1) % 4], sizeof(edge[0]));
+            memcpy(edge[2], back[(e + 1) % 4], sizeof(edge[0]));
+            memcpy(edge[3], back[e], sizeof(edge[0]));
+            show_normal((const float(*)[3])edge, mid, en);
+            show_face(fb, (const float(*)[3])edge, 4, en, MAT_RUBBER, FILL_SOLID);
+        }
+        show_face(fb, (const float(*)[3])face, 4, nn, -1, FILL_SOLID);
+
+        /* where the picture on it is, for fx_transition_row; and how lit,
+         * taking the light's bands over its first moments loose */
+        const float *basis[3] = {cam.r, cam.u, cam.f};
+        to_cam(face[0], loose[n_loose].o);
+        for (int c = 0; c < 3; c++) {
+            loose[n_loose].x[c] = dot3(ax, basis[c]);
+            loose[n_loose].y[c] = dot3(ay, basis[c]);
+            loose[n_loose].n[c] = dot3(nn, basis[c]);
+        }
+        float view[3] = {cam.pos[0] - mid[0], cam.pos[1] - mid[1], cam.pos[2] - mid[2]};
+        norm3(view);
+        const int band = show_band(nn, view);
+        const float lit = band == BAND_DARK ? 0.5f : band == BAND_MID ? 0.78f : 1;
+        loose[n_loose].shade = (uint8_t)(255 * (1 - (1 - lit) * clampf(secs * 1.5f, 0, 1)));
+        loose[n_loose].tile = (uint8_t)i;
+        n_loose++;
     }
 }
 
@@ -3575,6 +3744,7 @@ static void showroom_start(uint16_t *palette) {
     show_time = 0;
     show_glint = -100;
     show_intro_now = false;
+    wall_d = 0;
 }
 
 static void showroom_frame(uint8_t *fb, const struct fx_input *in) {
@@ -3595,24 +3765,12 @@ static void showroom_frame(uint8_t *fb, const struct fx_input *in) {
     int bar = SHOW_BAR, shot = 0;
     float u = 0;
     if (intro) {
-        /* from just in front of the dongle's screen, so that it fills the
-         * picture as the real one did, back and round to the first shot */
-        const float t = show_intro;
-        float screen[3], up[3], first[3], first_view[3];
-        dongle_screen(screen, up);
-        shot_camera(0, 0, first, first_view);
-        const float tilt = atan2f(DONGLE_LEAN, DONGLE_HIGH) * (360 / TWO_PI);
-        const float near = 150.0f * DONGLE_SCREEN_W / FX_W;
-        const float back = show_ease((t - 0.05f) / 0.6f), round = show_ease((t - 0.2f) / 0.8f);
-        for (int i = 0; i < 3; i++) {
-            target[i] = screen[i] + (first[i] - screen[i]) * round;
-        }
-        view[0] = first_view[0] * round;
-        view[1] = tilt + (first_view[1] - tilt) * round;
-        view[2] = expf(logf(near) + (logf(first_view[2]) - logf(near)) * back);
-        focal = 150;
-        bar = (int)(SHOW_BAR * show_ease((t - 0.15f) / 0.4f) + 0.5f);
-        pic_shown = 1 - show_ease((t - 0.4f) / 0.3f);
+        /* the first shot, from further back and round, closing in all the while */
+        shot_camera(0, 0, target, view);
+        view[2] *= 1 + 0.25f * (1 - show_ease(show_intro));
+        view[0] -= 14 * (1 - show_ease(show_intro));
+        focal = show_shots[0].focal;
+        bar = (int)(SHOW_BAR * show_ease((show_intro - 0.15f) / 0.4f) + 0.5f);
         show_time = 0;
     } else {
         show_time += in->step * (1 + in->energy * 0.6f);
@@ -3631,10 +3789,16 @@ static void showroom_frame(uint8_t *fb, const struct fx_input *in) {
     memset(canvas, 0, PIXELS);
     show_id = 0;
     show_desk_shadows(fb);
-    show_dongle(fb, intro);
+    show_dongle(fb);
     /* the half beyond the gap from the camera first */
     show_half(fb, in, cam.pos[0] > 0 ? 1 : -1);
     show_half(fb, in, cam.pos[0] > 0 ? -1 : 1);
+    if (intro) {
+        if (!wall_d) {
+            wall_build(view[2]);
+        }
+        show_wall(fb, show_intro);
+    }
     show_ink(fb);
 
     /* the letterbox, and a caption in it now and then */
@@ -3683,7 +3847,7 @@ static const struct {
     {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true, .drop = CORNER_DROP}, .saver = FX_TR_MELT},
     {"LIFE", life_start, life_frame, NULL, &life_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_INFECT},
     {"SHOWROOM", showroom_start, showroom_frame, NULL, &showroom_text, {.dots = true, .drop = CORNER_DROP},
-     .saver = FX_TR_PULLBACK},
+     .saver = FX_TR_COLLAPSE},
 };
 #define FX_COUNT ((int)(sizeof(effects) / sizeof(effects[0])))
 
@@ -3909,7 +4073,7 @@ void fx_transition_step(const struct fx_transition *tr) {
         infect_step(tr);
     } else if (tr->kind == FX_TR_MELT) {
         code_clear(); /* nothing is written until the picture has gone */
-    } else if (tr->kind == FX_TR_PULLBACK) {
+    } else if (tr->kind == FX_TR_COLLAPSE) {
         show_intro = tr->t; /* Showroom films its way in itself */
         show_intro_now = true;
     }
@@ -3943,31 +4107,34 @@ static void infect_row(const struct fx_transition *tr, int y, uint16_t *out) {
 }
 
 /*
- * Into Showroom. The animation draws the dongle in 3D, its screen in
- * SHOW_PICTURE; here each pixel of that screen is what was showing, found
- * where its ray meets the screen, fading to the dark screen as the camera
- * goes round to the board.
+ * Into Showroom. The animation draws the wall of tiles (show_wall) in
+ * SHOW_PICTURE: on what is left of the wall, and on each loose tile, the
+ * picture is found where the pixel's ray meets its face, shaded as it is
+ * lit (the wall isn't).
  */
-static uint16_t between(uint16_t a, uint16_t b, int k);
-
-static void pullback_row(const struct fx_transition *tr, int y, uint16_t *out) {
-    const uint8_t *fb = &tr->fb[y * FX_W];
-    const float xx = dot3(pic_x, pic_x), yy = dot3(pic_y, pic_y), on = dot3(pic_o, pic_n);
-    const int shown = (int)(pic_shown * 256);
+static void collapse_row(const struct fx_transition *tr, int y, uint16_t *out) {
+    const uint8_t *fb = &tr->fb[y * FX_W], *ids = &canvas[y * FX_W];
     for (int x = 0; x < FX_W; x++) {
-        if (fb[x] != SHOW_PICTURE || xx <= 0 || yy <= 0) {
+        const int slot = ids[x] - loose_from_id;
+        const struct wall_tile *t = ids[x] == wall_id ? &wall_now : slot >= 0 && slot < n_loose ? &loose[slot] : NULL;
+        if (fb[x] != SHOW_PICTURE || t == NULL) {
             out[x] = tr->palette[fb[x]];
-            continue;
+        } else {
+            const float *o = t->o, *ax = t->x, *ay = t->y, *n = t->n;
+            const float ray[3] = {(x + 0.5f - FX_W / 2) / cam.focal, -(y + 0.5f - FX_H / 2) / cam.focal, 1};
+            const float along = dot3(ray, n);
+            if (along >= 0) {
+                out[x] = tr->palette[fb[x]];
+                continue;
+            }
+            const float k = dot3(o, n) / along;
+            const float q[3] = {ray[0] * k - o[0], ray[1] * k - o[1], ray[2] * k - o[2]};
+            /* the wall spans the picture, a tile its own part of it */
+            const int w = t == &wall_now ? FX_W : TILE_W, h = t == &wall_now ? FX_H : TILE_H;
+            const int sx = t->tile % TILE_COLS * TILE_W + (int)floorf(dot3(q, ax) / dot3(ax, ax) * w);
+            const int sy = t->tile / TILE_COLS * TILE_H + (int)floorf(dot3(q, ay) / dot3(ay, ay) * h);
+            out[x] = dimmed(tr->old_palette[pixel_at(tr->old, sx, sy)], t->shade + 1);
         }
-        const float ray[3] = {(x + 0.5f - FX_W / 2) / cam.focal, -(y + 0.5f - FX_H / 2) / cam.focal, 1};
-        const float along = dot3(ray, pic_n);
-        if (along >= 0) {
-            out[x] = tr->palette[fb[x]];
-            continue;
-        }
-        const float k = on / along, q[3] = {ray[0] * k - pic_o[0], ray[1] * k - pic_o[1], ray[2] * k - pic_o[2]};
-        const int sx = (int)floorf(dot3(q, pic_x) / xx * FX_W), sy = (int)floorf(dot3(q, pic_y) / yy * FX_H);
-        out[x] = between(tr->palette[SHOW_PICTURE], tr->old_palette[pixel_at(tr->old, sx, sy)], shown);
     }
 }
 
@@ -4152,8 +4319,8 @@ void fx_transition_row(const struct fx_transition *tr, int y, uint16_t *out) {
     case FX_TR_MELT:
         melt_row(tr, y, out);
         break;
-    case FX_TR_PULLBACK:
-        pullback_row(tr, y, out);
+    case FX_TR_COLLAPSE:
+        collapse_row(tr, y, out);
         break;
     case FX_TR_GLITCH:
         glitch_row(tr, y, out);
