@@ -14,16 +14,15 @@
  *
  * The same characteristic carries the battery's voltage, for the dongle's
  * figure of each half's draw (src/dongle_half_drain.c): in its optional
- * Identifier field, which is ours to use, in tenths of a millivolt (always
- * 10000 or more, so the dongle can tell it from older halves' whole
- * millivolts). The draw moves the voltage only a fraction of a millivolt an
- * hour, so the battery is read here every READ_EVERY_S, finer than ZMK reads
- * it (see own_tenths), never within QUIET_MS of a key (the radio's dip), and
- * what is sent is the average of the last AVERAGE_N (started again when USB
- * power comes or goes), at most once a minute and only when it has moved, as
- * a notification in a connection event the radio wakes for anyway. The
- * dongle already subscribes to it for the charging state, so this asks
- * nothing more of the link.
+ * Identifier field, which is ours to use, in millivolts. Nothing extra is
+ * measured: ZMK reads the battery every ZMK_BATTERY_REPORT_INTERVAL for its
+ * percentage, and this takes the last of those readings from the battery
+ * sensor every VOLTAGE_EVERY_S. A single reading jitters by a few millivolts
+ * and dips while the radio sends, far more than an hour's draw moves it, so
+ * what is sent is the average of the last VOLTAGE_AVERAGE_N (started again
+ * when USB power comes or goes), whenever that has moved by a millivolt, as a
+ * notification in a connection event the radio wakes for anyway. The dongle already subscribes to it for the charging state,
+ * so this asks nothing more of the link.
  */
 
 #include <zephyr/kernel.h>
@@ -33,9 +32,7 @@
 #include <zephyr/bluetooth/services/bas.h>
 
 #include <zmk/event_manager.h>
-#include <zmk/events/position_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/workqueue.h>
 #include <zmk/usb.h>
 
 #include "battery_refresh.h"
@@ -70,20 +67,13 @@ ZMK_LISTENER(half_charging, half_charging_listener);
 ZMK_SUBSCRIPTION(half_charging, zmk_usb_conn_state_changed);
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
-#define READ_EVERY_S 15    // a reading this often
-#define AVERAGE_N 64       // averaged over the last this many (16 minutes)
-#define SEND_EVERY_N 4     // and sent at most once a minute
-#define QUIET_MS 3000      // only this long after the last key: none while typing
-#define CHECK_MV 100       // further than this from ZMK's own reading: ZMK's is used
-#define OVERSAMPLING 6     // 2^6 conversions averaged by the ADC for each reading
-#define RESOLUTION 14
+#define VOLTAGE_EVERY_S 60
+#define VOLTAGE_AVERAGE_N 16
 
-#define BATTERY DT_CHOSEN(zmk_battery)
-
-static const struct device *const battery = DEVICE_DT_GET(BATTERY);
+static const struct device *const battery = DEVICE_DT_GET(DT_CHOSEN(zmk_battery));
 
 // ZMK's last battery reading in millivolts, without asking for a new one; 0 when there is none.
-static uint16_t zmk_millivolts(void) {
+static uint16_t last_millivolts(void) {
     struct sensor_value v;
     if (!device_is_ready(battery) || sensor_channel_get(battery, SENSOR_CHAN_GAUGE_VOLTAGE, &v) != 0) {
         return 0;
@@ -93,115 +83,20 @@ static uint16_t zmk_millivolts(void) {
     return mv > 0 ? (uint16_t)MIN(mv, UINT16_MAX) : 0;
 }
 
-/* ZMK's drivers keep whole millivolts of the ADC's input, then scale them up:
- * steps of 5 mV on a nice!nano (VDDH/5), about 3 on a XIAO (its divider).
- * So the battery is read here from the same ADC channel, set up by ZMK's
- * driver (channel 0 of the SAADC, internal 0.6 V reference), at 14 bits
- * with the ADC averaging 64 conversions, and kept in tenths of a millivolt.
- * Run on ZMK's low priority queue, as ZMK's own reading is, so the two never
- * overlap (a XIAO's divider is switched on only for a reading). */
-#if IS_ENABLED(CONFIG_ADC_NRFX_SAADC) && DT_NODE_HAS_COMPAT(BATTERY, zmk_battery_nrf_vddh)
-#define OWN_READING 1
-#define ADC_NODE DT_NODELABEL(adc)
-#define SCALE_NUM (600ULL * 2 * 5) // mV at full scale: gain 1/2, then VDDH/5
-#define SCALE_DEN 1ULL
-#elif IS_ENABLED(CONFIG_ADC_NRFX_SAADC) && DT_NODE_HAS_COMPAT(BATTERY, zmk_battery_voltage_divider)
-#define OWN_READING 1
-#define ADC_NODE DT_IO_CHANNELS_CTLR(BATTERY)
-#define SCALE_NUM (600ULL * 6 * DT_PROP(BATTERY, full_ohms)) // gain 1/6, then the divider
-#define SCALE_DEN ((unsigned long long)DT_PROP(BATTERY, output_ohms))
-#define HAS_POWER_GPIO DT_NODE_HAS_PROP(BATTERY, power_gpios)
-#else
-#define OWN_READING 0
-#endif
-
-#if OWN_READING
-#include <zephyr/drivers/adc.h>
-#include <zephyr/drivers/gpio.h>
-
-static const struct device *const adc = DEVICE_DT_GET(ADC_NODE);
-#if defined(HAS_POWER_GPIO) && HAS_POWER_GPIO
-static const struct gpio_dt_spec power = GPIO_DT_SPEC_GET(BATTERY, power_gpios);
-#endif
-
-// The battery now, in tenths of a millivolt; 0 when it couldn't be read.
-static uint32_t own_tenths(void) {
-    if (!device_is_ready(adc)) {
-        return 0;
-    }
-    int16_t raw = 0;
-    const struct adc_sequence seq = {
-        .channels = BIT(0),
-        .buffer = &raw,
-        .buffer_size = sizeof(raw),
-        .resolution = RESOLUTION,
-        .oversampling = OVERSAMPLING,
-    };
-#if defined(HAS_POWER_GPIO) && HAS_POWER_GPIO
-    if (gpio_pin_set_dt(&power, 1) != 0) {
-        return 0;
-    }
-    k_sleep(K_MSEC(10)); // as ZMK's driver waits, for the divider to settle
-#endif
-    const int rc = adc_read(adc, &seq);
-#if defined(HAS_POWER_GPIO) && HAS_POWER_GPIO
-    gpio_pin_set_dt(&power, 0);
-#endif
-    if (rc != 0 || raw <= 0) {
-        return 0;
-    }
-    return (uint32_t)(((uint64_t)raw * SCALE_NUM * 10 + (SCALE_DEN << (RESOLUTION - 1))) /
-                      (SCALE_DEN << RESOLUTION));
-}
-#endif
-
-// The battery now, in tenths of a millivolt; 0 when not known.
-static uint32_t read_tenths(void) {
-    const uint32_t zmk = zmk_millivolts() * 10U;
-#if OWN_READING
-    const uint32_t own = own_tenths();
-    // a sanity check on the scaling above: ZMK's (up to a minute old) should be close
-    if (own != 0 && (zmk == 0 || (own > zmk ? own - zmk : zmk - own) <= CHECK_MV * 10)) {
-        return own;
-    }
-#endif
-    return zmk;
-}
-
-static atomic_t last_key_ms; // uptime of the last key pressed or released
-
-static int half_charging_key_listener(const zmk_event_t *eh) {
-    atomic_set(&last_key_ms, (atomic_val_t)k_uptime_get_32());
-    return ZMK_EV_EVENT_BUBBLE;
-}
-
-ZMK_LISTENER(half_charging_key, half_charging_key_listener);
-ZMK_SUBSCRIPTION(half_charging_key, zmk_position_state_changed);
-
 static void voltage_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(voltage_work, voltage_cb);
 
 static void voltage_cb(struct k_work *work) {
-    static uint16_t readings[AVERAGE_N], sent;
-    static int count, next, since_sent = SEND_EVERY_N;
+    static uint16_t readings[VOLTAGE_AVERAGE_N], sent;
+    static int count, next;
     if (atomic_clear(&voltage_restart)) {
         count = next = 0;
     }
-    const uint32_t quiet = k_uptime_get_32() - (uint32_t)atomic_get(&last_key_ms);
-    if (quiet < QUIET_MS) {
-        // a key just now: the battery dips while the radio sends it, so wait
-        k_work_schedule_for_queue(zmk_workqueue_lowprio_work_q(), &voltage_work,
-                                  K_MSEC(QUIET_MS - quiet));
-        return;
-    }
-    const uint32_t tenths = read_tenths();
-    if (tenths != 0) {
-        readings[next] = (uint16_t)MIN(tenths, UINT16_MAX);
-        next = (next + 1) % AVERAGE_N;
-        count = MIN(count + 1, AVERAGE_N);
-    }
-    since_sent++;
-    if (count > 0 && since_sent >= SEND_EVERY_N) {
+    const uint16_t mv = last_millivolts();
+    if (mv != 0) {
+        readings[next] = mv;
+        next = (next + 1) % VOLTAGE_AVERAGE_N;
+        count = MIN(count + 1, VOLTAGE_AVERAGE_N);
         uint32_t sum = 0;
         for (int i = 0; i < count; i++) {
             sum += readings[i];
@@ -209,19 +104,17 @@ static void voltage_cb(struct k_work *work) {
         const uint16_t average = (uint16_t)((sum + count / 2) / count);
         if (average != sent) {
             sent = average;
-            since_sent = 0;
             bt_bas_bls_set_identifier(average);
         }
     }
-    k_work_schedule_for_queue(zmk_workqueue_lowprio_work_q(), &voltage_work, K_SECONDS(READ_EVERY_S));
+    k_work_schedule(&voltage_work, K_SECONDS(VOLTAGE_EVERY_S));
 }
 #endif
 
 static int half_charging_init(void) {
     half_charging_update();
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
-    // after ZMK's first reading, which calibrates the ADC
-    k_work_schedule_for_queue(zmk_workqueue_lowprio_work_q(), &voltage_work, K_SECONDS(5));
+    k_work_schedule(&voltage_work, K_SECONDS(5)); // after ZMK's first reading
 #endif
     return 0;
 }

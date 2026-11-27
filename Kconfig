@@ -94,9 +94,8 @@ config HALF_CHARGING_STATUS
       Every half that is a peripheral (so also each right half without a
       dongle, where nothing reads it). Sets the battery service's Battery
       Level Status to charging while on USB power, for the dongle's screens,
-      and its Identifier field to the battery's voltage (tenths of a
-      millivolt, read finer than ZMK reads it), for the dongle's figure
-      of the half's draw.
+      and its Identifier field to the battery's millivolts, for the
+      dongle's figure of the half's draw.
 
 config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power"
