@@ -2815,7 +2815,7 @@ enum { MAT_CASE, MAT_COVER, MAT_CAP, MAT_EXTRA, MAT_SCREEN, MAT_RUBBER, MAT_GLAS
 #define SHOW_NEAR 6.0f /* the nearest anything is drawn to the camera */
 #define SHOW_BAR 9     /* the letterbox's bars, rows each */
 #define SHOW_SHOT 240  /* a shot's length, 30ths of a second */
-#define SHOW_PTS 48    /* the most points a face has (boards.h's outlines have up to 39) */
+#define SHOW_PTS 40    /* the most points a face has (boards.h's outlines have up to 39) */
 
 /* The dongle, behind the board: a wedge with its screen on the slope. */
 #define DONGLE_FRONT 150.0f /* y of its front foot */
@@ -2862,9 +2862,13 @@ static float show_aim[3]; /* the detail shot's subject */
 static float wall_pos[3], wall_r[3], wall_u[3], wall_f[3], wall_focal, wall_d; /* the camera the wall was built for */
 static uint8_t wall_id, loose_from_id, n_loose;
 static struct wall_tile {
-    float o[3], x[3], y[3], n[3]; /* in the camera's space: its top left corner, along its top and side, its face's normal */
+    float o[3], x[3], y[3]; /* in the camera's space: its top left corner, along its top and down its side */
     uint8_t tile, shade;          /* which, and how lit (256ths, less one) */
 } loose[TILES], wall_now; /* wall_now: the wall still standing, as one tile the size of the picture */
+
+/* The points of the face being drawn, in the camera's space: static, as
+ * the dongle's display thread has a small stack, and shared, as RAM is short. */
+static float show_cam_pts[SHOW_PTS][3];
 
 static inline void show_next(void) { show_id += show_id < 255; }
 
@@ -3025,7 +3029,7 @@ static void show_face(uint8_t *fb, const float (*pts)[3], int n, const float *no
     if (dot3(normal, to_cam_v) <= 0) {
         return;
     }
-    static float c[SHOW_PTS][3];
+    float(*c)[3] = show_cam_pts;
     n = n > SHOW_PTS ? SHOW_PTS : n;
     for (int i = 0; i < n; i++) {
         to_cam(pts[i], c[i]);
@@ -3039,7 +3043,7 @@ static void show_face(uint8_t *fb, const float (*pts)[3], int n, const float *no
 /* A shadow (FILL_FLOOR_SHADOW on the desk, FILL_TOP_SHADOW on the solids
  * from `from_id` on) where the world points `pts` fall. */
 static void show_shadow(uint8_t *fb, const float (*pts)[3], int n, uint8_t mode, uint8_t from_id) {
-    static float c[SHOW_PTS][3];
+    float(*c)[3] = show_cam_pts;
     n = n > SHOW_PTS ? SHOW_PTS : n;
     for (int i = 0; i < n; i++) {
         to_cam(pts[i], c[i]);
@@ -3262,9 +3266,9 @@ static void show_half(uint8_t *fb, const struct fx_input *in, int side) {
         show_extrude(fb, shape->cover, shape->n_cover, SHOW_PCB, SHOW_PCB + SHOW_COVER, side, MAT_COVER);
     }
 
-    static struct fx_part parts[64];
-    static int16_t keys[64];
-    static float depth[64];
+    struct fx_part parts[64];
+    int16_t keys[64];
+    float depth[64];
     int n = 0;
     for (int i = 0; i < shape->n_keys + shape->n_extras && n < 64; i++) {
         struct fx_part p = i < shape->n_keys ? shape->keys[i] : shape->extras[i - shape->n_keys];
@@ -3518,8 +3522,8 @@ static void tile_face(const float *mid, const float *ax, const float *ay, const 
  * tile, far to near. */
 static void show_wall(uint8_t *fb, float t) {
     const float secs_in = FX_SAVER_IN_MS / 1000.0f;
-    static uint8_t order[TILES];
-    static float depth[TILES];
+    uint8_t order[TILES];
+    float depth[TILES];
     int n = 0;
 
     show_next();
@@ -3533,7 +3537,6 @@ static void show_wall(uint8_t *fb, float t) {
         for (int c = 0; c < 3; c++) {
             wall_now.x[c] = dot3(ax, basis[c]) * TILE_COLS;
             wall_now.y[c] = dot3(ay, basis[c]) * TILE_ROWS;
-            wall_now.n[c] = dot3(nn, basis[c]);
         }
         wall_now.shade = 255;
         wall_now.tile = 0;
@@ -3588,7 +3591,6 @@ static void show_wall(uint8_t *fb, float t) {
         for (int c = 0; c < 3; c++) {
             loose[n_loose].x[c] = dot3(ax, basis[c]);
             loose[n_loose].y[c] = dot3(ay, basis[c]);
-            loose[n_loose].n[c] = dot3(nn, basis[c]);
         }
         float view[3] = {cam.pos[0] - mid[0], cam.pos[1] - mid[1], cam.pos[2] - mid[2]};
         norm3(view);
@@ -4120,7 +4122,9 @@ static void collapse_row(const struct fx_transition *tr, int y, uint16_t *out) {
         if (fb[x] != SHOW_PICTURE || t == NULL) {
             out[x] = tr->palette[fb[x]];
         } else {
-            const float *o = t->o, *ax = t->x, *ay = t->y, *n = t->n;
+            const float *o = t->o, *ax = t->x, *ay = t->y;
+            float n[3]; /* its face's normal, towards the camera */
+            cross3(ax, ay, n);
             const float ray[3] = {(x + 0.5f - FX_W / 2) / cam.focal, -(y + 0.5f - FX_H / 2) / cam.focal, 1};
             const float along = dot3(ray, n);
             if (along >= 0) {
