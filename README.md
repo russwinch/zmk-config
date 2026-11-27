@@ -71,7 +71,8 @@ hour idle.
 
 Every push builds all firmware and publishes a release, `build-<run number>`
 (branches other than `main` are prereleases). Each has `firmware.zip`, each
-`.uf2` on its own, and a still of each dongle screen (`screen-<n>_<name>.png`).
+`.uf2` on its own, and a still of each dongle screen (`screen-<n>_<name>.png`, and
+`screen-<n>_<name>_<board>.png` for those that draw the board).
 
 **[Keyboard Writer](https://github.com/russwinch/keyboard-writer)** (macOS) is
 the easy way: pick a release, plug the devices in, press Start.
@@ -111,15 +112,20 @@ sending keys after connecting, reset it
 The dongle's screens, as this commit draws them (redrawn by the "Draw screens"
 workflow); what each shows: [`src/screen_fx/README.md`](src/screen_fx/README.md).
 
-| <img src="docs/screens/1_debug.png" width="260" alt="Debug"> | <img src="docs/screens/2_status.png" width="260" alt="Status"> | <img src="docs/screens/3_typist.png" width="260" alt="Typist"> |
-| :---: | :---: | :---: |
-| Debug | Status | Typist |
 | <img src="docs/screens/4_thermal.png" width="260" alt="Thermal"> | <img src="docs/screens/5_tracker.png" width="260" alt="Tracker"> | <img src="docs/screens/6_terminal.png" width="260" alt="Terminal"> |
+| :---: | :---: | :---: |
 | Thermal | Tracker | Terminal |
 | <img src="docs/screens/7_warp.png" width="260" alt="Warp"> | <img src="docs/screens/8_code.png" width="260" alt="Code"> | <img src="docs/screens/9_life.png" width="260" alt="Life"> |
 | Warp (screensaver) | Code (screensaver) | Life (screensaver) |
-| <img src="docs/screens/10_showroom.png" width="260" alt="Showroom"> | | |
-| Showroom (screensaver) | | |
+
+The screens that draw the board, on each board's dongle:
+
+| | Debug | Status | Typist | Showroom (screensaver) |
+| --- | :---: | :---: | :---: | :---: |
+| Urchin | <img src="docs/screens/1_debug_urchin.png" width="180" alt="Debug, Urchin"> | <img src="docs/screens/2_status_urchin.png" width="180" alt="Status, Urchin"> | <img src="docs/screens/3_typist_urchin.png" width="180" alt="Typist, Urchin"> | <img src="docs/screens/10_showroom_urchin.png" width="180" alt="Showroom, Urchin"> |
+| Forager | <img src="docs/screens/1_debug_forager.png" width="180" alt="Debug, Forager"> | <img src="docs/screens/2_status_forager.png" width="180" alt="Status, Forager"> | <img src="docs/screens/3_typist_forager.png" width="180" alt="Typist, Forager"> | <img src="docs/screens/10_showroom_forager.png" width="180" alt="Showroom, Forager"> |
+| Aurora Corne | <img src="docs/screens/1_debug_corne.png" width="180" alt="Debug, Aurora Corne"> | <img src="docs/screens/2_status_corne.png" width="180" alt="Status, Aurora Corne"> | <img src="docs/screens/3_typist_corne.png" width="180" alt="Typist, Aurora Corne"> | <img src="docs/screens/10_showroom_corne.png" width="180" alt="Showroom, Aurora Corne"> |
+| Waterfowl | <img src="docs/screens/1_debug_waterfowl.png" width="180" alt="Debug, Waterfowl"> | <img src="docs/screens/2_status_waterfowl.png" width="180" alt="Status, Waterfowl"> | <img src="docs/screens/3_typist_waterfowl.png" width="180" alt="Typist, Waterfowl"> | <img src="docs/screens/10_showroom_waterfowl.png" width="180" alt="Showroom, Waterfowl"> |
 
 ### The left half's nice!view
 

@@ -25,7 +25,7 @@ Draws the dongle's screens on a computer (needs gcc, git and Pillow), into
 
 ```sh
 tools/fx_preview.py                   # every screen as a GIF, and a contact sheet
-tools/fx_preview.py --stills          # a PNG of each screen, 4x (as on each release)
+tools/fx_preview.py --stills          # a PNG of each screen, 4x, the board's on each board (as on each release)
 tools/fx_preview.py --board waterfowl # on another board's keys (or corne)
 tools/fx_preview.py --saver thermal   # each screensaver coming over Thermal
 tools/fx_preview.py --power keys      # the panel going off and on

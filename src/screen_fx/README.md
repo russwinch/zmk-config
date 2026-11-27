@@ -1,6 +1,7 @@
 # The dongle's screens
 
-Each build's release has a still of every screen (`screen-<n>_<name>.png`);
+Each build's release has a still of every screen (`screen-<n>_<name>.png`,
+once per board for Debug, Status, Typist and Showroom);
 `tools/fx_preview.py` draws them on a computer ([`tools/README.md`](../../tools/README.md)).
 
 ## Controls (Config layer)

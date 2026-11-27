@@ -10,10 +10,10 @@ draw, without flashing anything:
     tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
     tools/fx_preview.py --power typist # the panel going off and coming on, on Typist
     tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
-    tools/fx_preview.py --stills     # a still of each screen -> fx_preview_out/<n>_<name>.png
+    tools/fx_preview.py --stills     # a still of each screen -> fx_preview_out/<n>_<name>.png,
+                                     # those that draw the board once per board (<n>_<name>_<board>.png)
     tools/fx_preview.py --contrast   # every theme's contrast ratios, the low ones flagged
     tools/fx_preview.py --board waterfowl  # on the Waterfowl's keys and encoders (or corne)
-                                     # (--stills draws Showroom on the Waterfowl anyway)
 
 The battery levels and the output are drawn over them as on the dongle
 (src/screen_fx/status_overlay.c), in fonts from the Prospector module. Those
@@ -42,6 +42,8 @@ TOOL_DIR = REPO / "tools" / "fx_preview"
 WIDTH, HEIGHT = 280, 240
 PROSPECTOR_URL = "https://github.com/carrefinho/prospector-zmk-module"
 ENV = dict(os.environ)  # for main.c: FX_PREVIEW_BOARD
+BOARDS = ["urchin", "forager", "corne", "waterfowl"]  # --board's choices, in the README's order
+BOARD_SCREENS = {"DEBUG", "STATUS", "TYPIST", "SHOWROOM"}  # the screens that draw the board itself (--stills)
 CORNERS = [True]  # black out the corners the panel's glass hides (--square: don't)
 
 
@@ -183,8 +185,8 @@ def main() -> None:
                         help="instead: one picture of every colour theme, on each screen drawn in them")
     parser.add_argument("--prospector", type=Path,
                         help="a checkout of prospector-zmk-module (default: fetch the pinned commit)")
-    parser.add_argument("--board", choices=["forager", "urchin", "waterfowl", "corne"], default="forager",
-                        help="the keyboard the Typist, Status and Debug screens draw (default forager)")
+    parser.add_argument("--board", choices=BOARDS, default="forager",
+                        help="the keyboard the screens draw (default forager; --stills draws each)")
     parser.add_argument("--stills", action="store_true",
                         help="instead: a PNG of each screen mid-typing (Status over USB), 4x the panel's size "
                              "(to draw over)")
@@ -213,18 +215,17 @@ def main() -> None:
             return
         frames = int(args.seconds * args.fps)
         if args.stills:
-            # mid-typing over Bluetooth; Status over USB, where its middle has no computer's link
+            # mid-typing over Bluetooth; Status over USB, where its middle has no computer's link.
+            # The screens that draw the board itself once per board, as <n>_<name>_<board>.png
             for index, name in enumerate(names()):
                 at = 0.85 if name == "STATUS" else 0.4
-                path = args.out / f"{index + 1}_{name.lower()}.png"
-                # Showroom on the board it was made for, unless another was asked for
-                board = ENV["FX_PREVIEW_BOARD"]
-                if name == "SHOWROOM" and args.board == "forager":
-                    ENV["FX_PREVIEW_BOARD"] = "waterfowl"
-                render(exe, index, frames, args.fps)[int(frames * at)].resize(
-                    (WIDTH * 4, HEIGHT * 4), Image.NEAREST).save(path)
-                ENV["FX_PREVIEW_BOARD"] = board
-                print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
+                for board in BOARDS if name in BOARD_SCREENS else [None]:
+                    ENV["FX_PREVIEW_BOARD"] = board or args.board
+                    path = args.out / f"{index + 1}_{name.lower()}{'_' + board if board else ''}.png"
+                    render(exe, index, frames, args.fps)[int(frames * at)].resize(
+                        (WIDTH * 4, HEIGHT * 4), Image.NEAREST).save(path)
+                    print(f"wrote {path.relative_to(REPO) if path.is_relative_to(REPO) else path}")
+            ENV["FX_PREVIEW_BOARD"] = args.board
             return
         if args.themes:
             # a row a theme: the first screen as it is turned to (its name up), then each typing flat out
