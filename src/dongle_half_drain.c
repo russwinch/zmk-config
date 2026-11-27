@@ -14,7 +14,7 @@
  * It is an estimate: the cell's real curve differs a little from the
  * typical one, through the middle of the charge the voltage moves only a
  * few millivolts for each percent, and a half sends it (an average of its
- * last readings, leaving out those just after a key) only when it has moved
+ * last hour of readings) only when it has moved
  * by STEP_TENTHS of a millivolt. So it is steadier the longer it runs. It shows after
  * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
  * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
