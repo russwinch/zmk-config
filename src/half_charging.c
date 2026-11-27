@@ -17,15 +17,20 @@
  * Identifier field, which is ours to use, in tenths of a millivolt (always
  * 10000 or more, so the dongle can tell it from older halves' whole
  * millivolts). Nothing extra is measured: ZMK reads the battery once a
- * minute for its percentage, and this takes the last of those readings
- * every TAKE_EVERY_S. A reading comes in steps of 5 mV on a nice!nano
- * (about 3 on a XIAO) and wanders by a few with the load, more than an
- * hour's draw moves it. The dongle fits a line through them all, which
- * averages them, so here they are only gathered: what is sent is the
- * average of each SEND_EVERY_N (started again when USB power comes or
- * goes), in tenths so as to lose nothing, when it has moved, as a
- * notification in a connection event the radio wakes for anyway. The dongle already subscribes to it for the charging state, so
- * this asks nothing more of the link.
+ * minute for its percentage, and this takes that reading every
+ * TAKE_EVERY_S and sends it when it has changed, as a notification in a
+ * connection event the radio wakes for anyway. The dongle already
+ * subscribes to it for the charging state, so this asks nothing more of the
+ * link. The dongle fits a line through them all, which averages them, so
+ * nothing is averaged here.
+ *
+ * ZMK's nRF VDDH driver (the nice!nano) rounds its reading to whole
+ * millivolts of the ADC's input before multiplying by 5, so its steps are
+ * 5 mV. The ADC's own value, which the driver keeps, is finer: 12 bits of
+ * 1.2 V, times 5, steps of about 1.46 mV. So on those boards the reading is
+ * worked out again from that value (see fine_tenths), and checked against
+ * ZMK's millivolts; other drivers' (about 3 mV steps on a XIAO) are sent as
+ * they are.
  *
  * Reading the ADC here as well, at 14 bits with 64 samples in burst mode,
  * gave finer readings but drained both halves many times faster (builds
@@ -59,14 +64,7 @@ void half_charging_update(void) {
                                             : BT_BAS_BLS_CHARGE_STATE_DISCHARGING_ACTIVE);
 }
 
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
-static atomic_t voltage_restart; // USB power came or went: the voltage average starts again
-#endif
-
 static int half_charging_listener(const zmk_event_t *eh) {
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
-    atomic_set(&voltage_restart, 1);
-#endif
     half_charging_update();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -75,10 +73,12 @@ ZMK_LISTENER(half_charging, half_charging_listener);
 ZMK_SUBSCRIPTION(half_charging, zmk_usb_conn_state_changed);
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
-#define TAKE_EVERY_S 60 // ZMK's last reading taken this often (ZMK reads once a minute)
-#define SEND_EVERY_N 5  // and the average of each this many sent (every 5 minutes)
+#define TAKE_EVERY_S 60 // ZMK's reading taken this often (ZMK reads once a minute)
+#define CHECK_TENTHS 60 // further than this from ZMK's millivolts: ZMK's is sent
 
-static const struct device *const battery = DEVICE_DT_GET(DT_CHOSEN(zmk_battery));
+#define BATTERY DT_CHOSEN(zmk_battery)
+
+static const struct device *const battery = DEVICE_DT_GET(BATTERY);
 
 // ZMK's last battery reading in millivolts, without asking for a new one; 0 when there is none.
 static uint16_t last_millivolts(void) {
@@ -91,28 +91,54 @@ static uint16_t last_millivolts(void) {
     return mv > 0 ? (uint16_t)MIN(mv, UINT16_MAX) : 0;
 }
 
+#if DT_NODE_HAS_COMPAT(BATTERY, zmk_battery_nrf_vddh)
+#include <zephyr/drivers/adc.h>
+
+/* ZMK's nRF VDDH driver's data (app/module/drivers/sensor/battery/
+ * battery_nrf_vddh.c and battery_common.h, at the ZMK pinned in
+ * config/west.yml), to read the ADC value it keeps. If ZMK changes it, the
+ * check against its millivolts fails and those are sent instead. */
+struct zmk_vddh_data {
+    struct adc_channel_cfg acc;
+    struct adc_sequence as;
+    struct {
+        uint16_t adc_raw;
+        uint16_t millivolts;
+        uint8_t state_of_charge;
+    } value;
+};
+
+#define VDDH_RESOLUTION 12               // as ZMK's driver reads it
+#define VDDH_FULL_SCALE_MV (600 * 2 * 5) // 0.6 V reference, gain 1/2, VDDH/5
+
+// ZMK's last reading in tenths of a millivolt, from the ADC's value; 0 when it doesn't check out.
+static uint32_t fine_tenths(uint16_t zmk_mv) {
+    const struct zmk_vddh_data *data = battery->data;
+    const int16_t raw = (int16_t)data->value.adc_raw;
+    if (raw <= 0 || data->as.resolution != VDDH_RESOLUTION) {
+        return 0;
+    }
+    const uint32_t tenths = ((uint32_t)raw * VDDH_FULL_SCALE_MV * 10 + (1U << (VDDH_RESOLUTION - 1))) >>
+                            VDDH_RESOLUTION;
+    const uint32_t zmk = zmk_mv * 10U;
+    return (tenths > zmk ? tenths - zmk : zmk - tenths) <= CHECK_TENTHS ? tenths : 0;
+}
+#else
+static uint32_t fine_tenths(uint16_t zmk_mv) { return 0; }
+#endif
+
 static void voltage_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(voltage_work, voltage_cb);
 
 static void voltage_cb(struct k_work *work) {
-    static uint32_t sum;
-    static int count;
     static uint16_t sent;
-    if (atomic_clear(&voltage_restart)) {
-        sum = count = 0;
-    }
     const uint16_t mv = last_millivolts();
     if (mv != 0) {
-        sum += mv;
-        count++;
-    }
-    if (count >= SEND_EVERY_N) {
-        // in tenths of a millivolt: the average is finer than any one reading
-        const uint16_t average = (uint16_t)MIN((sum * 10U + count / 2) / count, UINT16_MAX);
-        sum = count = 0;
-        if (average != sent) {
-            sent = average;
-            bt_bas_bls_set_identifier(average);
+        const uint32_t fine = fine_tenths(mv);
+        const uint16_t tenths = (uint16_t)MIN(fine ? fine : mv * 10U, UINT16_MAX);
+        if (tenths != sent) {
+            sent = tenths;
+            bt_bas_bls_set_identifier(tenths);
         }
     }
     k_work_schedule(&voltage_work, K_SECONDS(TAKE_EVERY_S));

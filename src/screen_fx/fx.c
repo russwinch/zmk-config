@@ -1809,7 +1809,7 @@ static const char *reset_name(uint32_t cause) {
 }
 
 /* A half's draw: "--" not known; hundredths of a mW (tenths from 10), or
- * while rough one place fewer, after a space for the flashing ~ in front. */
+ * while rough (an upper limit) one place fewer, after a space for the < in front. */
 static void drain_text(char *buf, size_t size, int hundredths, bool rough) {
     if (hundredths < 0) {
         snprintf(buf, size, "--");
@@ -2025,7 +2025,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         drain_text(buf, sizeof(buf), hundredths, rough);
         put_col(fb, col, DBG_ROW_MW, buf, drain_color(hundredths, rough, d->battery_mah));
         if (rough) {
-            put(fb, DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(buf) - 1)) / 2, DBG_ROW_MW, "~", DBG_WARN);
+            put(fb, DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(buf) - 1)) / 2, DBG_ROW_MW, "<", DBG_WARN);
         }
     }
 
@@ -2615,7 +2615,7 @@ static void status_half(uint8_t *fb, const struct fx_input *in, int half, int x,
     const bool rough = hundredths >= 0 && d->drain_rough[half];
     drain_text(buf, sizeof(buf), hundredths, rough);
     if (rough) {
-        put(fb, half ? mid : mid - 5 * (int)strlen(buf), y + 8, "~", DBG_WARN); /* in the space before it */
+        put(fb, half ? mid : mid - 5 * (int)strlen(buf), y + 8, "<", DBG_WARN); /* in the space before it */
     }
     status_text(fb, half, mid, y + 8, buf, drain_color(hundredths, rough, d->battery_mah));
 }

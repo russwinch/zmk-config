@@ -180,7 +180,7 @@ struct fx_debug {
     uint8_t half_err[2];   /* and the last error: ATT error code, or 0x80 | errno; 0 for none */
     uint16_t half_mv[2];   /* left, right: the battery's millivolts; 0 when not known */
     int32_t drain_hundredths_mw[2]; /* and its average draw, hundredths of a milliwatt; -1 until known */
-    bool drain_rough[2];            /* and whether that may still be well out */
+    bool drain_rough[2];            /* and whether that may still be well out: then it is an upper limit */
     bool estimating[2];             /* left, right: charging, or not yet settled since: shown in place of
                                      * ZMK's level (high under the charger), with a ~ */
     uint8_t battery_estimate[2];    /* and the estimated percent, 0 = not known */

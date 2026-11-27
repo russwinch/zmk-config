@@ -19,7 +19,8 @@ uint32_t dongle_half_tenths_mv(int half);
 
 // The half's average draw in hundredths of a milliwatt, from its voltage since it
 // was last unplugged (or the dongle started), or -1 until there is enough
-// of it; `rough` while it may still be well out (or settling after unplugging).
+// of it; `rough` while it may still be well out (or settling after unplugging):
+// then it is the most it is likely to be, an upper limit.
 // src/dongle_half_drain.c.
 int dongle_half_drain_hundredths_mw(int half, bool *rough);
 

@@ -80,7 +80,7 @@ Laid out like a racing car's steering wheel display.
 | the keys | as they are on the board, lit as on Typist |
 | between the halves | only if something has gone wrong, one a line, worst at the top: `HANG` or `CRSH` (the dongle restarted), `CH` charging state failed, `UE` USB reports not taken, `DR` the computer's link dropped, the dongle's temperature from 60 °C |
 | over each battery | `DR` and how often that half's link has dropped, if it has |
-| batteries | each half's level, volts and average draw in mW (`~` while still rough), and a bar, which fills step by step while that half charges; between the bars a bolt while either half is on USB power |
+| batteries | each half's level, volts and average draw in mW (`<` and the most it is likely to be, while still unsure), and a bar, which fills step by step while that half charges; between the bars a bolt while either half is on USB power |
 
 ## Debug
 
@@ -106,9 +106,11 @@ speed is on Typist, the battery levels on Typist and Status.
 | `%` | the battery's level: amber at 15 or under, red at 10; the dongle's estimate while charging (ZMK's reads high), a bolt while on USB power |
 | `V` | the battery's volts, to the millivolt (dim while charging: the charger's); the dongle's own 3.3 V supply |
 | chart under `V` | the last 30 minutes of them, a column a minute, scaled to fit (at least 60 mV top to bottom) |
-| `mW` | each half's average draw (`~` while still rough) |
+| `mW` | each half's average draw (`<` and the most it is likely to be, while still unsure) |
 | `CHG` | the dongle's charging-state subscription: `OK`; amber `WT`, `Q`, `R`, `S` on the way; `NF` the half's firmware lacks it; red `E`+code or `TO`. For the dongle, its temperature |
 
 The draw (mW) is coloured by how long a full battery would last: green four
 weeks or more, plain a week or more, amber under a week, red under two days.
-It is an estimate from the voltage falling, so it stays rough (`~`) for hours.
+It is worked out from the voltage falling, which takes a while: first it is
+an upper limit (`<4.0`, no more than 4 mW), which a half drawing far too
+much never gets low; after a few hours, a figure.

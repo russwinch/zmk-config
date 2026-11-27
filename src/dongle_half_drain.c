@@ -13,12 +13,16 @@
  *
  * It is an estimate: the cell's real curve differs a little from the
  * typical one, through the middle of the charge the voltage moves only a
- * few millivolts for each percent, and a half sends it (an average of its
- * readings over 5 minutes) only when it has moved
- * by STEP_TENTHS of a millivolt. So it is steadier the longer it runs. It shows after
- * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
- * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
- * by one STEP_TENTHS over the time it spans, whichever is more.
+ * few millivolts for each percent, a half's readings come in steps of
+ * STEP_TENTHS of a millivolt (on a nice!nano; coarser elsewhere), and the
+ * voltage itself wobbles by a few with the load. So it is steadier the
+ * longer it runs. It shows after SHOW_AFTER_MIN of readings. While it may
+ * be out by more than ROUGH_PERCENT, it is given as an upper limit instead
+ * (the screens show a < before it), the most it is likely to be: the line
+ * plus twice its scatter (about 95% sure), or, while the readings haven't
+ * yet moved by a step, plus one step over the time they span. So a half
+ * drawing far more than it should shows within the half hour, as a figure
+ * or a limit too high, and a quiet one soon has a low limit.
  *
  * After unplugging (and when the dongle starts, not knowing) the voltage is
  * still coming down from the charger's, much faster than any half draws. So
@@ -50,9 +54,8 @@
 
 #define SAMPLE_EVERY_S 60
 #define SHOW_AFTER_MIN 1    // of readings, before there is a figure
-#define ROUGH_PERCENT 25    // rough while it may be out by more than this
-#define SENT_EVERY_MIN 5    // a half sends a new voltage at most this often, so each is sampled this many times
-#define STEP_TENTHS 1       // a half sends its voltage when it moves by this, 0.1 mV (src/half_charging.c)
+#define ROUGH_PERCENT 50    // a limit while it may be out by more than this (at twice the scatter)
+#define STEP_TENTHS 15      // a nice!nano half's readings come in steps of this, 0.1 mV (src/half_charging.c)
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
 #define SETTLE_FALL_MV 8
 #define TREND_N (SETTLE_MIN + 1) // the readings back to SETTLE_MIN ago
@@ -219,16 +222,25 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
         const double sxy = f->te - f->t * f->e / f->n;
         const double syy = f->ee - f->e * f->e / f->n;
         const double ma = -sxy / sxx; // mAh lost an hour
-        const double mw = ma * f->last_tenths / 10000.0; // at the battery's voltage now
-        hundredths = (int)CLAMP(mw * 100 + 0.5, 0, 99999);
+        if (f->n <= 2) {
+            K_SPINLOCK_BREAK;
+        }
 
-        // how far out it may be: the line's scatter, or one step over its span
+        // how far out it may be: twice the line's scatter; and while the
+        // readings haven't spread over a step (so the scatter knows nothing
+        // finer), at least one step over the time they span
         const double sse = MAX(syy - sxy * sxy / sxx, 0);
-        // each voltage counted SENT_EVERY_MIN times: the scatter is that much less sure
-        const double scatter = f->n > 2 ? sqrt(sse / (f->n - 2) / sxx * SENT_EVERY_MIN) : INFINITY;
-        const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
-        const double step = (charge_mah(f->last_tenths) - charge_mah(f->last_tenths - STEP_TENTHS)) / span_h;
-        *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * ma;
+        double out = 2 * sqrt(sse / (f->n - 2) / sxx);
+        const double step_mah = charge_mah(f->last_tenths) - charge_mah(f->last_tenths - STEP_TENTHS);
+        if (sqrt(syy / f->n) < step_mah) {
+            const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
+            out = MAX(out, step_mah / span_h);
+        }
+        *rough = settling[half] || out * 100 > ROUGH_PERCENT * ma;
+        // while rough, the most it is likely to be
+        const double most_ma = *rough ? MAX(ma, 0) + out : ma;
+        const double mw = most_ma * f->last_tenths / 10000.0; // at the battery's voltage now
+        hundredths = (int)CLAMP(mw * 100 + 0.5, 0, 99999);
     }
     return hundredths;
 }

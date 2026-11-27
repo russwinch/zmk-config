@@ -114,10 +114,12 @@ user's own computer: a cloud session can't see USB drives.
   and when it couldn't, the half connected and showed its battery but typed
   nothing. Reading the halves' temperature or transmit power never worked, so
   don't add those back.
-- Battery volts come from each half in tenths of a millivolt, the average of
-  each 5 of ZMK's readings (one a minute; 5 mV steps on a nice!nano, about 3
-  on a XIAO), sent every 5 minutes (`src/half_charging.c`). No longer
-  average there: the dongle's line fit averages them all without the lag. Don't
+- Battery volts come from each half in tenths of a millivolt: ZMK's own
+  reading, once a minute, sent when it changes (`src/half_charging.c`). On a
+  nice!nano it is worked out again from the ADC value ZMK's VDDH driver
+  keeps (1.46 mV steps; ZMK rounds to 5), reading the driver's private
+  data, checked against ZMK's millivolts; recheck the struct when bumping
+  ZMK. Nothing is averaged on the half: the dongle's line fit does it. Don't
   read the ADC on the halves: their own 14-bit burst readings (builds
   343-355) drained both halves many times faster, even at one a minute.
   The draw
