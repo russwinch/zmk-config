@@ -115,8 +115,9 @@ user's own computer: a cloud session can't see USB drives.
   nothing. Reading the halves' temperature or transmit power never worked, so
   don't add those back.
 - Battery volts come from each half in tenths of a millivolt, the average of
-  ZMK's last 64 readings (one a minute; 5 mV steps on a nice!nano, about 3
-  on a XIAO), sent at most every 5 minutes (`src/half_charging.c`). Don't
+  each 5 of ZMK's readings (one a minute; 5 mV steps on a nice!nano, about 3
+  on a XIAO), sent every 5 minutes (`src/half_charging.c`). No longer
+  average there: the dongle's line fit averages them all without the lag. Don't
   read the ADC on the halves: their own 14-bit burst readings (builds
   343-355) drained both halves many times faster, even at one a minute.
   The draw

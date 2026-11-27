@@ -19,12 +19,12 @@
  * millivolts). Nothing extra is measured: ZMK reads the battery once a
  * minute for its percentage, and this takes the last of those readings
  * every TAKE_EVERY_S. A reading comes in steps of 5 mV on a nice!nano
- * (about 3 on a XIAO) and wanders by a few with the load, far more than an
- * hour's draw moves it, so what is sent is the average of the last
- * AVERAGE_N (started again when USB power comes or goes), finer than any
- * one reading, at most every SEND_EVERY_N minutes and only when it has
- * moved, as a notification in a connection event the radio wakes for
- * anyway. The dongle already subscribes to it for the charging state, so
+ * (about 3 on a XIAO) and wanders by a few with the load, more than an
+ * hour's draw moves it. The dongle fits a line through them all, which
+ * averages them, so here they are only gathered: what is sent is the
+ * average of each SEND_EVERY_N (started again when USB power comes or
+ * goes), in tenths so as to lose nothing, when it has moved, as a
+ * notification in a connection event the radio wakes for anyway. The dongle already subscribes to it for the charging state, so
  * this asks nothing more of the link.
  *
  * Reading the ADC here as well, at 14 bits with 64 samples in burst mode,
@@ -76,8 +76,7 @@ ZMK_SUBSCRIPTION(half_charging, zmk_usb_conn_state_changed);
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && DT_HAS_CHOSEN(zmk_battery)
 #define TAKE_EVERY_S 60 // ZMK's last reading taken this often (ZMK reads once a minute)
-#define AVERAGE_N 64    // averaged over the last this many (an hour)
-#define SEND_EVERY_N 5  // and sent at most every 5 minutes
+#define SEND_EVERY_N 5  // and the average of each this many sent (every 5 minutes)
 
 static const struct device *const battery = DEVICE_DT_GET(DT_CHOSEN(zmk_battery));
 
@@ -96,28 +95,23 @@ static void voltage_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(voltage_work, voltage_cb);
 
 static void voltage_cb(struct k_work *work) {
-    static uint16_t readings[AVERAGE_N], sent;
-    static int count, next, since_sent = SEND_EVERY_N;
+    static uint32_t sum;
+    static int count;
+    static uint16_t sent;
     if (atomic_clear(&voltage_restart)) {
-        count = next = 0;
+        sum = count = 0;
     }
     const uint16_t mv = last_millivolts();
     if (mv != 0) {
-        readings[next] = mv;
-        next = (next + 1) % AVERAGE_N;
-        count = MIN(count + 1, AVERAGE_N);
+        sum += mv;
+        count++;
     }
-    since_sent++;
-    if (count > 0 && since_sent >= SEND_EVERY_N) {
-        uint32_t sum = 0;
-        for (int i = 0; i < count; i++) {
-            sum += readings[i];
-        }
+    if (count >= SEND_EVERY_N) {
         // in tenths of a millivolt: the average is finer than any one reading
         const uint16_t average = (uint16_t)MIN((sum * 10U + count / 2) / count, UINT16_MAX);
+        sum = count = 0;
         if (average != sent) {
             sent = average;
-            since_sent = 0;
             bt_bas_bls_set_identifier(average);
         }
     }

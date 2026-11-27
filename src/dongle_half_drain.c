@@ -14,7 +14,7 @@
  * It is an estimate: the cell's real curve differs a little from the
  * typical one, through the middle of the charge the voltage moves only a
  * few millivolts for each percent, and a half sends it (an average of its
- * last hour of readings) only when it has moved
+ * readings over 5 minutes) only when it has moved
  * by STEP_TENTHS of a millivolt. So it is steadier the longer it runs. It shows after
  * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
  * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
@@ -51,6 +51,7 @@
 #define SAMPLE_EVERY_S 60
 #define SHOW_AFTER_MIN 1    // of readings, before there is a figure
 #define ROUGH_PERCENT 25    // rough while it may be out by more than this
+#define SENT_EVERY_MIN 5    // a half sends a new voltage at most this often, so each is sampled this many times
 #define STEP_TENTHS 1       // a half sends its voltage when it moves by this, 0.1 mV (src/half_charging.c)
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
 #define SETTLE_FALL_MV 8
@@ -223,7 +224,8 @@ int dongle_half_drain_hundredths_mw(int half, bool *rough) {
 
         // how far out it may be: the line's scatter, or one step over its span
         const double sse = MAX(syy - sxy * sxy / sxx, 0);
-        const double scatter = f->n > 2 ? sqrt(sse / (f->n - 2) / sxx) : INFINITY;
+        // each voltage counted SENT_EVERY_MIN times: the scatter is that much less sure
+        const double scatter = f->n > 2 ? sqrt(sse / (f->n - 2) / sxx * SENT_EVERY_MIN) : INFINITY;
         const double span_h = (f->last_ms - f->start_ms) / 3600000.0;
         const double step = (charge_mah(f->last_tenths) - charge_mah(f->last_tenths - STEP_TENTHS)) / span_h;
         *rough = settling[half] || MAX(scatter, step) * 100 > ROUGH_PERCENT * ma;
