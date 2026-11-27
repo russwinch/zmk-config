@@ -114,12 +114,12 @@ user's own computer: a cloud session can't see USB drives.
   and when it couldn't, the half connected and showed its battery but typed
   nothing. Reading the halves' temperature or transmit power never worked, so
   don't add those back.
-- Battery volts come from each half as the average of ZMK's last 16
-  readings, in whole millivolts (`src/half_charging.c`). Reading the ADC on
-  the halves as well (every 15 s, 14 bits, 64x oversampling) to get tenths
-  of a millivolt raised both halves' draw by milliamps, so don't add it
-  back; the dongle still takes tenths (10000 or more) if a half sends them.
-  The draw
+- Battery volts come from each half in tenths of a millivolt, the average of
+  its last 16 readings (one a minute, none just after a key), read from the
+  ADC itself at 14 bits (`src/half_charging.c`): ZMK's drivers keep only 5 mV
+  steps on a nice!nano, about 3 on a XIAO. At one reading each 15 s, sent
+  each minute, both halves drained in hours (build 350), so keep it slow and
+  sent at most every 5 minutes. The draw
   (`src/dongle_half_drain.c`) fits a line through the charge left since
   unplugging, times the voltage now, and the charging estimate adds `CONFIG_HALF_CHARGE_MA`
   over `CONFIG_HALF_BATTERY_MAH` (per keyboard `.conf`) to the last level

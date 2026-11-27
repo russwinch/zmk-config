@@ -14,8 +14,8 @@
  * It is an estimate: the cell's real curve differs a little from the
  * typical one, through the middle of the charge the voltage moves only a
  * few millivolts for each percent, and a half sends it (an average of its
- * last readings, whole millivolts) only when it has moved
- * by a millivolt. So it is steadier the longer it runs. It shows after
+ * last readings, leaving out those just after a key) only when it has moved
+ * by STEP_TENTHS of a millivolt. So it is steadier the longer it runs. It shows after
  * SHOW_AFTER_MIN of readings, and is rough (the screens flash a ~ before it)
  * while it may be out by more than ROUGH_PERCENT: by the line's scatter, or
  * by one STEP_TENTHS over the time it spans, whichever is more.
@@ -51,7 +51,7 @@
 #define SAMPLE_EVERY_S 60
 #define SHOW_AFTER_MIN 1    // of readings, before there is a figure
 #define ROUGH_PERCENT 25    // rough while it may be out by more than this
-#define STEP_TENTHS 10      // a half sends its voltage when it moves by this, 1 mV (src/half_charging.c)
+#define STEP_TENTHS 1       // a half sends its voltage when it moves by this, 0.1 mV (src/half_charging.c)
 #define SETTLE_MIN 20       // settling while it falls SETTLE_FALL_MV or more in this
 #define SETTLE_FALL_MV 8
 #define TREND_N (SETTLE_MIN + 1) // the readings back to SETTLE_MIN ago
