@@ -43,7 +43,7 @@ WIDTH, HEIGHT = 280, 240
 PROSPECTOR_URL = "https://github.com/carrefinho/prospector-zmk-module"
 ENV = dict(os.environ)  # for main.c: FX_PREVIEW_BOARD
 BOARDS = ["urchin", "forager", "corne", "waterfowl"]  # --board's choices, in the README's order
-BOARD_SCREENS = {"DEBUG", "STATUS", "TYPIST", "SHOWROOM"}  # the screens that draw the board itself (--stills)
+BOARD_SCREENS = {"DEBUG", "STATUS", "TYPIST", "CLASH", "SHOWROOM"}  # the screens that draw the board itself (--stills)
 CORNERS = [True]  # black out the corners the panel's glass hides (--square: don't)
 
 
@@ -218,7 +218,7 @@ def main() -> None:
             # mid-typing over Bluetooth; Status over USB, where its middle has no computer's link.
             # The screens that draw the board itself once per board, as <n>_<name>_<board>.png
             for index, name in enumerate(names()):
-                at = 0.85 if name == "STATUS" else 0.4
+                at = {"STATUS": 0.85, "CLASH": 0.47}.get(name, 0.4)
                 for board in BOARDS if name in BOARD_SCREENS else [None]:
                     ENV["FX_PREVIEW_BOARD"] = board or args.board
                     path = args.out / f"{index + 1}_{name.lower()}{'_' + board if board else ''}.png"

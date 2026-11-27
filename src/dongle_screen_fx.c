@@ -148,6 +148,8 @@ static uint8_t keys[FX_MAX_KEYS];
 static uint8_t n_keys;
 static char chars[FX_MAX_CHARS]; /* what the keys typed, for the terminal */
 static uint8_t n_chars;
+static uint8_t combo_mods; /* the last shortcut since the last frame, for Clash */
+static char combo_key[4];
 
 /*
  * For the Debug screen (fx_is_debug), kept up whichever screen shows, so
@@ -1240,6 +1242,9 @@ static void frame_cb(struct k_work *work) {
         in.n_chars = n_chars;
         memcpy(in.chars, chars, n_chars);
         n_chars = 0;
+        in.combo_mods = combo_mods;
+        memcpy(in.combo_key, combo_key, sizeof(combo_key));
+        combo_mods = 0;
     }
     K_SPINLOCK(&debug_lock) {
         in.held = debug.held;
@@ -1698,6 +1703,56 @@ static char typed_char(const struct zmk_keycode_state_changed *ev) {
     return 0;
 }
 
+/*
+ * A shortcut: a key pressed with Ctrl, Alt or Cmd (Shift alone doesn't
+ * make one). Its modifiers (HID bits), and a short name for its key in
+ * `name`: the letter or digit, the symbol on a US layout, or a few named
+ * keys; "" for any other. 0: not a shortcut.
+ */
+static uint8_t shortcut(const struct zmk_keycode_state_changed *ev, char name[4]) {
+    const uint8_t mods = ev->implicit_modifiers | ev->explicit_modifiers | zmk_hid_get_explicit_mods();
+    const uint32_t key = ev->keycode;
+    name[0] = 0;
+    if (ev->usage_page != HID_USAGE_KEY || is_mod(HID_USAGE_KEY, key) ||
+        (mods & ~(MOD_LSFT | MOD_RSFT)) == 0) {
+        return 0;
+    }
+    static const char symbols[] = "-=[]\\#;'`,./";
+    if (key >= HID_USAGE_KEY_KEYBOARD_A && key <= HID_USAGE_KEY_KEYBOARD_Z) {
+        name[0] = 'A' + (key - HID_USAGE_KEY_KEYBOARD_A);
+        name[1] = 0;
+    } else if (key >= HID_USAGE_KEY_KEYBOARD_1_AND_EXCLAMATION &&
+               key <= HID_USAGE_KEY_KEYBOARD_0_AND_RIGHT_PARENTHESIS) {
+        name[0] = "1234567890"[key - HID_USAGE_KEY_KEYBOARD_1_AND_EXCLAMATION];
+        name[1] = 0;
+    } else if (key >= HID_USAGE_KEY_KEYBOARD_MINUS_AND_UNDERSCORE &&
+               key <= HID_USAGE_KEY_KEYBOARD_SLASH_AND_QUESTION_MARK) {
+        name[0] = symbols[key - HID_USAGE_KEY_KEYBOARD_MINUS_AND_UNDERSCORE];
+        name[1] = 0;
+    } else {
+        static const struct {
+            uint8_t key;
+            char name[4];
+        } named[] = {
+            {HID_USAGE_KEY_KEYBOARD_TAB, "TAB"},
+            {HID_USAGE_KEY_KEYBOARD_SPACEBAR, "SPC"},
+            {HID_USAGE_KEY_KEYBOARD_RETURN_ENTER, "RET"},
+            {HID_USAGE_KEY_KEYBOARD_ESCAPE, "ESC"},
+            {HID_USAGE_KEY_KEYBOARD_DELETE_BACKSPACE, "DEL"},
+            {HID_USAGE_KEY_KEYBOARD_LEFTARROW, "<"},
+            {HID_USAGE_KEY_KEYBOARD_RIGHTARROW, ">"},
+            {HID_USAGE_KEY_KEYBOARD_UPARROW, "^"},
+            {HID_USAGE_KEY_KEYBOARD_DOWNARROW, "v"},
+        };
+        for (size_t i = 0; i < ARRAY_SIZE(named); i++) {
+            if (named[i].key == key) {
+                memcpy(name, named[i].name, 4);
+            }
+        }
+    }
+    return mods;
+}
+
 /* Add to the Debug screen's log of raw events. Call with debug_lock held. */
 static void log_event(struct fx_event event, uint32_t now) {
     event.gap_ms = (uint16_t)MIN(now - last_event_at, 9999);
@@ -1901,6 +1956,14 @@ static int screen_fx_listener(const zmk_event_t *eh) {
                 if (n_chars < FX_MAX_CHARS) {
                     chars[n_chars++] = c;
                 }
+            }
+        }
+        char name[4];
+        const uint8_t mods = code->state && atomic_get(&wanted_screen) != 0 ? shortcut(code, name) : 0;
+        if (mods != 0) {
+            K_SPINLOCK(&keys_lock) {
+                combo_mods = mods;
+                memcpy(combo_key, name, sizeof(combo_key));
             }
         }
         return ZMK_EV_EVENT_BUBBLE;

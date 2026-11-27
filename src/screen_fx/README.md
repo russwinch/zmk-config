@@ -1,7 +1,7 @@
 # The dongle's screens
 
 Each build's release has a still of every screen (`screen-<n>_<name>.png`,
-once per board for Debug, Status, Typist and Showroom);
+once per board for Debug, Status, Typist, Clash and Showroom);
 `tools/fx_preview.py` draws them on a computer ([`tools/README.md`](../../tools/README.md)).
 
 ## Controls (Config layer)
@@ -24,6 +24,7 @@ The screen, theme and brightness are remembered once left for 30 seconds.
 | 4 | Thermal | the board through a heat camera; from 50 wpm the keys catch fire |
 | 5 | Tracker | a motion tracker: contacts close in with typing speed |
 | 6 | Terminal | what you type, fading out (passwords included, while it is showing) |
+| 7 | Clash | the board in 3D, in neon, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame and shows its keys, with a count when they come one after another |
 
 After 15 minutes without a key, or when the lock key is let go, a
 screensaver takes over: **Warp** (stars to light speed), **Code** (an alien

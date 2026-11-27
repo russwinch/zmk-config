@@ -302,6 +302,18 @@ int main(int argc, char **argv) {
             in.chars[in.n_chars++] = typed[typed_at++ % (sizeof(typed) - 1)];
             energy += 0.03f;
         }
+        /* a few shortcuts, Cmd and a key: one on its own, then three in a row */
+        static const struct {
+            float at;
+            const char *key;
+        } shortcuts[] = {{0.36f, "S"}, {0.55f, "C"}, {0.58f, "V"}, {0.61f, "V"}};
+        for (unsigned k = 0; k < sizeof(shortcuts) / sizeof(shortcuts[0]); k++) {
+            if (at >= shortcuts[k].at && at - 1.0f / frames < shortcuts[k].at && in.n_keys < FX_MAX_KEYS) {
+                in.combo_mods = 0x08;
+                snprintf(in.combo_key, sizeof(in.combo_key), "%s", shortcuts[k].key);
+                in.keys[in.n_keys++] = (uint8_t)(13 + k);
+            }
+        }
         float target = wpm / 60 > 1 ? 1 : wpm / 60;
         float rate = (target > energy ? 0.12f : 0.03f) * in.step;
         energy += (target - energy) * (rate > 1 ? 1 : rate);

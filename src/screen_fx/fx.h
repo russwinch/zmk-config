@@ -217,6 +217,9 @@ struct fx_input {
     uint64_t held;             /* a bit for each key position held down now */
     uint8_t n_chars;           /* characters typed since the last frame */
     char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
+    uint8_t combo_mods;        /* a shortcut pressed since the last frame (a key with Ctrl, Alt or Cmd):
+                                * its modifiers (HID bits), 0 for none */
+    char combo_key[4];         /* and its key: "S", "4", "TAB", "" if it has no short name */
     const struct fx_status *status; /* for an animation that shows some of it itself */
     const struct fx_debug *debug;   /* for the Debug and Keys screens (fx_is_debug, fx_shows_keys) */
 };

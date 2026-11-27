@@ -222,6 +222,37 @@ static const struct color showroom_glow = {110, 230, 255};
 static const struct color showroom_ink = {2, 3, 6};
 static const struct color showroom_caption = {235, 238, 245};
 
+/*
+ * Clash: Showroom's board in neon. Each material's five bands (as
+ * Showroom's) are dark, so the solids read by their lit edges; a creased
+ * edge within a solid is dimmer. The floor's grid runs from black to
+ * `clash_grid`, the horizon glows `clash_horizon`. A pressed key fills
+ * through `clash_hot`, glowing round it. A shortcut's impact frame is in
+ * `clash_red` with `clash_dark` and `clash_light`.
+ */
+static const struct text_colors clash_text = {
+    {255, 255, 255}, {160, 160, 160}, {0, 235, 255}, {208, 208, 208}, {255, 70, 50}};
+static const struct color clash_materials[][5] = {
+    {{4, 6, 14}, {8, 11, 24}, {13, 18, 36}, {20, 40, 64}, {13, 18, 36}},  /* the case */
+    {{4, 6, 14}, {8, 11, 24}, {13, 18, 36}, {20, 40, 64}, {13, 18, 36}},  /* the cover */
+    {{8, 11, 26}, {14, 20, 42}, {22, 30, 60}, {30, 60, 90}, {22, 30, 60}}, /* keycaps */
+    {{22, 12, 4}, {38, 22, 8}, {58, 34, 12}, {80, 50, 20}, {58, 34, 12}},   /* the extra keys, dials, rollers */
+    {{6, 16, 18}, {10, 26, 30}, {16, 38, 44}, {24, 56, 64}, {16, 38, 44}},  /* the halves' screens */
+    {{3, 4, 9}, {6, 8, 16}, {9, 12, 22}, {14, 22, 36}, {9, 12, 22}},        /* switches, rollers' ribs */
+    {{3, 4, 9}, {6, 8, 16}, {9, 12, 22}, {14, 22, 36}, {9, 12, 22}},        /* screen edges */
+    {{5, 6, 14}, {9, 11, 24}, {14, 17, 34}, {22, 36, 60}, {14, 17, 34}},    /* the dongle */
+};
+static const struct color clash_edges[] = {
+    {0, 130, 160}, {0, 130, 160}, {0, 235, 255}, {255, 170, 40}, {80, 220, 200}, {0, 90, 120}, {0, 110, 140}, {0, 150, 190}};
+static const struct color clash_hot[3][2] = {
+    /* fill, edge: just warm, warm, just pressed */
+    {{70, 10, 60}, {170, 40, 150}}, {{150, 20, 120}, {240, 60, 200}}, {{255, 40, 190}, {255, 190, 240}}};
+static const struct color clash_grid = {0, 170, 210};
+static const struct color clash_horizon = {150, 20, 120};
+static const struct color clash_red = {225, 30, 50};
+static const struct color clash_dark = {14, 4, 10};
+static const struct color clash_light = {255, 244, 236};
+
 /* --- on every animation ------------------------------------------------------ */
 
 /* A flat battery and a lost link (where the theme has no `bad` of its own),

@@ -146,6 +146,11 @@ user's own computer: a cloud session can't see USB drives.
   for the outlines); its way in finds the old picture on each falling tile
   ray by ray (`collapse_row`). Its colours follow `tools/boards.py`'s, and
   boards.h's `FX_PART_EXTRA` marks the parts drawn amber there.
+- Clash reuses Showroom's solids, camera and palette layout (coloured
+  in neon in `clash_start`, its own entries after Showroom's), and swaps
+  the backdrop, ink and glint for its floor, edges and glow. Shortcuts
+  reach it as `fx_input`'s `combo_mods`/`combo_key`, filled in
+  `src/dongle_screen_fx.c` (`shortcut`).
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
   black with captions in the same strong hue; light ones adjust each colour's
   lightness, never its hue. Check `tools/fx_preview.py --contrast`.
