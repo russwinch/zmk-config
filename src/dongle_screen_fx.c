@@ -1429,7 +1429,7 @@ static void frame_cb(struct k_work *work) {
     if (drawn - fps_from >= 1000) {
         fps_shown = (uint8_t)MIN(fps_frames * 1000 / (drawn - fps_from), 99);
         for (int i = 0; i < TIMES; i++) {
-            avg_ms[i] = MIN((sum_us[i] / fps_frames + 500) / 1000, 99);
+            avg_ms[i] = MIN((sum_us[i] / fps_frames + 500) / 1000, 999);
             sum_us[i] = 0;
         }
         fps_from = drawn;
