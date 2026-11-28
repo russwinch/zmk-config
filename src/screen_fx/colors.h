@@ -3,7 +3,7 @@
  * one place to change them in. Red, green, blue, each 0..255; the panel
  * shows 5, 6 and 5 bits of them.
  *
- * - the colour themes: Typist, Status, Debug, Terminal and Board
+ * - the colour themes: Typist, Status, Debug and Board
  * - the screensavers' own colours, which no theme
  *   touches, and those of the status text over them
  * - the four colours every animation has
@@ -23,7 +23,7 @@ struct color {
 /* --- the colour themes ------------------------------------------------------ */
 
 /*
- * The Typist, Status, Debug, Terminal and Board screens are drawn in the colours of
+ * The Typist, Status, Debug and Board screens are drawn in the colours of
  * the theme that is set (the Config layer's Theme key steps through them).
  *
  * To add one, add a line: its name (15 letters at most, in the animations'
@@ -40,9 +40,6 @@ struct color {
  *   label   captions, and readings that aren't known
  *   text    the readings
  *   bright  a key held down, headings, the newest of anything
- *
- * Terminal is bg, and what is typed flashes bright, then is text, and fades out
- * through dim. On a light theme bright is the darkest of them.
  *
  *   glow    a key just let go (it fades from this to dim), the level meters
  *   good, warn, bad   connected and strong; getting weak or low; lost or flat
@@ -174,7 +171,7 @@ static const struct stop life_stops[] = {
  * levels and the Bluetooth profile's number, `dim` that number when the
  * computer isn't connected, `accent` the wireless symbol when it is and
  * `search` when it isn't (it pulses), `low` a battery that is nearly flat.
- * Over Terminal they are the theme's text, label and bad.
+ * Over Board they are the theme's text, label and bad.
  */
 struct text_colors {
     struct color ink, dim, accent, search, low;
