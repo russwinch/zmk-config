@@ -51,7 +51,13 @@ jobs:
           # on an iPad). Spaces become dots, as GitHub would rename them anyway.
           mkdir assets
           find firmware -name '*.uf2' | while read -r f; do cp "$f" "assets/$(basename "$f" | tr ' ' '.')"; done
-          subject="$(gh api "repos/$GH_REPO/commits/$GITHUB_SHA" --jq '.commit.message | split("\n")[0]')"
+          # the newest commit's subject that isn't a merge (a merge says nothing
+          # about what changed)
+          subject="$(gh api "repos/$GH_REPO/commits?sha=$GITHUB_SHA&per_page=20" \
+            --jq '[.[] | select(.parents | length == 1)][0].commit.message | split("\n")[0]')"
+          # the branch, but not a cloud session's made-up name (claude/<words>):
+          # a prerelease is marked as one anyway
+          case "$GITHUB_REF_NAME" in claude/*) title="$subject" ;; *) title="$GITHUB_REF_NAME · $subject" ;; esac
           tag="build-$GITHUB_RUN_NUMBER"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # a re-run
           if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then kind=--latest; else kind=--prerelease; fi
@@ -65,7 +71,7 @@ jobs:
           find firmware -name '*.elf' -exec cp {} elf/ \;
           if [ -n "$(ls elf)" ]; then tar -czf assets/dongle-elf.tar.gz -C elf .; fi
           gh release create "$tag" firmware.zip assets/*.uf2 assets/*.png assets/*.tar.gz --target "$GITHUB_SHA" $kind \
-            --title "$GITHUB_REF_NAME · $subject" --notes "Built from $GITHUB_SHA."
+            --title "$title" --notes "Built from $GITHUB_SHA on $GITHUB_REF_NAME."
 
       - name: Keep the newest 30
         run: |
