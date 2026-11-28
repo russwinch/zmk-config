@@ -2302,29 +2302,45 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
 
 /* --- timing a frame's stages, for measuring (fx_stage_text) ----------------- */
 
-#define STAGES 5
+#define STAGES 8
+#define STAGES_A_LINE 4
 static uint32_t (*fx_clock)(void);
 static uint32_t stage_at, stage_us[STAGES];
 static const char *stage_name[STAGES];
 static int n_stages;
+static bool stages_held; /* inside another stage that times itself whole (Board's dongle screen) */
 
 void fx_set_clock(uint32_t (*us)(void)) { fx_clock = us; }
 
-/* The stage `name` ends now. */
+/* The stage `name` ends now. A stage named again (each half's) adds to its time. */
 static void stage(const char *name) {
-    if (fx_clock && n_stages < STAGES) {
-        const uint32_t now = fx_clock();
-        stage_us[n_stages] = now - stage_at;
-        stage_name[n_stages++] = name;
-        stage_at = now;
+    if (!fx_clock || stages_held) {
+        return;
     }
+    const uint32_t now = fx_clock();
+    int i = 0;
+    while (i < n_stages && stage_name[i] != name) {
+        i++;
+    }
+    if (i == n_stages) {
+        if (n_stages == STAGES) {
+            return;
+        }
+        stage_name[n_stages++] = name;
+        stage_us[i] = 0;
+    }
+    stage_us[i] += now - stage_at;
+    stage_at = now;
 }
 
 /* Each stage's ms, averaged over a second and only changing once a second,
  * each number two wide, so that they can be read. */
-void fx_stage_text(char *text, int size) {
+void fx_stage_text(char *text, int size, int line) {
     static uint32_t sum_us[STAGES], frames, from, avg_ms[STAGES];
     static int shown;
+    if (line > 0) {
+        goto write; /* the frame was counted with the first line */
+    }
     for (int i = 0; i < n_stages; i++) {
         sum_us[i] += stage_us[i];
     }
@@ -2339,10 +2355,11 @@ void fx_stage_text(char *text, int size) {
         from = now;
         shown = n_stages;
     }
+write:;
     int at = 0;
     text[0] = 0;
-    for (int i = 0; i < n_stages && at < size; i++) {
-        at += snprintf(text + at, size - at, "%s%s%2u", i ? " " : "", stage_name[i],
+    for (int i = line * STAGES_A_LINE; i < n_stages && i < (line + 1) * STAGES_A_LINE && at < size; i++) {
+        at += snprintf(text + at, size - at, "%s%s%2u", at ? " " : "", stage_name[i],
                        (unsigned)(avg_ms[i] > 99 ? 99 : avg_ms[i]));
     }
 }
@@ -2991,6 +3008,7 @@ static void show_half(uint8_t *fb, const struct fx_input *in, int side) {
     if (shape->cover) {
         show_extrude(fb, shape->cover, shape->n_cover, SHOW_PCB, SHOW_PCB + SHOW_COVER, side, MAT_COVER);
     }
+    stage("CAS");
 
     struct fx_part parts[64];
     int16_t keys[64];
@@ -3040,9 +3058,11 @@ static void show_half(uint8_t *fb, const struct fx_input *in, int side) {
         }
         show_shadow(fb, (const float(*)[3])quad, 4, FILL_TOP_SHADOW, top_id);
     }
+    stage("SHD");
     for (int i = 0; i < n; i++) {
         show_part(fb, in, &parts[i], keys[i]);
     }
+    stage("KEY");
 }
 
 /* The dongle's screen: its middle, and up it (it leans back). */
@@ -4050,6 +4070,7 @@ static void board_label_draw(uint8_t *fb, bool impact) {
  * next), its own screen in it blank glass. */
 static void board_thumb(uint8_t *fb, const struct fx_input *in) {
     const __typeof__(cam) shot = cam;
+    stages_held = true; /* all of it is SCR */
     struct board_view v;
     board_wide(&v);
     show_camera(v.target, v.yaw, v.pitch, v.dist, v.focal * THUMB_W / FX_W);
@@ -4073,6 +4094,7 @@ static void board_thumb(uint8_t *fb, const struct fx_input *in) {
     draw_h = FX_H;
     show_live = true;
     cam = shot;
+    stages_held = false;
 }
 
 static void board_frame(uint8_t *fb, const struct fx_input *in) {
@@ -4154,9 +4176,10 @@ static void board_frame(uint8_t *fb, const struct fx_input *in) {
     memset(canvas, 0, PIXELS);
     show_id = 0;
     show_dongle(fb);
+    stage("DGL");
+    /* each half: its case and cover (CAS), the keys' shadows (SHD), its keys and knobs (KEY) */
     show_half(fb, in, cam.pos[0] > 0 ? 1 : -1);
     show_half(fb, in, cam.pos[0] > 0 ? -1 : 1);
-    stage("3D"); /* the solids */
 
     const bool impact = board_impact >= 0 && board_impact < BOARD_IMPACT;
     if (!impact) {

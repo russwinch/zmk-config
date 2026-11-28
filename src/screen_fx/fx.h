@@ -393,10 +393,11 @@ void fx_draw_notice(uint8_t *fb, const char *title, const char *detail);
 void fx_draw_rate(uint8_t *fb, int line, const char *text);
 
 /* For measuring too: a clock in microseconds, and then the time in each of
- * the frame's stages, in ms averaged over a second, as text ("" for a screen
- * that doesn't time them). Without a clock nothing is timed. */
+ * the frame's stages, in ms averaged over a second, as text: `line` 0 the
+ * first few, 1 the rest ("" for none, and for a screen that doesn't time
+ * them). Line 0 once a frame, before line 1. Without a clock nothing is timed. */
 void fx_set_clock(uint32_t (*us)(void));
-void fx_stage_text(char *text, int size);
+void fx_stage_text(char *text, int size, int line);
 
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);

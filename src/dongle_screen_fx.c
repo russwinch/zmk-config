@@ -1440,10 +1440,12 @@ static void frame_cb(struct k_work *work) {
         snprintf(text, sizeof(text), "%2uFPS DRAW%2u WAIT%2u", fps_shown, (unsigned)avg_ms[T_DRAW],
                  (unsigned)avg_ms[T_WAIT]);
         fx_draw_rate(frame, 0, text);
-        fx_stage_text(text, sizeof(text));
         int line = 1;
-        if (text[0]) {
-            fx_draw_rate(frame, line++, text);
+        for (int part = 0; part < 2; part++) {
+            fx_stage_text(text, sizeof(text), part);
+            if (text[0]) {
+                fx_draw_rate(frame, line++, text);
+            }
         }
         snprintf(text, sizeof(text), "SEND%2u CPU%2u SPI%2u", (unsigned)avg_ms[T_SEND],
                  (unsigned)(avg_ms[T_SEND] > avg_ms[T_SPI] ? avg_ms[T_SEND] - avg_ms[T_SPI] : 0),
