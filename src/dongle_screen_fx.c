@@ -863,6 +863,25 @@ static void read_debug(void) {
 #endif
 }
 
+/* The time spent waiting on the panel's SPI in the last frame's sending,
+ * microseconds (DONGLE_SCREEN_FX_FRAME_RATE): the rest is the CPU's. */
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+static uint32_t spi_us;
+
+static uint32_t clock_us(void) { return k_cyc_to_us_floor32(k_cycle_get_32()); }
+#endif
+
+/* Send a band to the panel. */
+static void panel_write(int x, int y, const struct display_buffer_descriptor *desc) {
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+    const uint32_t from = clock_us();
+    display_write(panel, x, y, desc, band);
+    spi_us += clock_us() - from;
+#else
+    display_write(panel, x, y, desc, band);
+#endif
+}
+
 /* Send what changed in the frame (or all of it) to the panel. */
 static void show_frame(void) {
     for (int top = 0; top < FX_H; top += BAND_ROWS) {
@@ -919,7 +938,7 @@ static void show_frame(void) {
             .height = BAND_ROWS * 2,
             .pitch = width,
         };
-        display_write(panel, x0 * 2, top * 2, &desc, band);
+        panel_write(x0 * 2, top * 2, &desc);
     }
     memcpy(shown, frame, PIXELS);
     redraw_all = false;
@@ -1000,7 +1019,7 @@ static void show_transition(const struct fx_transition *tr) {
             .height = BAND_ROWS * 2,
             .pitch = PANEL_W,
         };
-        display_write(panel, 0, top * 2, &desc, band);
+        panel_write(0, top * 2, &desc);
     }
     text_x0 = FX_W;
     text_x1 = -1;
@@ -1039,6 +1058,9 @@ static bool borrow_memory(void) {
     frame = buf->data;
     shown = frame + PIXELS;
     fx_set_canvas(shown + PIXELS);
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+    fx_set_clock(clock_us);
+#endif
     band = (uint16_t *)(shown + 2 * PIXELS); /* 3 * PIXELS is a multiple of 4 */
     overlay = buf->data_size >= needed + OVERLAY_BYTES;
     if (overlay) {
@@ -1322,20 +1344,36 @@ static void frame_cb(struct k_work *work) {
         slot_frames = slot_ms = 0;
     }
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
-    /* frames a second, then the last frame's time drawing it and sending it, ms */
-    static uint32_t fps_from, fps_frames, sent_ms;
+    /* frames a second, then the last frame's time drawing it and sending it,
+     * ms; under it, its stages' (Board's), and the sending's: the CPU's work,
+     * the wait on SPI; then the display thread's stack never used, bytes */
+    static uint32_t fps_from, fps_frames, sent_ms, send_cpu_us, send_spi_us;
     static uint8_t fps_shown;
+    static size_t stack_free;
     const uint32_t drawn = k_uptime_get_32();
     fps_frames++;
     if (drawn - fps_from >= 1000) {
         fps_shown = (uint8_t)MIN(fps_frames * 1000 / (drawn - fps_from), 99);
         fps_from = drawn;
         fps_frames = 0;
+#if IS_ENABLED(CONFIG_THREAD_STACK_INFO) && IS_ENABLED(CONFIG_INIT_STACKS)
+        if (k_thread_stack_space_get(k_current_get(), &stack_free) != 0) {
+            stack_free = 0;
+        }
+#endif
     }
     if (!plain) {
-        char text[24];
+        char text[28];
         snprintf(text, sizeof(text), "%uFPS %u+%uMS", fps_shown, (unsigned)MIN(drawn - now, 999), (unsigned)MIN(sent_ms, 999));
-        fx_draw_rate(frame, text);
+        fx_draw_rate(frame, 0, text);
+        fx_stage_text(text, sizeof(text));
+        int line = 1;
+        if (text[0]) {
+            fx_draw_rate(frame, line++, text);
+        }
+        snprintf(text, sizeof(text), "CPU%u SPI%u STK%u", (unsigned)((send_cpu_us + 500) / 1000),
+                 (unsigned)((send_spi_us + 500) / 1000), (unsigned)stack_free);
+        fx_draw_rate(frame, line, text);
     }
 #endif
     if (notice != NOTICE_NONE && (int32_t)(notice_until - now) <= 0) {
@@ -1351,9 +1389,12 @@ static void frame_cb(struct k_work *work) {
         fx_draw_notice(frame, names[dongle_backlight_level()], "BRIGHTNESS");
     }
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
-    const uint32_t sending = k_uptime_get_32();
+    const uint32_t sending = k_uptime_get_32(), sending_us = clock_us();
+    spi_us = 0;
     present(now);
     sent_ms = k_uptime_get_32() - sending;
+    send_spi_us = spi_us;
+    send_cpu_us = clock_us() - sending_us - spi_us;
 #else
     present(now);
 #endif

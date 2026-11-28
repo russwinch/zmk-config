@@ -336,9 +336,15 @@ bool fx_recolor(int fx, uint16_t *palette);
  * it. In the fixed colours, so it reads on any animation. */
 void fx_draw_notice(uint8_t *fb, const char *title, const char *detail);
 
-/* A line of small text in a black box at the top left, for measuring:
- * the frame rate (DONGLE_SCREEN_FX_FRAME_RATE). */
-void fx_draw_rate(uint8_t *fb, const char *text);
+/* A line of small text in a black box at the top left, `line` from 0 down,
+ * for measuring: the frame rate (DONGLE_SCREEN_FX_FRAME_RATE). */
+void fx_draw_rate(uint8_t *fb, int line, const char *text);
+
+/* For measuring too: a clock in microseconds, and then the last frame's
+ * time in each of its stages, in ms, as text ("" for a screen that doesn't
+ * time them). Without a clock nothing is timed. */
+void fx_set_clock(uint32_t (*us)(void));
+void fx_stage_text(char *text, int size);
 
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);

@@ -2386,6 +2386,35 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
+/* --- timing a frame's stages, for measuring (fx_stage_text) ----------------- */
+
+#define STAGES 5
+static uint32_t (*fx_clock)(void);
+static uint32_t stage_at, stage_us[STAGES];
+static const char *stage_name[STAGES];
+static int n_stages;
+
+void fx_set_clock(uint32_t (*us)(void)) { fx_clock = us; }
+
+/* The stage `name` ends now. */
+static void stage(const char *name) {
+    if (fx_clock && n_stages < STAGES) {
+        const uint32_t now = fx_clock();
+        stage_us[n_stages] = now - stage_at;
+        stage_name[n_stages++] = name;
+        stage_at = now;
+    }
+}
+
+void fx_stage_text(char *text, int size) {
+    int at = 0;
+    text[0] = 0;
+    for (int i = 0; i < n_stages && at < size; i++) {
+        at += snprintf(text + at, size - at, "%s%s%u", i ? " " : "", stage_name[i],
+                       (unsigned)((stage_us[i] + 500) / 1000));
+    }
+}
+
 /* --- showroom: the board in 3D, cel shaded, filmed like a car advert --------- */
 
 /*
@@ -3988,6 +4017,7 @@ static void board_thumb(uint8_t *fb, const struct fx_input *in) {
 static void board_frame(uint8_t *fb, const struct fx_input *in) {
     show_heat_step(in);
     board_thumb(fb, in);
+    stage("SCR"); /* the dongle's screen */
     const bool was_calm = board_quiet > BOARD_CALM;
 
     /* the pace: up with each key, and down at once when the keys stop */
@@ -4061,11 +4091,13 @@ static void board_frame(uint8_t *fb, const struct fx_input *in) {
     show_dongle(fb);
     show_half(fb, in, cam.pos[0] > 0 ? 1 : -1);
     show_half(fb, in, cam.pos[0] > 0 ? -1 : 1);
+    stage("3D"); /* the solids */
 
     const bool impact = board_impact >= 0 && board_impact < BOARD_IMPACT;
     if (!impact) {
         board_floor(fb); /* round the solids: the impact frame draws its own */
     }
+    stage("FLR");
     if (impact) {
         float at[3], c[3];
         board_key_at(board_aim, at);
@@ -4088,6 +4120,7 @@ static void board_frame(uint8_t *fb, const struct fx_input *in) {
         board_label_draw(fb, impact);
         board_shown -= s;
     }
+    stage("EDG"); /* the edges and glow, or the impact frame */
 }
 
 
@@ -4184,6 +4217,8 @@ void fx_start(int fx, uint16_t *palette) {
 }
 
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
+    n_stages = 0;
+    stage_at = fx_clock ? fx_clock() : 0;
     profile_track(in);
     away_clock = fmodf(away_clock + in->step, AWAY_FLASH * 100); /* half_look's flashing */
     if (fx >= 0 && fx < FX_COUNT) {
@@ -4224,15 +4259,15 @@ void fx_draw_notice(uint8_t *fb, const char *title, const char *detail) {
     }
 }
 
-void fx_draw_rate(uint8_t *fb, const char *text) {
-    const int w = 5 * (int)strlen(text) + 3, left = 18;
-    for (int y = 1; y < 10; y++) {
+void fx_draw_rate(uint8_t *fb, int line, const char *text) {
+    const int w = 5 * (int)strlen(text) + 3, left = 18, top = 1 + line * 9;
+    for (int y = top; y < top + 9; y++) {
         for (int x = left; x < left + w; x++) {
             plot(fb, x, y, FX_BLACK);
         }
     }
     for (int x = left + 2; *text; text++, x += 5) {
-        glyph(fb, x, 2, *text, FX_WHITE);
+        glyph(fb, x, top + 1, *text, FX_WHITE);
     }
 }
 
