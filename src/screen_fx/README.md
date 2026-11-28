@@ -1,7 +1,7 @@
 # The dongle's screens
 
 Each build's release has a still of every screen (`screen-<n>_<name>.png`,
-once per board for Debug, Status, Typist, Clash and Showroom);
+once per board for Debug, Status, Typist, Board and Showroom);
 `tools/fx_preview.py` draws them on a computer ([`tools/README.md`](../../tools/README.md)).
 
 ## Controls (Config layer)
@@ -24,7 +24,7 @@ without needing the keyboard to.
 | 2 | Status | the board's keys, batteries, signal and connections at a glance: [below](#status) |
 | 3 | Typist | your typing speed, and the board as it is, its keys lighting as you type: [below](#typist) |
 | 4 | Terminal | what you type, fading out (passwords included, while it is showing) |
-| 5 | Clash | the board in 3D, in the theme's colours, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame (ink on paper, then screentone) and shows its keys, with a count when they come one after another. The dongle on the desk shows the screen itself, smaller and smaller, and now and then the camera cuts to it |
+| 5 | Board | the board in 3D, in the theme's colours, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame (ink on paper, then screentone) and shows its keys, with a count when they come one after another. The dongle on the desk shows the screen itself, smaller and smaller, and now and then the camera cuts to it |
 
 After 15 minutes without a key, or when the lock key is let go, a
 screensaver takes over: **Warp** (stars to light speed), **Code** (an alien
@@ -45,17 +45,18 @@ A bolt means the half is on USB power; while charging, the Typist, Status and
 Debug screens show the dongle's estimate of its level (ZMK's own reads near
 100 from the charger).
 
-A half that isn't connected is red on Typist, Status and Debug, unless it
-said why as it went: grey and `SLEEP` when it went to sleep, flashing green
-and `UPDATE` while the Keyboard Writer app (or a bootloader key) updates it.
-Neither counts as a drop.
+A half that isn't connected is red on every screen that draws the board but
+Showroom, unless it said why as it went: grey when it went to sleep,
+flashing green while the Keyboard Writer app (or a bootloader key) updates
+it, and Typist, Status and Debug say `SLEEP` or `UPDATE`. Neither counts as
+a drop.
 
 The typing speed is counted as a typing test does: characters less
 backspaces, five to a word, over the last 10 seconds.
 
 ## Colour themes
 
-Typist, Status, Debug, Terminal and Clash take the theme's colours; the name
+Typist, Status, Debug, Terminal and Board take the theme's colours; the name
 shows for a moment when it changes. Every theme keeps green, amber and red
 for good, weak and lost.
 

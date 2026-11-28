@@ -29,7 +29,7 @@
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below). So is the
  * colour theme, which the &scr_theme key steps through: the Typist, Status, Debug,
- * Terminal and Clash screens are drawn in its colours (colors.h has the list), and its
+ * Terminal and Board screens are drawn in its colours (colors.h has the list), and its
  * name shows for a moment when it is turned to.
  *
  * Some of the animations are screensavers instead (fx_saver_way_in): the
@@ -143,13 +143,14 @@ static atomic_t last_key_at;   /* uptime, ms */
 static atomic_t saver_drop;    /* the panel went off with the screensaver showing */
 static atomic_t wpm;
 static atomic_t halves_connected; /* bit per half */
+static uint8_t half_away[2];       /* FX_AWAY_*: why each half went, if it said (under debug_lock) */
 
 static struct k_spinlock keys_lock;
 static uint8_t keys[FX_MAX_KEYS];
 static uint8_t n_keys;
 static char chars[FX_MAX_CHARS]; /* what the keys typed, for the terminal */
 static uint8_t n_chars;
-static uint8_t combo_mods; /* the last shortcut since the last frame, for Clash */
+static uint8_t combo_mods; /* the last shortcut since the last frame, for Board */
 static char combo_key[4];
 
 /*
@@ -280,6 +281,9 @@ static void read_status(void) {
         }
         status.battery[half] = level;
         status.half_connected[half] = (atomic_get(&halves_connected) & BIT(half)) != 0;
+        K_SPINLOCK(&debug_lock) {
+            status.half_away[half] = half_away[half];
+        }
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
         status.charging[half] = dongle_half_charging(half);
         /* the bolt beside it flashes until the level shown reads 100 (the
@@ -709,7 +713,7 @@ static void readings_cb(struct k_work *work) {
         memcpy(readings.half_err, half_err, sizeof(half_err));
         /* this second in the histories */
         /* a half away (asleep, updating) is a gap in them, not trouble */
-        const bool away[3] = {debug.half[0].away && !link[0].up, debug.half[1].away && !link[1].up, false};
+        const bool away[3] = {half_away[0] && !link[0].up, half_away[1] && !link[1].up, false};
         for (int i = 0; i < 3 && active; i++) {
             memmove(readings.signal_log[i], readings.signal_log[i] + 1, FX_HISTORY - 1);
             readings.signal_log[i][FX_HISTORY - 1] = (i == 2 && usb_out) || away[i] ? 0
@@ -1919,7 +1923,7 @@ static void link_connected(struct bt_conn *conn, uint8_t err) {
     if (half >= 0) {
         K_SPINLOCK(&debug_lock) {
             half_conn[half] = conn;
-            debug.half[half].away = 0;
+            half_away[half] = 0;
         }
     }
 }
@@ -1942,8 +1946,8 @@ static void link_disconnected(struct bt_conn *conn, uint8_t reason) {
                              : reason == HALF_GOODBYE_SLEEP      ? FX_AWAY_SLEEP
                              : reason == HALF_GOODBYE_UPDATE     ? FX_AWAY_UPDATE
                                                                  : 0;
-        if (link != NULL) {
-            link->away = away;
+        if (link != NULL && link != &debug.host) {
+            half_away[link == &debug.half[1]] = away;
         }
         if (link != NULL && !away) {
             link->drops = MIN(link->drops + 1, UINT16_MAX);

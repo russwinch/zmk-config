@@ -52,9 +52,14 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 #define FX_MAX_KEYS 8
 #define FX_MAX_CHARS 8
 
+/* fx_status.half_away: the same look on every screen that draws the board */
+#define FX_AWAY_SLEEP 1  /* asleep: grey */
+#define FX_AWAY_UPDATE 2 /* in its bootloader, being updated: flashing green */
+
 struct fx_status {
     uint8_t battery[2];     /* left, right: percent, 0 = not known */
     bool half_connected[2]; /* left, right */
+    uint8_t half_away[2];   /* left, right: not connected, and it said why (src/half_goodbye.c): FX_AWAY_*, else 0 */
     bool charging[2];       /* left, right: on USB power: a bolt beside its level, or over the animations
                              * in its place (the level reads high while charging: the charging voltage) */
     bool bolt_off[2];       /* left, right: charging, below 100, and the bolt in the off half of its flash */
@@ -124,10 +129,6 @@ static inline int8_t fx_conn_worse(int8_t a, int8_t b) {
 #define FX_RSSI_ERR_HANDLE 254
 #define FX_RSSI_ERR_BUFFER 255
 
-/* fx_link.away: why a half is down, when it said (src/half_goodbye.c) */
-#define FX_AWAY_SLEEP 1  /* asleep: shown grey */
-#define FX_AWAY_UPDATE 2 /* in its bootloader, being updated: flashing green */
-
 /* A Bluetooth link: to a half, or to the computer. */
 struct fx_link {
     bool up;
@@ -136,7 +137,6 @@ struct fx_link {
     uint8_t rssi_err;  /* up, but its signal couldn't be read: why (fx.c's debug_link), else 0 */
     uint16_t drops;    /* times it has been lost since power-up */
     uint8_t reason;    /* Bluetooth's reason for the last loss (0: none yet) */
-    uint8_t away;      /* a half down that said why: FX_AWAY_*, else 0 (not counted in drops) */
 };
 
 struct fx_event {
@@ -318,7 +318,7 @@ void fx_start(int fx, uint16_t *palette);
 
 /*
  * Colour themes: the list is in colors.h, with every other colour. The
- * Typist, Status, Debug, Terminal and Clash screens are drawn in the colours of the one that is set (the first, until another
+ * Typist, Status, Debug, Terminal and Board screens are drawn in the colours of the one that is set (the first, until another
  * is); the other animations have their own. Setting one changes nothing
  * that is showing: the next fx_start has it, and so does fx_recolor, which
  * fills `palette` in again without starting the animation afresh. That one

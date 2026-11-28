@@ -139,8 +139,11 @@ user's own computer: a cloud session can't see USB drives.
   `.elf`s in `dongle-elf.tar.gz`: `addr2line -ife <dongle>.elf 0x<address>`.
 - A half closes its link itself before sleeping or restarting into its
   bootloader (`src/half_goodbye.c`, `sys_reboot` wrapped at link time), with a
-  Bluetooth reason the dongle reads as asleep or updating (`fx_link.away`):
-  not counted as a drop, grey or flashing green. Any other loss, a crash
+  Bluetooth reason the dongle reads as asleep or updating
+  (`fx_status.half_away`): not counted as a drop. How a half that isn't
+  connected looks is one rule in `fx.c`, `half_look`, for every screen that
+  draws the board but Showroom (the screensaver, when the halves sleep): red
+  dropped, grey asleep, flashing green updating. Any other loss, a crash
   included, is a drop as before.
 - Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
   `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
@@ -153,8 +156,8 @@ user's own computer: a cloud session can't see USB drives.
   for the outlines); its way in finds the old picture on each falling tile
   ray by ray (`collapse_row`). Its colours follow `tools/boards.py`'s, and
   boards.h's `FX_PART_EXTRA` marks the parts drawn amber there.
-- Clash reuses Showroom's solids, camera and palette layout (coloured
-  from the theme in `clash_colors`, its own entries after Showroom's), and
+- Board reuses Showroom's solids, camera and palette layout (coloured
+  from the theme in `board_colors`, its own entries after Showroom's), and
   swaps the backdrop, ink and glint for its floor, edges and glow. The
   dongle's screen shows a 35x30 copy of the last frame (`FILL_PICTURE`). Shortcuts
   reach it as `fx_input`'s `combo_mods`/`combo_key`, filled in

@@ -3,7 +3,7 @@
  * one place to change them in. Red, green, blue, each 0..255; the panel
  * shows 5, 6 and 5 bits of them.
  *
- * - the colour themes: Typist, Status, Debug, Terminal and Clash
+ * - the colour themes: Typist, Status, Debug, Terminal and Board
  * - the screensavers' own colours, which no theme
  *   touches, and those of the status text over them
  * - the four colours every animation has
@@ -23,7 +23,7 @@ struct color {
 /* --- the colour themes ------------------------------------------------------ */
 
 /*
- * The Typist, Status, Debug, Terminal and Clash screens are drawn in the colours of
+ * The Typist, Status, Debug, Terminal and Board screens are drawn in the colours of
  * the theme that is set (the Config layer's Theme key steps through them).
  *
  * To add one, add a line: its name (15 letters at most, in the animations'
