@@ -554,129 +554,6 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
     }
 }
 
-/* --- terminal: what you type, in green, fading away ------------------------ */
-
-#define TERM_COLS 25
-#define TERM_ROWS 10 /* down to just above the status text */
-#define TERM_X 7     /* the top line clear of the corners' curve */
-#define TERM_Y 6
-#define TERM_PITCH 9 /* rows; characters are 5 apart */
-#define TERM_LIT 205 /* a character once its first flash is over */
-
-struct __attribute__((__may_alias__)) term_own {
-    char term_char[TERM_ROWS][TERM_COLS];
-    uint8_t term_lum[TERM_ROWS][TERM_COLS];
-};
-OWN_FITS(term_own);
-#define term_char (OWN(term_own)->term_char)
-#define term_lum (OWN(term_own)->term_lum)
-static int term_row, term_col;
-static bool term_prompt; /* this line starts with one */
-static float term_blink, term_fade;
-
-static void term_prompt_line(void) {
-    term_prompt = true;
-    term_char[term_row][0] = '>';
-    term_lum[term_row][0] = 251;
-    term_col = 2;
-}
-
-/* The theme's colours: its background, then what is typed fading in
- * reverse, dim to text, with bright for its first flash. */
-static void term_colors(uint16_t *palette) {
-    const struct color at[] = {scheme->dim, scheme->text, scheme->bright};
-    const struct stop stops[] = {{0, scheme->bg.r, scheme->bg.g, scheme->bg.b},
-                                 {70, at[0].r, at[0].g, at[0].b},
-                                 {TERM_LIT, at[1].r, at[1].g, at[1].b},
-                                 {251, at[2].r, at[2].g, at[2].b}};
-    gradient(palette, stops, 4);
-}
-
-static void term_start(uint16_t *palette) {
-    (void)palette;
-    memset(term_char, 0, sizeof(term_char)); /* fx_own: another animation's since */
-    memset(term_lum, 0, sizeof(term_lum));
-    term_row = 0;
-    term_blink = term_fade = 0;
-    term_prompt_line();
-}
-
-static void term_newline(bool prompt) {
-    if (term_row < TERM_ROWS - 1) {
-        term_row++;
-    } else {
-        memmove(term_char[0], term_char[1], sizeof(term_char) - sizeof(term_char[0]));
-        memmove(term_lum[0], term_lum[1], sizeof(term_lum) - sizeof(term_lum[0]));
-        memset(term_lum[TERM_ROWS - 1], 0, sizeof(term_lum[0]));
-    }
-    term_col = 0;
-    term_prompt = false;
-    if (prompt) {
-        term_prompt_line();
-    }
-}
-
-static void term_type(char c) {
-    if (c == '\n') {
-        term_newline(true);
-    } else if (c == '\b') {
-        if (term_col > (term_prompt ? 2 : 0)) {
-            term_lum[term_row][--term_col] = 0;
-        }
-    } else if (c >= ' ' && c <= '~') {
-        if (term_col >= TERM_COLS) {
-            term_newline(false);
-        }
-        term_char[term_row][term_col] = c;
-        term_lum[term_row][term_col] = 251;
-        term_col++;
-    }
-}
-
-static void term_frame(uint8_t *fb, const struct fx_input *in) {
-    for (int i = 0; i < in->n_chars; i++) {
-        term_type(in->chars[i]);
-    }
-    term_blink = in->n_chars ? 0 : term_blink + in->step;
-
-    /* the flash goes in a moment; after that a character takes about 10 s */
-    term_fade += in->step * 0.7f;
-    int fade = (int)term_fade, flash = 4 + (int)(in->step * 5);
-    term_fade -= fade;
-
-    memset(fb, 0, PIXELS);
-    bool any = false; /* anything lit, this line's prompt aside */
-    for (int r = 0; r < TERM_ROWS; r++) {
-        for (int c = 0; c < TERM_COLS; c++) {
-            int lum = term_lum[r][c];
-            if (lum == 0) {
-                continue;
-            }
-            const bool prompt = term_prompt && r == term_row && c == 0;
-            any = any || !prompt;
-            glyph(fb, TERM_X + c * 5, TERM_Y + r * TERM_PITCH, term_char[r][c], (uint8_t)lum);
-            lum -= lum > TERM_LIT ? flash : fade;
-            /* this line's prompt stays */
-            term_lum[r][c] = lum > (prompt ? 150 : 0) ? lum : prompt ? 150 : 0;
-        }
-    }
-    /* everything has faded: start again at the top */
-    if (!any && !in->n_chars && !(term_row == 0 && term_col == 2 && term_prompt)) {
-        memset(term_lum, 0, sizeof(term_lum));
-        term_row = 0;
-        term_prompt_line();
-    }
-
-    /* the cursor: a block, steady while typing, blinking after */
-    if ((int)(term_blink / 15) % 2 == 0 && term_col < TERM_COLS) {
-        for (int y = 0; y < 7; y++) {
-            for (int x = 0; x < 4; x++) {
-                plot(fb, TERM_X + term_col * 5 + x, TERM_Y + term_row * TERM_PITCH + y, TERM_LIT);
-            }
-        }
-    }
-}
-
 /* --- code: a program being written in an alien script ---------------------- */
 
 /*
@@ -4230,7 +4107,6 @@ static const struct {
     {"DEBUG", debug_start, debug_frame, debug_colors, NULL, {0}, .debug = true},
     {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
     {"TYPIST", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
-    {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
     {"BOARD", board_start, board_frame, board_colors, NULL, {.dots = true, .drop = CORNER_DROP}},
     {"WARP", warp_start, warp_frame, NULL, &warp_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_HYPERSPACE},
     {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true, .drop = CORNER_DROP}, .saver = FX_TR_MELT},

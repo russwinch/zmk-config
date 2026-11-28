@@ -50,7 +50,6 @@ static inline bool fx_battery_flash_off(uint8_t percent, uint32_t ms) {
 }
 
 #define FX_MAX_KEYS 8
-#define FX_MAX_CHARS 8
 
 /* fx_status.half_away: the same look on every screen that draws the board */
 #define FX_AWAY_SLEEP 1  /* asleep: grey */
@@ -227,8 +226,6 @@ struct fx_input {
     uint64_t held;             /* a bit for each key position held down now */
     int16_t turned[FX_MAX_ENCODERS]; /* each encoder's turn since power-up, as fx_debug's `turned`
                                       * (a turn also comes in `keys`, as a press of its key position) */
-    uint8_t n_chars;           /* characters typed since the last frame */
-    char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
     uint8_t combo_mods;        /* a shortcut pressed since the last frame (a key with Ctrl, Alt or Cmd):
                                 * its modifiers (HID bits), 0 for none */
     char combo_key[4];         /* and its key: "S", "4", "TAB", "" if it has no short name */
@@ -320,7 +317,7 @@ void fx_start(int fx, uint16_t *palette);
 
 /*
  * Colour themes: the list is in colors.h, with every other colour. The
- * Typist, Status, Debug, Terminal and Board screens are drawn in the colours of the one that is set (the first, until another
+ * Typist, Status, Debug and Board screens are drawn in the colours of the one that is set (the first, until another
  * is); the other animations have their own. Setting one changes nothing
  * that is showing: the next fx_start has it, and so does fx_recolor, which
  * fills `palette` in again without starting the animation afresh. That one

@@ -148,8 +148,6 @@ static uint8_t half_away[2];       /* FX_AWAY_*: why each half went, if it said 
 static struct k_spinlock keys_lock;
 static uint8_t keys[FX_MAX_KEYS];
 static uint8_t n_keys;
-static char chars[FX_MAX_CHARS]; /* what the keys typed, for the terminal */
-static uint8_t n_chars;
 static uint8_t combo_mods; /* the last shortcut since the last frame, for Board */
 static char combo_key[4];
 
@@ -1141,7 +1139,7 @@ static void begin_animation(void) {
     }
     /* nothing typed before this screen came up belongs on it */
     K_SPINLOCK(&keys_lock) {
-        n_keys = n_chars = 0;
+        n_keys = 0;
     }
     redraw_all = true;
     last_frame_at = fps_at = k_uptime_get_32();
@@ -1268,9 +1266,6 @@ static void frame_cb(struct k_work *work) {
         in.n_keys = n_keys;
         memcpy(in.keys, keys, n_keys);
         n_keys = 0;
-        in.n_chars = n_chars;
-        memcpy(in.chars, chars, n_chars);
-        n_chars = 0;
         in.combo_mods = combo_mods;
         memcpy(in.combo_key, combo_key, sizeof(combo_key));
         combo_mods = 0;
@@ -2038,15 +2033,6 @@ static int screen_fx_listener(const zmk_event_t *eh) {
         const char typed = code->state ? typed_char(code) : 0;
         if (typed != 0) {
             dongle_wpm_typed(typed);
-        }
-        /* only kept while an animation shows, and only until its next frame */
-        const char c = atomic_get(&wanted_screen) != 0 ? typed : 0;
-        if (c != 0) {
-            K_SPINLOCK(&keys_lock) {
-                if (n_chars < FX_MAX_CHARS) {
-                    chars[n_chars++] = c;
-                }
-            }
         }
         char name[4];
         const uint8_t mods = code->state && atomic_get(&wanted_screen) != 0 ? shortcut(code, name) : 0;

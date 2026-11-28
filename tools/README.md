@@ -27,7 +27,7 @@ Draws the dongle's screens on a computer (needs gcc, git and Pillow), into
 tools/fx_preview.py                   # every screen as a GIF, and a contact sheet
 tools/fx_preview.py --stills          # a PNG of each screen, 4x, the board's on each board (as on each release)
 tools/fx_preview.py --board waterfowl # on another board's keys (or corne)
-tools/fx_preview.py --saver terminal  # each screensaver coming over Terminal
+tools/fx_preview.py --saver typist  # each screensaver coming over Typist
 tools/fx_preview.py --power keys      # the panel going off and on
 tools/fx_preview.py --themes          # every colour theme
 tools/fx_preview.py --contrast        # each theme's contrast ratios, low ones flagged

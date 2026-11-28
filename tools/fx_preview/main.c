@@ -9,8 +9,7 @@
  * name over the picture as the dongle shows it when the theme is turned to.
  *
  * The typing is made up: idle, then speeding up to a fast burst, then idle
- * again, with a key press at the matching rate, each typing the next
- * character of `typed`. One key (the left hand's home row) is held down
+ * again, with a key press at the matching rate. One key (the left hand's home row) is held down
  * from the start for seven seconds.
  *
  * So is the status: the left half full and the right one flat, on Bluetooth
@@ -266,9 +265,6 @@ int main(int argc, char **argv) {
     overlay_set_memory(masks);
     overlay_set_theme(fx_theme(fx));
 
-    static const char typed[] = "git status\ncd zmk-config && ls -la\nwest build -b xiao_ble\b\b\b\bble//zmk\n"
-                                "echo \"Hello, World!\" | wc -c\nthe quick brown fox jumps over the lazy dog\n";
-    unsigned typed_at = 0;
     float energy = 0, key_debt = 0;
     unsigned key_seed = 7;
     for (int f = 0; f < frames; f++) {
@@ -303,7 +299,6 @@ int main(int argc, char **argv) {
             debug.layer = debug.held_layer ? 3 : 0;
             debug.layer_name = debug.held_layer ? "Nav" : "Mac";
             debug.mods = presses % 7 == 0 ? 0x0a : 0;
-            in.chars[in.n_chars++] = typed[typed_at++ % (sizeof(typed) - 1)];
             energy += 0.03f;
         }
         /* a few shortcuts, Cmd and a key: one on its own, then three in a row */
