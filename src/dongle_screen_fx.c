@@ -919,10 +919,14 @@ static void show_frame(void) {
         uint16_t *out = band;
         for (int y = top; y < top + BAND_ROWS; y++) {
             const uint8_t *in = &frame[y * FX_W + x0];
-            for (int x = 0; x < width; x += 2) {
-                out[x] = out[x + 1] = palette[*in++];
+            /* each pixel twice across and twice down: one 32-bit word (the
+             * same colour twice) into each of the two rows. band is 4-byte
+             * aligned and width is even, so both rows are too */
+            uint32_t *row0 = (uint32_t *)out, *row1 = (uint32_t *)(out + width);
+            for (int x = 0; x < width / 2; x++) {
+                const uint32_t c = palette[in[x]];
+                row0[x] = row1[x] = c | c << 16;
             }
-            memcpy(out + width, out, width * sizeof(*band));
             if (text) {
                 overlay_blend_row(out, x0 * 2, y * 2, width);
                 overlay_blend_row(out + width, x0 * 2, y * 2 + 1, width);
