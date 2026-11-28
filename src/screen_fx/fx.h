@@ -308,7 +308,7 @@ void fx_start(int fx, uint16_t *palette);
 
 /*
  * Colour themes: the list is in colors.h, with every other colour. The
- * Typist, Status, Debug and Terminal screens are drawn in the colours of the one that is set (the first, until another
+ * Typist, Status, Debug, Terminal and Clash screens are drawn in the colours of the one that is set (the first, until another
  * is); the other animations have their own. Setting one changes nothing
  * that is showing: the next fx_start has it, and so does fx_recolor, which
  * fills `palette` in again without starting the animation afresh. That one
@@ -325,6 +325,10 @@ bool fx_recolor(int fx, uint16_t *palette);
  * `title` in letters twice the size, `detail` ("" for none) small under
  * it. In the fixed colours, so it reads on any animation. */
 void fx_draw_notice(uint8_t *fb, const char *title, const char *detail);
+
+/* A line of small text in a black box at the top left, for measuring:
+ * the frame rate (DONGLE_SCREEN_FX_FRAME_RATE). */
+void fx_draw_rate(uint8_t *fb, const char *text);
 
 /* Draw the next frame into `fb` (FX_W * FX_H palette indexes). */
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in);

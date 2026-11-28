@@ -156,7 +156,7 @@ config DONGLE_SCREEN_FX
       The &scr_next key steps through the animations in
       src/screen_fx/fx.c (those that aren't screensavers) and round again;
       &scr_prev goes the other way, and &scr_theme steps through the colour
-      themes of the Typist, Status, Debug and Terminal screens. Each shows both batteries and the
+      themes of the Typist, Status, Debug, Terminal and Clash screens. Each shows both batteries and the
       connection. Before the animations come the Keys screen and a Debug
       screen of readings, for which this turns
       on the reset cause (HWINFO), LVGL's memory figures and, in the
@@ -194,6 +194,13 @@ config DONGLE_SCREEN_FX_SAVE_DELAY_MS
     help
       Stepping through the screens, or the themes, doesn't write each one
       to flash, only the one that is left showing.
+
+config DONGLE_SCREEN_FX_FRAME_RATE
+    bool "Show the frame rate over the animations"
+    help
+      Top left, over every animation: frames a second, then how long the
+      last frame took to draw and to send to the panel, in ms. For seeing
+      what the hardware can do.
 
 config DONGLE_SCREEN_FX_WPM_REFERENCE
     int "Words per minute at which the animations run flat out"

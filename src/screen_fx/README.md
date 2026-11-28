@@ -12,7 +12,9 @@ once per board for Debug, Status, Typist, Clash and Showroom);
 | I / O | previous / next colour theme |
 | P | backlight: low, medium, high |
 
-The screen, theme and brightness are remembered once left for 30 seconds.
+The screen, theme and brightness are remembered once left for 30 seconds. Until a
+screen has been chosen, the dongle starts on Debug, which shows what works
+without needing the keyboard to.
 
 ## Screens
 
@@ -48,7 +50,7 @@ backspaces, five to a word, over the last 10 seconds.
 
 ## Colour themes
 
-Typist, Status, Debug and Terminal take the theme's colours; the name
+Typist, Status, Debug, Terminal and Clash take the theme's colours; the name
 shows for a moment when it changes. Every theme keeps green, amber and red
 for good, weak and lost.
 

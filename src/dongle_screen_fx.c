@@ -13,7 +13,7 @@
  * A frame is 140x120 palette indexes, sent doubled (280x240) in bands of 16
  * panel rows. Only the part of a band that changed since the last frame is
  * sent: the SPI link is what limits the frame rate (a whole frame takes
- * about 70 ms at 16 MHz), not working the picture out.
+ * about 35 ms at 32 MHz, config/prospector_adapter.overlay).
  *
  * The pictures need about 60 KB, which the dongle doesn't have free. LVGL's
  * drawing buffers are bigger than that and sit unused while it is parked on
@@ -28,8 +28,8 @@
  *
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below). So is the
- * colour theme, which the &scr_theme key steps through: the Typist, Status, Debug
- * and Terminal screens are drawn in its colours (colors.h has the list), and its
+ * colour theme, which the &scr_theme key steps through: the Typist, Status, Debug,
+ * Terminal and Clash screens are drawn in its colours (colors.h has the list), and its
  * name shows for a moment when it is turned to.
  *
  * Some of the animations are screensavers instead (fx_saver_way_in): the
@@ -1300,6 +1300,23 @@ static void frame_cb(struct k_work *work) {
     }
 
     fx_frame(screen - 1, frame, &in);
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+    /* frames a second, then the last frame's time drawing it and sending it, ms */
+    static uint32_t rate_at, rate_frames, sent_ms;
+    static uint8_t rate;
+    const uint32_t drawn = k_uptime_get_32();
+    rate_frames++;
+    if (drawn - rate_at >= 1000) {
+        rate = (uint8_t)MIN(rate_frames * 1000 / (drawn - rate_at), 99);
+        rate_at = drawn;
+        rate_frames = 0;
+    }
+    if (!plain) {
+        char text[24];
+        snprintf(text, sizeof(text), "%uFPS %u+%uMS", rate, (unsigned)MIN(drawn - now, 999), (unsigned)MIN(sent_ms, 999));
+        fx_draw_rate(frame, text);
+    }
+#endif
     if (notice != NOTICE_NONE && (int32_t)(notice_until - now) <= 0) {
         notice = NOTICE_NONE;
     }
@@ -1312,7 +1329,13 @@ static void frame_cb(struct k_work *work) {
         static const char *const names[DONGLE_BACKLIGHT_LEVELS] = {"LOW", "MEDIUM", "HIGH"};
         fx_draw_notice(frame, names[dongle_backlight_level()], "BRIGHTNESS");
     }
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+    const uint32_t sending = k_uptime_get_32();
     present(now);
+    sent_ms = k_uptime_get_32() - sending;
+#else
+    present(now);
+#endif
     first_picture();
     frames_since++;
     const uint32_t took = k_uptime_get_32() - now;

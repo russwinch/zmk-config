@@ -3338,27 +3338,33 @@ static void showroom_frame(uint8_t *fb, const struct fx_input *in) {
  * type, the camera cuts from key to key, closer and quicker the faster you
  * go, drifting and tilting within each shot, the pressed keys glowing and
  * the edges streaking on a fast move. A shortcut (a key with Ctrl, Alt or
- * Cmd) gets an impact frame: two colours, flickering, lines rushing into
- * the key; then its keys over the picture, with a count if they come one
+ * Cmd) gets an impact frame on its key; then its keys over the picture, with a count if they come one
  * after another. When you stop, it slows at once and pulls back to the
  * whole board, panning slowly.
  *
- * The palette is Showroom's (so its fills draw as they are), coloured
- * differently, and these after it.
+ * A shortcut gets an impact frame: for a third of a second the picture
+ * turns, a fifteenth of a second each, from an ink drawing on paper with
+ * speed lines to screentone (dots, bigger nearer the key, and lines
+ * across) and back.
+ *
+ * It is in the theme's colours (clash_colors). The palette is Showroom's
+ * (so its fills draw as they are), coloured differently, and these after it.
  */
 #define CLASH_EDGE (SHOW_CAPTION + SHOW_CAPTION_N) /* each material's edge: SHOW_MATS of them */
 #define CLASH_CREASE (CLASH_EDGE + SHOW_MATS)       /* and where two of its faces meet, dimmer */
 #define CLASH_GLOW (CLASH_CREASE + SHOW_MATS)       /* round a glowing key: 2, nearest first */
 #define CLASH_TRAIL (CLASH_GLOW + 2)                /* streaking behind the edges: CLASH_TRAILS, brightest first */
 #define CLASH_TRAILS 4
-#define CLASH_RED (CLASH_TRAIL + CLASH_TRAILS) /* the impact frame's three */
-#define CLASH_DARK (CLASH_RED + 1)
-#define CLASH_LIGHT (CLASH_DARK + 1)
+#define CLASH_DARK (CLASH_TRAIL + CLASH_TRAILS) /* the impact frames': ink, */
+#define CLASH_LIGHT (CLASH_DARK + 1)   /* paper, */
+#define CLASH_BRIGHT (CLASH_LIGHT + 1) /* lines on the screentone, */
+#define CLASH_TONE (CLASH_BRIGHT + 1)  /* its dots and the keys pressed, */
+#define CLASH_SHADE (CLASH_TONE + 1)   /* and its shading */
 #define CLASH_FLOOR SHOW_BG      /* the grid: SHOW_BG_N levels, black to lit */
 #define CLASH_SKY SHOW_SHADOWED  /* the horizon's glow: SHOW_BG_N levels, black to brightest */
 
 #define CLASH_GRID 120.0f   /* the floor's squares: 3 cm */
-#define CLASH_CALM 12.0f    /* 30ths of a second without a key before it pulls back */
+#define CLASH_CALM 24.0f    /* 30ths of a second without a key before it pulls back */
 #define CLASH_IMPACT 10.0f  /* the impact frame's length, 30ths of a second */
 #define CLASH_SHOWN 45.0f   /* and how long the shortcut shows */
 #define CLASH_STREAK 60.0f  /* a shortcut within this of the last adds to the count */
@@ -3419,8 +3425,8 @@ static void clash_cut(int key, bool hard) {
     /* from the key's own side of the board, mostly */
     const float outward = clash_now.target[0] < 0 ? -1 : 1;
     clash_now.yaw = outward * (25 + 30 * rndf()) + rndf() * 30;
-    clash_now.pitch = hard ? 14 + 6 * rndf() : 34 - 22 * pace + 10 * rndf();
-    clash_now.dist = half * (hard ? 0.42f : 1.25f - 0.8f * pace) * (1 + 0.15f * rndf());
+    clash_now.pitch = hard ? 22 + 6 * rndf() : 34 - 22 * pace + 10 * rndf();
+    clash_now.dist = half * (hard ? 0.7f : 1.25f - 0.8f * pace) * (1 + 0.15f * rndf());
     clash_now.focal = 115;
     clash_now.roll = rndf() * (hard ? 16 : 4 + 14 * pace);
     memset(&clash_drift, 0, sizeof(clash_drift));
@@ -3432,34 +3438,54 @@ static void clash_cut(int key, bool hard) {
     clash_aim = (uint8_t)key;
 }
 
-static void clash_start(uint16_t *palette) {
-    showroom_start(palette); /* the board's size, the lights, the keys' glow */
+static int brightness_of(struct color c) { return c.r * 3 + c.g * 6 + c.b; }
+
+/* Clash in the theme's colours: the solids a little off black (or a light
+ * theme's background), their edges in its text and dim, the grid in its
+ * label colour, the horizon, the glow and the pressed keys in its layer
+ * colour, the extra keys in its warning colour; the impact frames in its
+ * darkest and lightest. */
+static void clash_colors(uint16_t *palette) {
+    const struct scheme *t = scheme;
+    const bool light = brightness_of(t->bg) > brightness_of(t->text);
+    const struct color black = {0, 0, 0}, base = light ? t->bg : black;
     for (int i = 0; i < SHOW_BG_N; i++) {
         const int k = i * 256 / (SHOW_BG_N - 1);
-        palette[CLASH_FLOOR + i] = color565(mix((struct color){0, 0, 0}, clash_grid, k));
-        palette[CLASH_SKY + i] = color565(mix((struct color){0, 0, 0}, clash_horizon, k));
+        palette[CLASH_FLOOR + i] = color565(mix(base, t->label, k * 3 / 4));
+        palette[CLASH_SKY + i] = color565(mix(base, t->layer, k * (light ? 1 : 3) / 4));
     }
+    /* each material's five bands, its edge and its creases */
+    const struct color edge[MAT_HOT] = {t->dim, t->dim, t->text, t->warn, t->label, t->dim, t->dim, t->label};
+    static const uint8_t tone[SHOW_BANDS] = {14, 30, 50, 75, 50};
     for (int m = 0; m < SHOW_MATS; m++) {
         const bool hot = m >= MAT_HOT;
+        const int h = m - MAT_HOT;
         for (int b = 0; b < SHOW_BANDS; b++) {
-            palette[SHOW_MAT + m * SHOW_BANDS + b] =
-                color565(hot ? mix(clash_hot[m - MAT_HOT][0], (struct color){255, 255, 255}, b * 24)
-                             : clash_materials[m][b]);
+            const struct color fill =
+                hot ? mix(base, t->layer, 110 + h * 70 + (b == BAND_LIT ? 20 : 0))
+                    : mix(base, m == MAT_EXTRA ? t->warn : t->dim, tone[b] * (m == MAT_CAP ? 3 : 2) / 2);
+            palette[SHOW_MAT + m * SHOW_BANDS + b] = color565(fill);
         }
-        const struct color edge = hot ? clash_hot[m - MAT_HOT][1] : clash_edges[m];
-        palette[CLASH_EDGE + m] = color565(edge);
-        palette[CLASH_CREASE + m] = color565(mix((struct color){0, 0, 0}, edge, hot ? 200 : 130));
+        const struct color e = hot ? mix(t->layer, t->bright, 60 + h * 60) : edge[m];
+        palette[CLASH_EDGE + m] = color565(e);
+        palette[CLASH_CREASE + m] = color565(mix(base, e, hot ? 200 : 140));
     }
-    palette[SHOW_PICTURE] = color565(clash_materials[MAT_SCREEN][BAND_LIT]);
-    palette[CLASH_GLOW] = color565(mix((struct color){0, 0, 0}, clash_hot[2][0], 150));
-    palette[CLASH_GLOW + 1] = color565(mix((struct color){0, 0, 0}, clash_hot[2][0], 70));
+    palette[SHOW_PICTURE] = color565(mix(base, t->label, 120));
+    palette[CLASH_GLOW] = color565(mix(base, t->layer, 150));
+    palette[CLASH_GLOW + 1] = color565(mix(base, t->layer, 70));
     for (int i = 0; i < CLASH_TRAILS; i++) {
-        palette[CLASH_TRAIL + i] = color565(mix((struct color){0, 0, 0}, clash_grid, 170 - i * 40));
+        palette[CLASH_TRAIL + i] = color565(mix(base, t->label, 170 - i * 40));
     }
-    palette[CLASH_RED] = color565(clash_red);
-    palette[CLASH_DARK] = color565(clash_dark);
-    palette[CLASH_LIGHT] = color565(clash_light);
+    const struct color paper = light ? t->bg : mix(t->text, t->bright, 128);
+    palette[CLASH_DARK] = color565(light ? t->text : black);
+    palette[CLASH_LIGHT] = color565(paper);
+    palette[CLASH_BRIGHT] = color565(light ? t->bg : t->bright);
+    palette[CLASH_TONE] = color565(t->layer);
+    palette[CLASH_SHADE] = color565(mix(light ? paper : black, t->layer, 70));
+}
 
+static void clash_start(uint16_t *palette) {
+    showroom_start(palette); /* the board's size, the lights, the keys' glow; clash_colors colours it */
     show_glint = -10000; /* no glint sweeping over it */
     clash_pace = 0;
     clash_quiet = 1000;
@@ -3587,28 +3613,50 @@ static void clash_trails(uint8_t *fb, int length, int way) {
     }
 }
 
-/* The impact frame: the floor red, lines rushing into (cx, cy), the board
- * dark with light edges, its pressed keys light; `flip`: light, the keys red. */
-static void clash_impact_draw(uint8_t *fb, float cx, float cy, bool flip) {
-    const uint32_t seed = clash_flicker;
+/* Whether pixel i (at x, y) is on the edge of its solid. */
+static inline bool clash_rim(int x, int y, int i) {
+    const uint8_t id = canvas[i];
+    return (x > 0 && canvas[i - 1] < id) || (x < FX_W - 1 && canvas[i + 1] < id) ||
+           (y > 0 && canvas[i - FX_W] < id) || (y < FX_H - 1 && canvas[i + FX_W] < id);
+}
+
+/* An impact frame on (cx, cy), `t` 30ths of a second into it: `ink`, the
+ * board drawn in ink on paper, shaded with dots where it is dark, with
+ * speed lines slanting across; or else screentone, the board dark with
+ * bright edges on dots that grow nearer the key, lines straight across. */
+static void clash_impact_draw(uint8_t *fb, float cx, float cy, bool ink) {
+    const int seed = clash_flicker;
     for (int y = 0; y < FX_H; y++) {
         for (int x = 0; x < FX_W; x++) {
             const int i = y * FX_W + x;
-            const uint8_t id = canvas[i], c = fb[i];
-            if (!id) {
-                const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
-                const int ray = direction(dx, dy);
-                const uint32_t h = hash(ray, (int)seed);
-                const float inner = 14 + (h >> 8) % 26;
-                const bool line = h % 3 == 0 && dx * dx + dy * dy > inner * inner;
-                fb[i] = line ? CLASH_DARK : flip ? CLASH_LIGHT : CLASH_RED;
-            } else if (clash_hot_at(c)) {
-                fb[i] = flip ? CLASH_RED : CLASH_LIGHT;
-            } else if ((x > 0 && canvas[i - 1] < id) || (x < FX_W - 1 && canvas[i + 1] < id) ||
-                       (y > 0 && canvas[i - FX_W] < id) || (y < FX_H - 1 && canvas[i + FX_W] < id)) {
-                fb[i] = flip ? CLASH_DARK : CLASH_LIGHT;
+            const uint8_t c = fb[i];
+            if (canvas[i]) {
+                const bool dark = c < SHOW_MAT + 2 * SHOW_BANDS ||
+                                  (c >= SHOW_MAT && c < SHOW_INK && (c - SHOW_MAT) % SHOW_BANDS == BAND_DARK);
+                if (clash_hot_at(c)) {
+                    fb[i] = CLASH_TONE;
+                } else if (clash_rim(x, y, i)) {
+                    fb[i] = ink ? CLASH_DARK : CLASH_BRIGHT;
+                } else if (ink) {
+                    fb[i] = dark && !(x & 1) && !(y & 1) ? CLASH_DARK : CLASH_LIGHT;
+                } else {
+                    fb[i] = (x + y) & 1 && c < SHOW_MAT + 2 * SHOW_BANDS ? CLASH_SHADE : CLASH_DARK;
+                }
+                continue;
+            }
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            if (ink) {
+                const uint32_t h = hash((x + y * 2) / 3, seed);
+                const bool line = h % 4 == 0 && dx * dx + dy * dy > 18 * 18 &&
+                                  (x - y + 200 + (int)((h >> 8) % 100)) % 90 < 50;
+                fb[i] = line ? CLASH_DARK : CLASH_LIGHT;
             } else {
-                fb[i] = flip ? CLASH_LIGHT : CLASH_DARK;
+                /* a dot in each 4 by 4, bigger nearer the key */
+                const float mx = (x & ~3) + 2 - cx, my = (y & ~3) + 2 - cy;
+                const float r = 2.9f - sqrtf(mx * mx + my * my) / 26, ox = (x & 3) - 1.5f, oy = (y & 3) - 1.5f;
+                const uint32_t h = hash(y, seed);
+                const bool line = h % 5 == 0 && (x + (int)((h >> 8) % 200)) % 140 < 50 + (int)((h >> 16) % 60);
+                fb[i] = line ? CLASH_BRIGHT : r > 0 && ox * ox + oy * oy < r * r ? CLASH_TONE : CLASH_DARK;
             }
         }
     }
@@ -3621,7 +3669,7 @@ static void clash_label_draw(uint8_t *fb, bool impact) {
         snprintf(count, sizeof(count), "x%u", clash_count > 99 ? 99 : clash_count);
     }
     const int len = (int)strlen(clash_label), n = (int)strlen(count);
-    const int w = len * 10 - 2 + (n ? 4 + n * 6 - 1 : 0), x = (FX_W - w) / 2, y = 12;
+    const int w = len * 10 - 2 + (n ? 4 + n * 6 - 1 : 0), x = (FX_W - w) / 2, y = 16; /* under the frame rate, if that shows */
     const uint8_t rim = impact ? CLASH_LIGHT : CLASH_EDGE + MAT_HOT + 2;
     for (int py = y - 4; py <= y + 17; py++) {
         for (int px = x - 5; px <= x + w + 4; px++) {
@@ -3643,10 +3691,12 @@ static void clash_frame(uint8_t *fb, const struct fx_input *in) {
     clash_quiet += in->step;
     clash_since += in->step;
     if (in->n_keys) {
+        /* how fast, from the gap since the last key: 10 a second (120 wpm) flat out, 2 (20 wpm) not at all */
+        const float gap = clash_quiet / in->n_keys, speed = clampf(1 - (gap - 3) / 12, 0, 1);
+        clash_pace += (speed - clash_pace) * 0.3f;
         clash_quiet = 0;
-        clash_pace = clampf(clash_pace + 0.07f * in->n_keys, 0, 1);
-    } else {
-        clash_pace = clampf(clash_pace - (clash_quiet > 6 ? 0.04f : 0.004f) * in->step, 0, 1);
+    } else if (clash_quiet > CLASH_CALM) {
+        clash_pace = clampf(clash_pace - 0.06f * in->step, 0, 1);
     }
 
     /* a shortcut: the impact frame, on its key */
@@ -3718,7 +3768,7 @@ static void clash_frame(uint8_t *fb, const struct fx_input *in) {
         const float cx = c[2] > 1 ? FX_W / 2 + cam.focal * c[0] / c[2] : FX_W / 2;
         const float cy = c[2] > 1 ? FX_H / 2 - cam.focal * c[1] / c[2] : FX_H / 2;
         clash_flicker++;
-        clash_impact_draw(fb, cx, cy, (int)(clash_impact / 2) % 3 == 1);
+        clash_impact_draw(fb, cx, cy, (int)(clash_impact / 2) % 2 == 0);
         clash_impact += s;
     } else {
         clash_impact = -1;
@@ -3759,7 +3809,7 @@ static const struct {
     {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
     {"TYPIST", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
     {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
-    {"CLASH", clash_start, clash_frame, NULL, &clash_text, {.dots = true, .drop = CORNER_DROP}},
+    {"CLASH", clash_start, clash_frame, clash_colors, NULL, {.dots = true, .drop = CORNER_DROP}},
     {"WARP", warp_start, warp_frame, NULL, &warp_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_HYPERSPACE},
     {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true, .drop = CORNER_DROP}, .saver = FX_TR_MELT},
     {"LIFE", life_start, life_frame, NULL, &life_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_INFECT},
@@ -3865,6 +3915,18 @@ void fx_draw_notice(uint8_t *fb, const char *title, const char *detail) {
     big_text(fb, (FX_W - title_w) / 2, top + 5, title, FX_WHITE);
     for (int x = (FX_W - detail_w) / 2; *detail; detail++, x += 5) {
         glyph(fb, x, top + 23, *detail, FX_GREY);
+    }
+}
+
+void fx_draw_rate(uint8_t *fb, const char *text) {
+    const int w = 5 * (int)strlen(text) + 3, left = 18;
+    for (int y = 1; y < 10; y++) {
+        for (int x = left; x < left + w; x++) {
+            plot(fb, x, y, FX_BLACK);
+        }
+    }
+    for (int x = left + 2; *text; text++, x += 5) {
+        glyph(fb, x, 2, *text, FX_WHITE);
     }
 }
 

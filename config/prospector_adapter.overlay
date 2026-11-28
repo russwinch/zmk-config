@@ -27,3 +27,12 @@
         reg = <0x20000100 0x10>;
     };
 };
+
+/*
+ * The panel's link as fast as the nRF52840 goes: its SPI runs at 8, 16 or
+ * 32 MHz, so the Prospector module's 30 MHz gave 16, and a whole frame took
+ * about 70 ms to send. 32 MHz halves that (the ST7789 takes up to about 60).
+ */
+&st7789 {
+    mipi-max-frequency = <32000000>;
+};
