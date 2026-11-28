@@ -159,11 +159,26 @@ user's own computer: a cloud session can't see USB drives.
 - Board reuses Showroom's solids, camera and palette layout (coloured
   from the theme in `board_colors`, its own entries after Showroom's), and
   swaps the backdrop, ink and glint for its floor, edges and glow. The
-  dongle's screen shows a 35x30 copy of the last frame (`FILL_PICTURE`), its
-  own screen blank in it and held during a shot of the dongle. The floor is
-  drawn after the solids, only where none is. Shortcuts
+  dongle's screen shows the whole board from the wide shot, drawn again each
+  frame at 35x30 (`board_thumb`, through `draw_w`/`draw_h`) and mapped on
+  ray by ray (`FILL_PICTURE`). The floor is drawn after the solids, only
+  where none is. Shortcuts
   reach it as `fx_input`'s `combo_mods`/`combo_key`, filled in
   `src/dongle_screen_fx.c` (`shortcut`).
+- Board's frame time (build 374: about 140 ms drawing, 55 ms sending, so
+  5 fps). Done: the floor after the solids and one division a pixel, the
+  glow only round glowing keys, fills a span at a time; about half the
+  drawing, counted on a computer (callgrind), the dongle's own screen
+  included. Not done yet, biggest first:
+  - draw the next frame while the last one is sent: the send blocks for
+    ~55 ms; needs a second 17 KB frame buffer or asynchronous SPI;
+  - the send's palette lookup and pixel doubling a band at a time: write
+    each doubled pixel pair as one 32-bit word;
+  - compile `fx.c` at `-O2` (ZMK builds `-Os`): only ~4% on a computer,
+    more likely on the Cortex-M4; check the display thread's stack first;
+  - the dongle's screen every other frame (~10%);
+  - the floor: one division every 8 pixels, interpolated between;
+  - the edges: only over the rows and columns the solids reach.
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
   black with captions in the same strong hue; light ones adjust each colour's
   lightness, never its hue. Check `tools/fx_preview.py --contrast`.

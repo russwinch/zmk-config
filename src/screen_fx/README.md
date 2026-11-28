@@ -24,7 +24,7 @@ without needing the keyboard to.
 | 2 | Status | the board's keys, batteries, signal and connections at a glance: [below](#status) |
 | 3 | Typist | your typing speed, and the board as it is, its keys lighting as you type: [below](#typist) |
 | 4 | Terminal | what you type, fading out (passwords included, while it is showing) |
-| 5 | Board | the board in 3D, in the theme's colours, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame (ink on paper, then screentone) and shows its keys, with a count when they come one after another. The dongle on the desk shows the screen itself, one picture deep, and now and then the camera cuts to it |
+| 5 | Board | the board in 3D, in the theme's colours, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame (ink on paper, then screentone) and shows its keys, with a count when they come one after another. The dongle on the desk shows the whole board from afar, live, and now and then the camera cuts to it |
 
 After 15 minutes without a key, or when the lock key is let go, a
 screensaver takes over: **Warp** (stars to light speed), **Code** (an alien
