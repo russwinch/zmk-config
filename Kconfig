@@ -98,6 +98,17 @@ config HALF_CHARGING_STATUS
       ZMK's readings over 5 minutes, in tenths of a millivolt), for the dongle's figure
       of the half's draw.
 
+config HALF_GOODBYE
+    bool "Tell the dongle when this half goes to sleep or into its bootloader"
+    default y
+    depends on ZMK_SPLIT_BLE && !ZMK_SPLIT_ROLE_CENTRAL
+    help
+      Every half that is a peripheral. Closes its link itself before going
+      to sleep, and before restarting into its bootloader (the Keyboard
+      Writer app, or a bootloader key), with a reason saying which
+      (src/half_goodbye.h), so the dongle shows it asleep or updating, not
+      as a dropped link.
+
 config DONGLE_HALF_INFO
     bool "Hear whether each half is on USB power"
     default y

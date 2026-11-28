@@ -64,6 +64,7 @@ On a dongle the lock key also starts the screensaver.
 
 Every board deep-sleeps after an hour without a key (never on USB power); the
 next key wakes it (that key isn't typed) and it reconnects in a second or so.
+The dongle's screens show a sleeping half grey, not as a dropped link.
 A nice!view stays on. The dongle never sleeps; its panel goes off after an
 hour idle.
 
