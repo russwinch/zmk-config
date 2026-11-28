@@ -1347,21 +1347,15 @@ static void frame_cb(struct k_work *work) {
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
     /* frames a second, then the last frame's time drawing it and sending it,
      * ms; under it, its stages' (Board's), and the sending's: the CPU's work,
-     * the wait on SPI; then the display thread's stack never used, bytes */
+     * the wait on SPI */
     static uint32_t fps_from, fps_frames, sent_ms, send_cpu_us, send_spi_us;
     static uint8_t fps_shown;
-    static size_t stack_free;
     const uint32_t drawn = k_uptime_get_32();
     fps_frames++;
     if (drawn - fps_from >= 1000) {
         fps_shown = (uint8_t)MIN(fps_frames * 1000 / (drawn - fps_from), 99);
         fps_from = drawn;
         fps_frames = 0;
-#if IS_ENABLED(CONFIG_THREAD_STACK_INFO) && IS_ENABLED(CONFIG_INIT_STACKS)
-        if (k_thread_stack_space_get(k_current_get(), &stack_free) != 0) {
-            stack_free = 0;
-        }
-#endif
     }
     if (!plain) {
         char text[28];
@@ -1372,8 +1366,8 @@ static void frame_cb(struct k_work *work) {
         if (text[0]) {
             fx_draw_rate(frame, line++, text);
         }
-        snprintf(text, sizeof(text), "CPU%u SPI%u STK%u", (unsigned)((send_cpu_us + 500) / 1000),
-                 (unsigned)((send_spi_us + 500) / 1000), (unsigned)stack_free);
+        snprintf(text, sizeof(text), "SEND CPU%u SPI%u", (unsigned)((send_cpu_us + 500) / 1000),
+                 (unsigned)((send_spi_us + 500) / 1000));
         fx_draw_rate(frame, line, text);
     }
 #endif
