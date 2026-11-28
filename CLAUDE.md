@@ -130,7 +130,9 @@ user's own computer: a cloud session can't see USB drives.
 - `src/dongle_screen_fx.c` parks LVGL and writes frames straight to the panel;
   the animations' memory is one of LVGL's draw buffers, so only one animation
   runs at a time and a transition's other picture is the last frame. A whole
-  frame takes about 70 ms over SPI.
+  frame takes about 35 ms over SPI at 32 MHz (`config/prospector_adapter.overlay`;
+  the nRF52840 only has 8, 16 or 32). `CONFIG_DONGLE_SCREEN_FX_FRAME_RATE` shows
+  the frame rate and each frame's draw and send ms over the animations.
 - Crashes: the reason and program counter survive the restart in a register
   and the first KB of RAM (`config/prospector_adapter.overlay` keeps it out of
   Zephyr's). Each release has the dongles'
@@ -147,8 +149,9 @@ user's own computer: a cloud session can't see USB drives.
   ray by ray (`collapse_row`). Its colours follow `tools/boards.py`'s, and
   boards.h's `FX_PART_EXTRA` marks the parts drawn amber there.
 - Clash reuses Showroom's solids, camera and palette layout (coloured
-  in neon in `clash_start`, its own entries after Showroom's), and swaps
-  the backdrop, ink and glint for its floor, edges and glow. Shortcuts
+  from the theme in `clash_colors`, its own entries after Showroom's), and
+  swaps the backdrop, ink and glint for its floor, edges and glow. The
+  dongle's screen shows a 35x30 copy of the last frame (`FILL_PICTURE`). Shortcuts
   reach it as `fx_input`'s `combo_mods`/`combo_key`, filled in
   `src/dongle_screen_fx.c` (`shortcut`).
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
