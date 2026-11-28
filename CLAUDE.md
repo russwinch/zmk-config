@@ -188,24 +188,27 @@ user's own computer: a cloud session can't see USB drives.
   where none is. Shortcuts
   reach it as `fx_input`'s `combo_mods`/`combo_key`, filled in
   `src/dongle_screen_fx.c` (`shortcut`).
-- Board's frame time (build 374: about 140 ms drawing, 55 ms sending, so
-  5 fps). Done: the floor after the solids and one division a pixel, the
-  glow only round glowing keys, fills a span at a time; about half the
-  drawing, counted on a computer (callgrind), the dongle's own screen
-  included. Not done yet, biggest first:
-  - draw the next frame while the last one is sent: the send blocks for
-    ~55 ms; needs a second 17 KB frame buffer or asynchronous SPI;
-  - the send's palette lookup and pixel doubling a band at a time: write
-    each doubled pixel pair as one 32-bit word;
-  - compile `fx.c` at `-O2` (ZMK builds `-Os`): only ~4% on a computer,
-    more likely on the Cortex-M4. Board's deepest calls took ~2.3 KB of the
-    display thread's 8 KB at `-Os` (each function's `push`/`sub sp` in the
-    `.elf`); check again after. Builds 378 and 379 didn't start (black,
-    no backlight); `CONFIG_INIT_STACKS`, for a free-stack reading, was
-    their one settings change from 375, which did, so it is out;
-  - the dongle's screen every other frame (~10%);
-  - the floor: one division every 8 pixels, interpolated between;
+- Board's frame time, from the frame-rate lines (`CONFIG_DONGLE_SCREEN_FX_FRAME_RATE`):
+  build 374 about 140 ms drawing + 55 sending (5 fps); build 384, on the wide
+  shot, 80 ms drawing (the dongle's screen 15, solids 30, floor 28, edges 8)
+  + 50 sending (CPU 13, SPI 37), 7 fps. SPI's 37 ms is the panel link's limit
+  (a frame is 33.6 ms at 32 MHz). Since 384: the floor in perspective every
+  8 pixels, the dongle's screen every other frame, the send's pixels as
+  32-bit words. Not done yet, biggest first:
+  - draw the next frame while the last one is sent (SPI is ~37 ms of
+    waiting): send from `shown`, which already holds a copy, on a thread of
+    its own; mind the screensaver transitions, which read `shown`;
+  - compile `fx.c` at `-O2` (ZMK builds `-Os`). Board's deepest calls took
+    ~2.3 KB of the display thread's 8 KB at `-Os` (each function's
+    `push`/`sub sp` in the `.elf`); check again after;
   - the edges: only over the rows and columns the solids reach.
+- RAM: a dongle has a few hundred bytes to a few KB to spare (the
+  Waterfowl least: its encoders and scrolling take ~5 KB). Check `_end` in
+  the release's `.elf`s (RAM ends at 0x20040000) after adding anything
+  static. The C heap is a fixed 4 KB (`config/prospector_adapter.conf`), so
+  running out fails the build; big per-animation state goes in `fx_own`.
+  Builds 376-382 didn't start (black, no backlight) when the heap had been
+  left 36 bytes; `CONFIG_INIT_STACKS` was suspected first and isn't to blame.
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure
   black with captions in the same strong hue; light ones adjust each colour's
   lightness, never its hue. Check `tools/fx_preview.py --contrast`.
