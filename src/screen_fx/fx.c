@@ -965,8 +965,11 @@ static int put(uint8_t *fb, int x, int y, const char *s, uint8_t color) {
 }
 
 /* The same, ending at `right`. */
-static void put_right(uint8_t *fb, int right, int y, const char *s, uint8_t color) {
-    put(fb, right - 5 * (int)strlen(s), y, s, color);
+/* Text ending at `right`; where it starts. */
+static int put_right(uint8_t *fb, int right, int y, const char *s, uint8_t color) {
+    const int left = right - 5 * (int)strlen(s);
+    put(fb, left, y, s, color);
+    return left;
 }
 
 
@@ -1419,14 +1422,23 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         const bool fault = (d->reset_cause & (1 << 4 | 1 << 8 | 1 << 2)) != 0;
         x = put(fb, x, y2, reset_name(d->reset_cause), fault ? DBG_BAD : DBG_TEXT) + 3;
         snprintf(buf, sizeof(buf), "%02X", (unsigned)(d->reset_cause & 0xff)); /* all the reasons, in hex */
-        put(fb, x, y2, buf, DBG_LABEL);
+        x = put(fb, x, y2, buf, DBG_LABEL) + 3;
     }
-    if (d->bounce_ms) {
-        snprintf(buf, sizeof(buf), "%ums", d->bounce_ms);
-        put_right(fb, FX_W - 6, y2, buf, d->bounce_ms < 30 ? DBG_WARN : DBG_TEXT); /* a hint, not proof: see the README */
-        put_right(fb, FX_W - 6 - 5 * (int)strlen(buf) - 3, y2, "BOUNCE", DBG_LABEL);
+    /* the animations' frame rate: the last 20 s's, and its last 10 minutes
+     * (if the restart's reason leaves room) */
+    int fps = 0;
+    for (int i = 0; i < FX_FPS_HISTORY; i++) {
+        fps = d->fps_log[i] ? d->fps_log[i] : fps;
+    }
+    if (fps) {
+        snprintf(buf, sizeof(buf), "%u", fps > 99 ? 99 : fps);
     } else {
-        put_right(fb, FX_W - 6, y2, "BOUNCE --", DBG_LABEL);
+        strcpy(buf, "--");
+    }
+    const int units_x = put_right(fb, FX_W - 6, y2, "fps", DBG_LABEL);
+    const int fps_x = put_right(fb, units_x - 1, y2, buf, !fps ? DBG_LABEL : fps >= 24 ? DBG_GOOD : fps >= 15 ? DBG_TEXT : DBG_WARN);
+    if (fps_x - 3 - DBG_CHART_W >= x) {
+        fps_chart(fb, fps_x - 3 - DBG_CHART_W, y2 + 1, d->fps_log);
     }
 
     /* the table: a column each for the left half, the dongle and the right
@@ -1560,8 +1572,9 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     const int board_left = FX_W - 1 - fx_corner_inset(out_y, out_y + 20) - board_cols * board_pitch;
 
     /* LVGL's memory used; then, only if there are any, the USB reports the
-     * computer didn't take (UE, as on Status); then the animations' frame
-     * rate, if there is room before the key map */
+     * computer didn't take (UE, as on Status); then the quickest a key has
+     * come back down (a switch that bounces shows here as a few ms, amber
+     * under 30), if there is room before the key map */
     x = 6;
     if (d->heap_known) {
         x = put(fb, x, out_y + 8, "MEM", DBG_LABEL) + 3;
@@ -1572,9 +1585,14 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         snprintf(buf, sizeof(buf), "UE%u", d->usb_errors > 99 ? 99 : d->usb_errors);
         x = put(fb, x, out_y + 8, buf, DBG_WARN) + 3;
     }
-    x = x > 46 ? x : 46;
-    if (x + DBG_CHART_W <= board_left - 2) {
-        fps_chart(fb, x, out_y + 9, d->fps_log);
+    if (d->bounce_ms) {
+        snprintf(buf, sizeof(buf), "%ums", d->bounce_ms);
+    } else {
+        strcpy(buf, "--");
+    }
+    if (x + 18 + 5 * (int)strlen(buf) <= board_left - 2) {
+        x = put(fb, x, out_y + 8, "BNC", DBG_LABEL) + 3;
+        put(fb, x, out_y + 8, buf, d->bounce_ms && d->bounce_ms < 30 ? DBG_WARN : d->bounce_ms ? DBG_TEXT : DBG_LABEL); /* a hint, not proof: see the README */
     }
 
     /* the layer (number and name), the modifiers lit while held; in the

@@ -92,10 +92,10 @@ speed is on Typist, the battery levels on Typist and Status.
 | Line | Shows |
 | --- | --- |
 | `B149 1:12:51 ACT 40ms` | build 149 (`DEV` if not from CI); time up; `ACT`ive, `IDLE` or `SLEEP`; how long this screen takes to draw a frame |
-| `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, amber under 30 ms: maybe a bouncing switch |
+| `RESET SOFT 02  19fps` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the frame rate of the other screens over the last 10 minutes, a column each 20 s (30 fps full height): green at 24 or more, amber under 15, red under 8, nothing where Debug or nothing was showing; and the last 20 s's (the chart only when the restart's reason leaves room) |
 | `LEFT`, the keyboard's name, `RIGHT` | a column each for the halves and the dongle, red when its link is down (the dongle's is to the computer): rows below |
 | waves, `USB` | the Bluetooth profile in use, as over the animations (green: connected, white: paired, dim: free; flashing for 3 s after you switch); USB `--`, `PWR` or `HID` |
-| `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take; then the animations' frame rate over the last 10 minutes, a column each 20 s (30 fps full height): green at 24 or more, amber under 15, red under 8, nothing where none was showing (only when it fits before the key map) |
+| `MEM 62% UE3 BNC 18ms` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take; the quickest any key has come back down, amber under 30 ms: maybe a bouncing switch (only when it fits before the key map) |
 | `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
 | last line | the last key, keycode or encoder event, with the ms since the one before |
 | key map | every key, lit while held; all of a half red while it isn't connected. A key that doesn't light isn't reaching the dongle |

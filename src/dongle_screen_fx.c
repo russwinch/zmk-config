@@ -1300,9 +1300,9 @@ static void frame_cb(struct k_work *work) {
     }
 
     fx_frame(screen - 1, frame, &in);
-    /* the animations' frame rate, a slot every FX_FPS_SLOT_S seconds, for Debug */
+    /* the frame rate of every screen but Debug, a slot every FX_FPS_SLOT_S seconds, for Debug */
     static uint32_t slot_from, slot_frames, slot_ms;
-    if (!plain) {
+    if (!is_debug) {
         slot_frames++;
         slot_ms += (uint32_t)(in.step * 33.3f);
     }
