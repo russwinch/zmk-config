@@ -3641,7 +3641,8 @@ static float board_since;  /* since the last shortcut */
 static uint8_t board_count; /* shortcuts one after another */
 static uint8_t board_aim;   /* the key the camera is on */
 static uint8_t board_flicker;
-static bool board_thumb_due; /* the dongle's screen is drawn again this frame */
+#define BOARD_THUMB_EVERY 4 /* frames: the dongle's screen is too small to show more */
+static int board_thumb_due; /* frames until the dongle's screen is drawn again, 0: this one */
 static char board_label[12];
 
 static int direction(float dx, float dy);
@@ -3781,7 +3782,7 @@ static void board_start(uint16_t *palette) {
     board_shot = 0;
     board_pan = 0;
     board_impact = -1;
-    board_thumb_due = true;
+    board_thumb_due = 0;
     board_shown = 0;
     board_since = 1000;
     board_count = 0;
@@ -4099,11 +4100,12 @@ static void board_thumb(uint8_t *fb, const struct fx_input *in) {
 
 static void board_frame(uint8_t *fb, const struct fx_input *in) {
     show_heat_step(in);
-    /* the dongle's screen: every other frame is enough at its size */
-    if (board_thumb_due) {
+    /* the dongle's screen: every few frames is enough at its size */
+    if (board_thumb_due == 0) {
         board_thumb(fb, in);
+        board_thumb_due = BOARD_THUMB_EVERY;
     }
-    board_thumb_due = !board_thumb_due;
+    board_thumb_due--;
     stage("SCR");
     const bool was_calm = board_quiet > BOARD_CALM;
 
