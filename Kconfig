@@ -208,14 +208,12 @@ config DONGLE_SCREEN_FX_SAVE_DELAY_MS
 
 config DONGLE_SCREEN_FX_FRAME_RATE
     bool "Show the frame rate over the animations"
-    imply INIT_STACKS
-    imply THREAD_STACK_INFO
     help
       Top left, over every animation: frames a second, then how long the
       last frame took to draw and to send to the panel, in ms. Under it,
       for a screen that times them (Board), each stage's ms; then the
-      sending's ms on the CPU and waiting on SPI, and the display thread's
-      stack never used, in bytes. For seeing what the hardware can do.
+      sending's ms on the CPU and waiting on SPI. For seeing what the
+      hardware can do.
 
 config DONGLE_SCREEN_FX_WPM_REFERENCE
     int "Words per minute at which the animations run flat out"

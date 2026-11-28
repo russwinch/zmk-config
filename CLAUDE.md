@@ -177,7 +177,11 @@ user's own computer: a cloud session can't see USB drives.
   - the send's palette lookup and pixel doubling a band at a time: write
     each doubled pixel pair as one 32-bit word;
   - compile `fx.c` at `-O2` (ZMK builds `-Os`): only ~4% on a computer,
-    more likely on the Cortex-M4; check the display thread's stack first;
+    more likely on the Cortex-M4. Board's deepest calls took ~2.3 KB of the
+    display thread's 8 KB at `-Os` (each function's `push`/`sub sp` in the
+    `.elf`); check again after. Builds 378 and 379 didn't start (black,
+    no backlight); `CONFIG_INIT_STACKS`, for a free-stack reading, was
+    their one settings change from 375, which did, so it is out;
   - the dongle's screen every other frame (~10%);
   - the floor: one division every 8 pixels, interpolated between;
   - the edges: only over the rows and columns the solids reach.
