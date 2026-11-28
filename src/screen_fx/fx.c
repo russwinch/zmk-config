@@ -2516,7 +2516,15 @@ static void show_point(float *out, float x, float y, float z, int side) {
 /* A point of part `p`, (u, v) from its middle along its sides before it is
  * turned. */
 static void part_point(float *out, const struct fx_part *p, float u, float v, float z) {
-    const float a = p->rot * (TWO_PI / 360), c = p->rot ? cosf(a) : 1, s = p->rot ? sinf(a) : 0;
+    /* a part's points come one after another: its turn worked out once */
+    static int16_t turned = 0;
+    static float c = 1, s = 0;
+    if (p->rot != turned) {
+        const float a = p->rot * (TWO_PI / 360);
+        turned = p->rot;
+        c = cosf(a);
+        s = sinf(a);
+    }
     show_point(out, p->x + u * c - v * s, p->y + u * s + v * c, z, p->kind & FX_PART_RIGHT ? -1 : 1);
 }
 
@@ -2553,6 +2561,20 @@ static void show_picture_row(uint8_t *row, int x0, int x1, int y) {
         dx += dx_step;
         dy += dy_step;
     }
+}
+
+/* ceilf and floorf, to an int, without the library's calls (the FPU has
+ * no rounding of its own); far off the picture is as good as anywhere off it. */
+static inline int ceil_int(float v) {
+    v = v < -30000 ? -30000 : v > 30000 ? 30000 : v;
+    const int i = (int)v;
+    return i + ((float)i < v);
+}
+
+static inline int floor_int(float v) {
+    v = v < -30000 ? -30000 : v > 30000 ? 30000 : v;
+    const int i = (int)v;
+    return i - ((float)i > v);
 }
 
 /* Fill the face whose points, in the camera's space, are `pts`: in `color`,
@@ -2611,7 +2633,7 @@ static void show_fill(uint8_t *fb, float (*pts)[3], int n, uint8_t color, uint8_
             }
         }
         for (int c = 0; c + 1 < k; c += 2) {
-            int x0 = (int)ceilf(xs[c] - 0.5f), x1 = (int)floorf(xs[c + 1] - 0.5f);
+            int x0 = ceil_int(xs[c] - 0.5f), x1 = floor_int(xs[c + 1] - 0.5f);
             x0 = x0 < 0 ? 0 : x0;
             x1 = x1 >= draw_w ? draw_w - 1 : x1;
             if (x1 < x0) {
