@@ -21,6 +21,16 @@
 
 static uint8_t *canvas;
 
+/* The running animation's own state, where it is big: only one runs at a
+ * time, and each fills its own in afresh when it starts (fx_start), so they
+ * share this. Each is a struct laid over it (OWN), as big as the biggest
+ * (Showroom's falling tiles); a build fails if one grows past it. RAM is
+ * short: with too little left over, the dongle doesn't start (builds
+ * 376-382: Bluetooth's crypto takes its memory from what is left). */
+static uint32_t fx_own[800];
+#define OWN(type) ((struct type *)fx_own) /* each is __may_alias__ */
+#define OWN_FITS(type) _Static_assert(sizeof(struct type) <= sizeof(fx_own), #type " is bigger than fx_own")
+
 void fx_set_canvas(uint8_t *memory) { canvas = memory; }
 
 /* --- helpers -------------------------------------------------------------- */
@@ -393,10 +403,14 @@ static void glyph(uint8_t *fb, int x, int y, char c, uint8_t color) {
 #define RING_FAR 2.0f     /* depth a ring appears at */
 #define RING_RADIUS 0.55f /* 38 pixels at depth 1 */
 
-static struct {
-    float x, y, z;
-    uint8_t hue, comet;
-} stars[STARS];
+struct __attribute__((__may_alias__)) warp_own {
+    struct {
+        float x, y, z;
+        uint8_t hue, comet;
+    } stars[STARS];
+};
+OWN_FITS(warp_own);
+#define stars (OWN(warp_own)->stars)
 static struct {
     float z, turn; /* z <= 0: not in use */
     uint8_t hue;
@@ -549,8 +563,13 @@ static void warp_frame(uint8_t *fb, const struct fx_input *in) {
 #define TERM_PITCH 9 /* rows; characters are 5 apart */
 #define TERM_LIT 205 /* a character once its first flash is over */
 
-static char term_char[TERM_ROWS][TERM_COLS];
-static uint8_t term_lum[TERM_ROWS][TERM_COLS];
+struct __attribute__((__may_alias__)) term_own {
+    char term_char[TERM_ROWS][TERM_COLS];
+    uint8_t term_lum[TERM_ROWS][TERM_COLS];
+};
+OWN_FITS(term_own);
+#define term_char (OWN(term_own)->term_char)
+#define term_lum (OWN(term_own)->term_lum)
 static int term_row, term_col;
 static bool term_prompt; /* this line starts with one */
 static float term_blink, term_fade;
@@ -575,6 +594,7 @@ static void term_colors(uint16_t *palette) {
 
 static void term_start(uint16_t *palette) {
     (void)palette;
+    memset(term_char, 0, sizeof(term_char)); /* fx_own: another animation's since */
     memset(term_lum, 0, sizeof(term_lum));
     term_row = 0;
     term_blink = term_fade = 0;
@@ -675,10 +695,15 @@ static void term_frame(uint8_t *fb, const struct fx_input *in) {
 #define CODE_LEVELS 63 /* palette: 4 colours x 63 brightness levels */
 #define CODE_BOTTOM 86 /* top of the last line of the page */
 
-static struct {
-    uint8_t glyph, hue, heat;
-} code_cell[CODE_ROWS][CODE_COLS];
-static uint32_t code_glyphs[CODE_GLYPHS]; /* 4x5 dots */
+struct __attribute__((__may_alias__)) code_own {
+    struct {
+        uint8_t glyph, hue, heat;
+    } code_cell[CODE_ROWS][CODE_COLS];
+    uint32_t code_glyphs[CODE_GLYPHS]; /* 4x5 dots */
+};
+OWN_FITS(code_own);
+#define code_cell (OWN(code_own)->code_cell)
+#define code_glyphs (OWN(code_own)->code_glyphs)
 static int code_row, code_col, code_indent, code_line_end, code_word, code_hue;
 static bool code_comment;
 static float code_pending, code_scroll;
@@ -769,9 +794,7 @@ static void code_start(uint16_t *palette) {
     for (int h = 0; h < 4; h++) {
         gradient(palette, &code_stops[h * 4], 4);
     }
-    if (code_glyphs[1] == 0) {
-        code_make_glyphs();
-    }
+    code_make_glyphs(); /* fx_own: another animation's since */
     code_clear();
 }
 
@@ -2513,7 +2536,12 @@ static uint8_t wall_id, loose_from_id, n_loose;
 static struct wall_tile {
     float o[3], x[3], y[3]; /* in the camera's space: its top left corner, along its top and down its side */
     uint8_t tile, shade;          /* which, and how lit (256ths, less one) */
-} loose[TILES], wall_now; /* wall_now: the wall still standing, as one tile the size of the picture */
+} wall_now; /* the wall still standing, as one tile the size of the picture */
+struct __attribute__((__may_alias__)) showroom_own {
+    struct wall_tile loose[TILES];
+};
+OWN_FITS(showroom_own);
+#define loose (OWN(showroom_own)->loose)
 
 /* The dongle's own screen, in Board: the last frame, small, a pixel for
  * each 4 by 4, found on the screen ray by ray (FILL_PICTURE), so it shows
@@ -2521,7 +2549,11 @@ static struct wall_tile {
  * along its top, down its side, and its normal. */
 #define THUMB_W (FX_W / 4)
 #define THUMB_H (FX_H / 4)
-static uint8_t show_thumb[THUMB_H][THUMB_W];
+struct __attribute__((__may_alias__)) board_own {
+    uint8_t show_thumb[THUMB_H][THUMB_W];
+};
+OWN_FITS(board_own);
+#define show_thumb (OWN(board_own)->show_thumb)
 static bool show_live;
 static uint8_t show_screen_id;
 static float show_scr_o[3], show_scr_x[3], show_scr_y[3], show_scr_n[3];
