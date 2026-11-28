@@ -225,6 +225,8 @@ struct fx_input {
     uint8_t n_keys;            /* keys pressed since the last frame */
     uint8_t keys[FX_MAX_KEYS]; /* their key positions */
     uint64_t held;             /* a bit for each key position held down now */
+    int16_t turned[FX_MAX_ENCODERS]; /* each encoder's turn since power-up, as fx_debug's `turned`
+                                      * (a turn also comes in `keys`, as a press of its key position) */
     uint8_t n_chars;           /* characters typed since the last frame */
     char chars[FX_MAX_CHARS];  /* printable ASCII, '\n' or '\b' */
     uint8_t combo_mods;        /* a shortcut pressed since the last frame (a key with Ctrl, Alt or Cmd):

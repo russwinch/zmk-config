@@ -147,6 +147,8 @@ user's own computer: a cloud session can't see USB drives.
   included, is a drop as before.
 - Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
   `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
+  Every screen gets the turns (`fx_input.turned`), and to the animations a
+  turn is also a press of the knob's key position.
 - The animations place keys on a 10x4 grid (the Waterfowl); Debug uses the
   matrix transform; Typist, Status and Showroom draw each board as it is from
   `src/screen_fx/boards.h`, written by `tools/boards.py --header` (with the

@@ -335,6 +335,9 @@ int main(int argc, char **argv) {
                  * Waterfowl (80 steps a turn); here a click, 4 pulses, at a time */
                 const int step = t < 0.6f ? 16 : -16;
                 debug.turned[e] += step;
+                if (in.n_keys < FX_MAX_KEYS) {
+                    in.keys[in.n_keys++] = (uint8_t)encoders[e]; /* as the dongle has it */
+                }
                 debug.log[0] = debug.log[1];
                 debug.log[1] = debug.log[2];
                 debug.log[2] = (struct fx_event){.kind = 'E', .source = 2, .a = e, .b = (uint16_t)step, .gap_ms = 200};
@@ -342,10 +345,12 @@ int main(int argc, char **argv) {
             }
             if (t >= 1 && t < 1.2f) {
                 debug.held |= 1ull << encoders[e];
+                in.held |= 1ull << encoders[e];
             } else if (t >= 1.2f && t < 1.25f) {
                 debug.held &= ~(1ull << encoders[e]);
             }
         }
+        memcpy(in.turned, debug.turned, sizeof(in.turned));
         in.wpm = (uint16_t)wpm;
 
         status.host_connected = at < 0.55f || at >= 0.8f;

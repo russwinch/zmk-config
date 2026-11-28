@@ -1277,6 +1277,7 @@ static void frame_cb(struct k_work *work) {
     }
     K_SPINLOCK(&debug_lock) {
         in.held = debug.held;
+        memcpy(in.turned, debug.turned, sizeof(in.turned));
     }
 
     /* energy: follows words per minute (quick up, slow down), and each key
@@ -2089,6 +2090,18 @@ static int screen_fx_listener(const zmk_event_t *eh) {
             if (sensor->sensor_index < FX_MAX_ENCODERS) {
                 debug.turned[sensor->sensor_index] += ENCODER_TURN_SIGN * (int16_t)sensor->channel_data[0].value.val1;
             }
+        }
+#ifdef HAS_ENCODER_KEYS
+        /* to the animations a turn is a press of the knob's key position */
+        if (sensor->sensor_index < ARRAY_SIZE(encoder_keys) && encoder_keys[sensor->sensor_index] >= 0) {
+            K_SPINLOCK(&keys_lock) {
+                if (n_keys < FX_MAX_KEYS) {
+                    keys[n_keys++] = (uint8_t)encoder_keys[sensor->sensor_index];
+                }
+            }
+        }
+#endif
+        K_SPINLOCK(&debug_lock) {
             log_event((struct fx_event){.kind = 'E', .source = 2, .a = sensor->sensor_index,
                                         .b = (uint16_t)(int16_t)sensor->channel_data[0].value.val1},
                       k_uptime_get_32());

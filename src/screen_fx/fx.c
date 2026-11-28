@@ -980,13 +980,12 @@ static void debug_colors(uint16_t *palette) {
     palette[DBG_EDGE] = color565(mix(scheme->bg, scheme->dim, 35));
 }
 
+static void knobs_start(void);
+
 static void debug_start(uint16_t *palette) {
     (void)palette;
     memset(debug_heat, 0, sizeof(debug_heat));
-    memset(knob_heat, 0, sizeof(knob_heat));
-    memset(knob_angle, 0, sizeof(knob_angle));
-    memset(knob_shown, 0, sizeof(knob_shown));
-    knob_known = false;
+    knobs_start();
 }
 
 /* Text with nothing round it. Returns the next x. */
@@ -1088,19 +1087,21 @@ static void knob(uint8_t *fb, int x, int y, int wide, int high, uint8_t fill, ui
  * mark bright for two seconds after it is turned, the mark moving round with it.
  */
 /* The keys pressed and encoders turned this frame, for `board` and `shape_board`. */
-static void board_heat(const struct fx_input *in) {
-    const struct fx_debug *d = in->debug;
-    for (int k = 0; k < in->n_keys; k++) {
-        if (in->keys[k] < sizeof(debug_heat)) {
-            debug_heat[in->keys[k]] = 15;
-        }
-    }
+static void knobs_start(void) {
+    memset(knob_heat, 0, sizeof(knob_heat));
+    memset(knob_angle, 0, sizeof(knob_angle));
+    memset(knob_shown, 0, sizeof(knob_shown));
+    knob_known = false;
+}
+
+/* The encoders turned this frame: their knob_angle, and knob_shown catching up. */
+static void knobs_step(const struct fx_input *in) {
     for (int i = 0; i < encoder_count; i++) {
-        if (knob_known && d->turned[i] != knob_seen[i]) {
+        if (knob_known && in->turned[i] != knob_seen[i]) {
             knob_heat[i] = 15;
-            knob_angle[i] += (int16_t)(d->turned[i] - knob_seen[i]) * KNOB_GAIN; /* wraps as `turned` does */
+            knob_angle[i] += (int16_t)(in->turned[i] - knob_seen[i]) * KNOB_GAIN; /* wraps as `turned` does */
         }
-        knob_seen[i] = d->turned[i];
+        knob_seen[i] = in->turned[i];
         const float ease = KNOB_EASE * in->step;
         knob_shown[i] += (knob_angle[i] - knob_shown[i]) * (ease > 1 ? 1 : ease);
         if (knob_shown[i] > 360 || knob_shown[i] < -360) { /* keep both small, the same way round */
@@ -1110,6 +1111,15 @@ static void board_heat(const struct fx_input *in) {
         }
     }
     knob_known = true;
+}
+
+static void board_heat(const struct fx_input *in) {
+    for (int k = 0; k < in->n_keys; k++) {
+        if (in->keys[k] < sizeof(debug_heat)) {
+            debug_heat[in->keys[k]] = 15;
+        }
+    }
+    knobs_step(in);
 }
 
 /* And the glow going, two seconds after. */
@@ -2858,8 +2868,9 @@ static void show_box(uint8_t *fb, const struct fx_part *p, float hw, float hh, f
 
 #define DIAL_SIDES 12
 
-/* A dial: a short cylinder, a mark on its top. */
-static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, float z1, int mat) {
+/* A dial: a short cylinder, a mark on its top turned `turn` degrees
+ * clockwise (as seen from above). */
+static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, float z1, int mat, float turn) {
     float foot[DIAL_SIDES][3], top[DIAL_SIDES][3], mid[3];
     for (int i = 0; i < DIAL_SIDES; i++) {
         const float a = (i + 0.5f) * (TWO_PI / DIAL_SIDES);
@@ -2881,44 +2892,72 @@ static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, f
     static const float up[3] = {0, 0, 1};
     show_next();
     show_face(fb, (const float(*)[3])top, DIAL_SIDES, up, mat, FILL_GLINT);
+    /* the mark: from the middle towards the back, turned (the right half is
+     * mirrored, so it turns the other way there to turn the same way on it) */
+    const float a = (p->kind & FX_PART_RIGHT ? -turn : turn) * (TWO_PI / 360), c = cosf(a), sn = sinf(a);
+    static const float mark_uv[4][2] = {{-2.5f, -0.25f}, {2.5f, -0.25f}, {2.5f, -0.8f}, {-2.5f, -0.8f}};
     float mark[4][3];
-    part_point(mark[0], p, -2.5f, -0.25f * r, z1);
-    part_point(mark[1], p, 2.5f, -0.25f * r, z1);
-    part_point(mark[2], p, 2.5f, -0.8f * r, z1);
-    part_point(mark[3], p, -2.5f, -0.8f * r, z1);
+    for (int i = 0; i < 4; i++) {
+        const float u = mark_uv[i][0], v = mark_uv[i][1] * r;
+        part_point(mark[i], p, u * c - v * sn, u * sn + v * c, z1);
+    }
     show_face(fb, (const float(*)[3])mark, 4, up, MAT_CASE, FILL_SOLID);
 }
 
-#define ROLLER_STEPS 8
+#define ROLLER_RIBS 8 /* ribs round the part of it that shows */
+#define ROLLER_FROM (-0.25f * TWO_PI / 2) /* that part: from a little under its right side */
+#define ROLLER_TO (1.25f * TWO_PI / 2)    /* over the top to a little under its left */
 
-/* A roller: the top half of a wheel across the part, standing out of the case. */
-static void show_roller(uint8_t *fb, const struct fx_part *p, float hw, float r, int mat) {
-    float axis[3], ring[2][ROLLER_STEPS + 1][3];
-    part_point(axis, p, 0, 0, SHOW_PCB);
-    for (int k = 0; k <= ROLLER_STEPS; k++) {
-        const float a = k * (TWO_PI / 2 / ROLLER_STEPS);
-        part_point(ring[0][k], p, -hw, r * cosf(a), SHOW_PCB + r * sinf(a));
-        part_point(ring[1][k], p, hw, r * cosf(a), SHOW_PCB + r * sinf(a));
-    }
-    show_next();
-    for (int end = 0; end < 2; end++) {
-        float n[3], at[3];
-        part_point(at, p, end ? hw : -hw, 0, SHOW_PCB);
-        for (int c = 0; c < 3; c++) {
-            n[c] = at[c] - axis[c];
+/* A roller: a cylinder lying along the part (front to back), standing well
+ * out of the case, `half_len` from its middle to each end, ribbed along its
+ * length; rolled `turn` degrees, the top going right (as seen from the
+ * front), the way Typist draws it. `sink`: pressed down this far. */
+static void show_roller(uint8_t *fb, const struct fx_part *p, float half_len, float r, int mat, float turn,
+                        float sink) {
+    const float z = SHOW_PCB + 0.75f * r - sink; /* its axis */
+    /* where each strip starts round it (0 its right side, pi/2 its top): a
+     * rib every so far, moved round by the turn (the right half is
+     * mirrored, so it turns the other way there to roll the same way) */
+    const float rib = (ROLLER_TO - ROLLER_FROM) / ROLLER_RIBS;
+    const float roll = (p->kind & FX_PART_RIGHT ? turn : -turn) * (TWO_PI / 360);
+    float at[ROLLER_RIBS + 3];
+    int n = 0;
+    at[n++] = ROLLER_FROM;
+    for (float a = ROLLER_FROM + (roll - ROLLER_FROM) - floorf((roll - ROLLER_FROM) / rib) * rib;
+         a < ROLLER_TO && n < ROLLER_RIBS + 2; a += rib) {
+        if (a > at[n - 1] + 0.01f) {
+            at[n++] = a;
         }
-        norm3(n);
-        show_face(fb, (const float(*)[3])ring[end], ROLLER_STEPS + 1, n, MAT_RUBBER, FILL_SOLID);
     }
-    for (int k = 0; k < ROLLER_STEPS; k++) {
-        float strip[4][3], n[3];
-        memcpy(strip[0], ring[0][k], sizeof(strip[0]));
-        memcpy(strip[1], ring[1][k], sizeof(strip[0]));
-        memcpy(strip[2], ring[1][k + 1], sizeof(strip[0]));
-        memcpy(strip[3], ring[0][k + 1], sizeof(strip[0]));
-        show_normal((const float(*)[3])strip, axis, n);
-        /* ribs: every other strip dark */
-        show_face(fb, (const float(*)[3])strip, 4, n, k & 1 ? MAT_RUBBER : mat, FILL_SOLID);
+    at[n++] = ROLLER_TO;
+
+    float axis[3];
+    part_point(axis, p, 0, 0, z);
+    show_next();
+    /* its ends (enough points round them for a smooth edge) */
+    for (int end = 0; end < 2; end++) {
+        float cap[17][3], nrm[3], tip[3];
+        for (int k = 0; k < 17; k++) {
+            const float a = ROLLER_FROM + k * (ROLLER_TO - ROLLER_FROM) / 16;
+            part_point(cap[k], p, r * cosf(a), end ? half_len : -half_len, z + r * sinf(a));
+        }
+        part_point(tip, p, 0, end ? half_len : -half_len, z);
+        for (int c = 0; c < 3; c++) {
+            nrm[c] = tip[c] - axis[c];
+        }
+        norm3(nrm);
+        show_face(fb, (const float(*)[3])cap, 17, nrm, MAT_RUBBER, FILL_SOLID);
+    }
+    for (int k = 0; k + 1 < n; k++) {
+        float strip[4][3], nrm[3];
+        part_point(strip[0], p, r * cosf(at[k]), -half_len, z + r * sinf(at[k]));
+        part_point(strip[1], p, r * cosf(at[k]), half_len, z + r * sinf(at[k]));
+        part_point(strip[2], p, r * cosf(at[k + 1]), half_len, z + r * sinf(at[k + 1]));
+        part_point(strip[3], p, r * cosf(at[k + 1]), -half_len, z + r * sinf(at[k + 1]));
+        show_normal((const float(*)[3])strip, axis, nrm);
+        /* every other rib dark: which rib this strip's middle is in */
+        const int which = (int)floorf(((at[k] + at[k + 1]) / 2 - roll) / rib);
+        show_face(fb, (const float(*)[3])strip, 4, nrm, which & 1 ? MAT_RUBBER : mat, FILL_SOLID);
     }
 }
 
@@ -2955,11 +2994,22 @@ static void show_part(uint8_t *fb, const struct fx_input *in, const struct fx_pa
         break;
     }
     case FX_PART_DIAL:
-        show_dial(fb, p, hw - 4, SHOW_PCB, SHOW_PCB + 44, show_away(in, p, MAT_EXTRA));
+    case FX_PART_ROLLER: {
+        /* glowing when turned (a turn comes as a press) or pressed, a little
+         * down while pressed, turned as its encoder is */
+        int mat = MAT_EXTRA;
+        show_key_state(in, key, &mat);
+        mat = show_away(in, p, mat);
+        const bool held = key >= 0 && key < 64 && (in->held >> key & 1);
+        const int encoder = key >= 0 ? key_encoder(key) : -1;
+        const float turn = encoder >= 0 ? knob_shown[encoder] : 0;
+        if ((p->kind & FX_PART_KIND) == FX_PART_DIAL) {
+            show_dial(fb, p, hw - 4, SHOW_PCB, SHOW_PCB + 44 - (held ? SHOW_PRESS / 2 : 0), mat, turn);
+        } else {
+            show_roller(fb, p, hh - 3, hw - 1, mat, turn, held ? SHOW_PRESS / 2 : 0);
+        }
         break;
-    case FX_PART_ROLLER:
-        show_roller(fb, p, hw - 3, hh, show_away(in, p, MAT_EXTRA));
-        break;
+    }
     case FX_PART_SCREEN: {
         static const int8_t corner[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
         static const float up[3] = {0, 0, 1};
@@ -3405,6 +3455,7 @@ static void shot_camera(int shot, float u, float *target, float *view) {
 
 static void showroom_start(uint16_t *palette) {
     show_halves = false;
+    knobs_start();
     for (int i = 0; i < SHOW_BG_N; i++) {
         const int k = i * 256 / (SHOW_BG_N - 1);
         palette[SHOW_BG + i] = color565(mix(showroom_backdrop[0], showroom_backdrop[1], k));
@@ -3488,6 +3539,7 @@ static void showroom_start(uint16_t *palette) {
 
 /* Each key's glow fading, and those just pressed at full. */
 static void show_heat_step(const struct fx_input *in) {
+    knobs_step(in); /* the dials' marks and the rollers' ribs turn */
     for (int i = 0; i < 64; i++) {
         const int heat = show_heat[i] - (int)(in->step * 9);
         show_heat[i] = (uint8_t)(heat < 0 ? 0 : heat);
@@ -3718,7 +3770,7 @@ static void board_colors(uint16_t *palette) {
         for (int b = 0; b < SHOW_BANDS; b++) {
             const struct color fill =
                 gone  ? mix(base, away[m - MAT_AWAY], 90 + tone[b])
-                : hot ? mix(base, t->layer, 110 + h * 70 + (b == BAND_LIT ? 20 : 0))
+                : hot ? mix(base, t->layer, 110 + h * 60 + (b == BAND_LIT ? 20 : 0)) /* at most 250 of 256 */
                       : mix(base, m == MAT_EXTRA ? t->warn : t->dim, tone[b] * (m == MAT_CAP ? 3 : 2) / 2);
             palette[SHOW_MAT + m * SHOW_BANDS + b] = color565(fill);
         }
