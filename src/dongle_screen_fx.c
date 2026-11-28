@@ -1300,20 +1300,34 @@ static void frame_cb(struct k_work *work) {
     }
 
     fx_frame(screen - 1, frame, &in);
+    /* the animations' frame rate, a slot every FX_FPS_SLOT_S seconds, for Debug */
+    static uint32_t slot_from, slot_frames, slot_ms;
+    if (!plain) {
+        slot_frames++;
+        slot_ms += (uint32_t)(in.step * 33.3f);
+    }
+    if (now - slot_from >= FX_FPS_SLOT_S * 1000) {
+        K_SPINLOCK(&debug_lock) {
+            memmove(debug.fps_log, debug.fps_log + 1, FX_FPS_HISTORY - 1);
+            debug.fps_log[FX_FPS_HISTORY - 1] = slot_ms >= 2000 ? (uint8_t)MIN(slot_frames * 1000 / slot_ms, 255) : 0;
+        }
+        slot_from = now;
+        slot_frames = slot_ms = 0;
+    }
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
     /* frames a second, then the last frame's time drawing it and sending it, ms */
-    static uint32_t rate_at, rate_frames, sent_ms;
-    static uint8_t rate;
+    static uint32_t fps_from, fps_frames, sent_ms;
+    static uint8_t fps_shown;
     const uint32_t drawn = k_uptime_get_32();
-    rate_frames++;
-    if (drawn - rate_at >= 1000) {
-        rate = (uint8_t)MIN(rate_frames * 1000 / (drawn - rate_at), 99);
-        rate_at = drawn;
-        rate_frames = 0;
+    fps_frames++;
+    if (drawn - fps_from >= 1000) {
+        fps_shown = (uint8_t)MIN(fps_frames * 1000 / (drawn - fps_from), 99);
+        fps_from = drawn;
+        fps_frames = 0;
     }
     if (!plain) {
         char text[24];
-        snprintf(text, sizeof(text), "%uFPS %u+%uMS", rate, (unsigned)MIN(drawn - now, 999), (unsigned)MIN(sent_ms, 999));
+        snprintf(text, sizeof(text), "%uFPS %u+%uMS", fps_shown, (unsigned)MIN(drawn - now, 999), (unsigned)MIN(sent_ms, 999));
         fx_draw_rate(frame, text);
     }
 #endif

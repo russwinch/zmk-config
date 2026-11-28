@@ -251,6 +251,10 @@ int main(int argc, char **argv) {
         debug.mv_log[1][i] = (uint16_t)(i < 4 ? 0 : 3874 + (FX_MV_HISTORY - 1 - i) * 9);
         debug.mv_log[2][i] = (uint16_t)(3312 + i % 4 - 2);
     }
+    /* and the animations' frame rate: none, then one steady, then one heavier */
+    for (int i = 0; i < FX_FPS_HISTORY; i++) {
+        debug.fps_log[i] = (uint8_t)(i < 6 ? 0 : i < 18 ? 27 + i % 2 : i == 22 ? 7 : 17 + i % 3);
+    }
     const int8_t *encoders;
     int n_encoders;
     debug.keyboard = preview_board(&encoders, &n_encoders);

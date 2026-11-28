@@ -24,7 +24,7 @@ without needing the keyboard to.
 | 2 | Status | the board's keys, batteries, signal and connections at a glance: [below](#status) |
 | 3 | Typist | your typing speed, and the board as it is, its keys lighting as you type: [below](#typist) |
 | 4 | Terminal | what you type, fading out (passwords included, while it is showing) |
-| 5 | Clash | the board in 3D, in neon, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame and shows its keys, with a count when they come one after another |
+| 5 | Clash | the board in 3D, in the theme's colours, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame (ink on paper, then screentone) and shows its keys, with a count when they come one after another. The dongle on the desk shows the screen itself, smaller and smaller, and now and then the camera cuts to it |
 
 After 15 minutes without a key, or when the lock key is let go, a
 screensaver takes over: **Warp** (stars to light speed), **Code** (an alien
@@ -95,7 +95,7 @@ speed is on Typist, the battery levels on Typist and Status.
 | `RESET SOFT 02  BOUNCE 18ms` | why it last restarted (`POR`, `PIN`, `SOFT`; red `WDOG`, `LOCK`, `BRWN`; all the reasons in hex), or a red `HANG`/`CRASH` with its code and address; the quickest any key has come back down, amber under 30 ms: maybe a bouncing switch |
 | `LEFT`, the keyboard's name, `RIGHT` | a column each for the halves and the dongle, red when its link is down (the dongle's is to the computer): rows below |
 | waves, `USB` | the Bluetooth profile in use, as over the animations (green: connected, white: paired, dim: free; flashing for 3 s after you switch); USB `--`, `PWR` or `HID` |
-| `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
+| `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take; then the animations' frame rate over the last 10 minutes, a column each 20 s (30 fps full height): green at 24 or more, amber under 15, red under 8, nothing where none was showing (only when it fits before the key map) |
 | `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
 | last line | the last key, keycode or encoder event, with the ms since the one before |
 | key map | every key, lit while held; all of a half red while it isn't connected. A key that doesn't light isn't reaching the dongle |

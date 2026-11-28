@@ -95,6 +95,8 @@ struct fx_theme {
 #define FX_CONN_USB (-1)    /* and for the computer over USB: ready to type (no radio to read) */
 #define FX_MV_HISTORY 30    /* slots of the volts history kept */
 #define FX_MV_SLOT_S 60     /* seconds in each: 30 of them are 30 minutes */
+#define FX_FPS_HISTORY 30   /* slots of the animations' frame rate kept */
+#define FX_FPS_SLOT_S 20    /* seconds in each: 30 of them are 10 minutes */
 
 /* Two readings of a link (signal_log's or conn_log's) as one: down if
  * either was, else the weaker dBm, else idle, else 0 (not known). */
@@ -199,6 +201,9 @@ struct fx_debug {
      * millivolts at the end of each FX_MV_SLOT_S seconds, the newest last
      * and still filling; left, right, the dongle; 0 not known */
     uint16_t mv_log[3][FX_MV_HISTORY];
+    /* the animations' frames a second: the average over each FX_FPS_SLOT_S
+     * seconds that one was showing, the newest last; 0 none was */
+    uint8_t fps_log[FX_FPS_HISTORY];
     uint16_t dongle_mv;    /* the dongle's 3.3 V supply, millivolts; 0 when not known */
     bool dongle_temp_known;
     int8_t dongle_temp_c;  /* the dongle's chip temperature */

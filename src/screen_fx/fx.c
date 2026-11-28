@@ -1216,6 +1216,19 @@ static void mv_chart(uint8_t *fb, int x, int y, const uint16_t *log, int span) {
     chart(fb, x, y, high, color);
 }
 
+/* The animations' frame rate (fx_debug's fps_log): 30 fps the full height,
+ * green from 24, plain from 15, amber under that and red under 8; nothing
+ * where none was showing. */
+static void fps_chart(uint8_t *fb, int x, int y, const uint8_t *log) {
+    uint8_t high[DBG_CHART_W], color[DBG_CHART_W];
+    for (int i = 0; i < DBG_CHART_W; i++) {
+        const int fps = log[FX_FPS_HISTORY - DBG_CHART_W + i], h = fps ? 1 + fps * (DBG_CHART_H - 1) / 30 : 0;
+        high[i] = (uint8_t)(h > DBG_CHART_H ? DBG_CHART_H : h);
+        color[i] = fps >= 24 ? DBG_GOOD : fps >= 15 ? DBG_TEXT : fps >= 8 ? DBG_WARN : DBG_BAD;
+    }
+    chart(fb, x, y, high, color);
+}
+
 /* Text centred in column `col` of the table. */
 static void put_col(uint8_t *fb, int col, int y, const char *s, uint8_t color) {
     put(fb, DBG_COL_X(col) + (DBG_COL_W - (5 * (int)strlen(s) - 1)) / 2, y, s, color);
@@ -1542,8 +1555,13 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     put(fb, x, out_y, d->usb == 2 ? "HID" : d->usb == 1 ? "PWR" : "--",
         d->usb == 2 ? (usb_out && in->status->host_connected ? DBG_GOOD : DBG_TEXT) : DBG_TEXT);
 
+    /* where the key map goes, bottom right */
+    const int board_pitch = board_cols > 10 ? 4 : 5;
+    const int board_left = FX_W - 1 - fx_corner_inset(out_y, out_y + 20) - board_cols * board_pitch;
+
     /* LVGL's memory used; then, only if there are any, the USB reports the
-     * computer didn't take (UE, as on Status) */
+     * computer didn't take (UE, as on Status); then the animations' frame
+     * rate, if there is room before the key map */
     x = 6;
     if (d->heap_known) {
         x = put(fb, x, out_y + 8, "MEM", DBG_LABEL) + 3;
@@ -1553,6 +1571,10 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     if (d->usb_errors) {
         snprintf(buf, sizeof(buf), "UE%u", d->usb_errors > 99 ? 99 : d->usb_errors);
         x = put(fb, x, out_y + 8, buf, DBG_WARN) + 3;
+    }
+    x = x > 46 ? x : 46;
+    if (x + DBG_CHART_W <= board_left - 2) {
+        fps_chart(fb, x, out_y + 9, d->fps_log);
     }
 
     /* the layer (number and name), the modifiers lit while held; in the
@@ -1590,8 +1612,6 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
     }
 
     /* every key, lit while held: one that doesn't light isn't reaching the dongle */
-    const int board_pitch = board_cols > 10 ? 4 : 5;
-    const int board_left = FX_W - 1 - fx_corner_inset(out_y, out_y + 20) - board_cols * board_pitch;
     board(fb, in, board_left, out_y + 1, board_pitch, 4, 1, 1);
 }
 
@@ -2372,6 +2392,17 @@ static struct wall_tile {
     uint8_t tile, shade;          /* which, and how lit (256ths, less one) */
 } loose[TILES], wall_now; /* wall_now: the wall still standing, as one tile the size of the picture */
 
+/* The dongle's own screen, in Clash: the last frame, small, a pixel for
+ * each 4 by 4, found on the screen ray by ray (FILL_PICTURE), so it shows
+ * itself, smaller and smaller. Where the screen is: its top left corner,
+ * along its top, down its side, and its normal. */
+#define THUMB_W (FX_W / 4)
+#define THUMB_H (FX_H / 4)
+static uint8_t show_thumb[THUMB_H][THUMB_W];
+static bool show_live;
+static uint8_t show_screen_id;
+static float show_scr_o[3], show_scr_x[3], show_scr_y[3], show_scr_n[3];
+
 /* The points of the face being drawn, in the camera's space: static, as
  * the dongle's display thread has a small stack, and shared, as RAM is short. */
 static float show_cam_pts[SHOW_PTS][3];
@@ -2439,7 +2470,30 @@ static void part_point(float *out, const struct fx_part *p, float u, float v, fl
     show_point(out, p->x + u * c - v * s, p->y + u * s + v * c, z, p->kind & FX_PART_RIGHT ? -1 : 1);
 }
 
-enum { FILL_SOLID, FILL_GLINT, FILL_FLOOR_SHADOW, FILL_TOP_SHADOW };
+enum { FILL_SOLID, FILL_GLINT, FILL_FLOOR_SHADOW, FILL_TOP_SHADOW, FILL_PICTURE };
+
+/* What the dongle's screen shows at pixel (x, y): where the ray through it
+ * meets the screen, in show_thumb. */
+static uint8_t show_picture_at(int x, int y) {
+    float d[3], o[3];
+    for (int c = 0; c < 3; c++) {
+        d[c] = cam.f[c] * cam.focal + cam.r[c] * (x + 0.5f - FX_W / 2) + cam.u[c] * (FX_H / 2 - (y + 0.5f));
+        o[c] = show_scr_o[c] - cam.pos[c];
+    }
+    const float across = dot3(d, show_scr_n);
+    if (across > -1e-6f && across < 1e-6f) {
+        return show_thumb[0][0];
+    }
+    const float t = dot3(o, show_scr_n) / across;
+    float p[3];
+    for (int c = 0; c < 3; c++) {
+        p[c] = t * d[c] - o[c];
+    }
+    const float u = dot3(p, show_scr_x) / dot3(show_scr_x, show_scr_x);
+    const float v = dot3(p, show_scr_y) / dot3(show_scr_y, show_scr_y);
+    const int tx = (int)(clampf(u, 0, 0.999f) * THUMB_W), ty = (int)(clampf(v, 0, 0.999f) * THUMB_H);
+    return show_thumb[ty][tx];
+}
 
 /* Fill the face whose points, in the camera's space, are `pts`: in `color`,
  * marking the canvas with show_id; or as `mode` says. */
@@ -2504,6 +2558,10 @@ static void show_fill(uint8_t *fb, float (*pts)[3], int n, uint8_t color, uint8_
                         row[x] -= (row[x] - SHOW_MAT) % SHOW_BANDS; /* the case or the cover, in shadow */
                     }
                     break;
+                case FILL_PICTURE:
+                    row[x] = show_picture_at(x, y);
+                    ids[x] = show_id;
+                    break;
                 case FILL_GLINT: {
                     const float g = x + y * 0.5f - show_glint;
                     row[x] = g >= 0 && g < 5 ? glint : color;
@@ -2543,7 +2601,7 @@ static void show_face(uint8_t *fb, const float (*pts)[3], int n, const float *no
     float view[3] = {to_cam_v[0], to_cam_v[1], to_cam_v[2]};
     norm3(view);
     const uint8_t color = mat < 0 ? SHOW_PICTURE : (uint8_t)(SHOW_MAT + mat * SHOW_BANDS + show_band(normal, view));
-    show_fill(fb, c, n, color, mat < 0 ? FILL_SOLID : mode, 0);
+    show_fill(fb, c, n, color, mat < 0 ? (show_live ? FILL_PICTURE : FILL_SOLID) : mode, 0);
 }
 
 /* A shadow (FILL_FLOOR_SHADOW on the desk, FILL_TOP_SHADOW on the solids
@@ -2883,7 +2941,19 @@ static void show_dongle(uint8_t *fb) {
         }
     }
     show_next();
-    show_face(fb, (const float(*)[3])screen, 4, n, MAT_GLASS, FILL_GLINT);
+    if (show_live) {
+        /* showing the last frame: the corners are top left, top right, bottom right, bottom left */
+        for (int k = 0; k < 3; k++) {
+            show_scr_o[k] = screen[0][k];
+            show_scr_x[k] = screen[1][k] - screen[0][k];
+            show_scr_y[k] = screen[3][k] - screen[0][k];
+            show_scr_n[k] = n[k];
+        }
+        show_screen_id = show_id;
+        show_face(fb, (const float(*)[3])screen, 4, n, -1, FILL_SOLID);
+    } else {
+        show_face(fb, (const float(*)[3])screen, 4, n, MAT_GLASS, FILL_GLINT);
+    }
 }
 
 /* The shadows on the desk: the dongle's, and each half's. */
@@ -3252,6 +3322,7 @@ static void showroom_start(uint16_t *palette) {
     show_time = 0;
     show_glint = -100;
     show_intro_now = false;
+    show_live = false;
     wall_d = 0;
 }
 
@@ -3417,8 +3488,30 @@ static void clash_wide(struct clash_view *v) {
 
 /* Cut to a shot of key `key`: the faster the typing, the closer, lower,
  * more tilted and shorter, and the more it moves. `hard`: a shortcut's. */
+static void dongle_screen(float *mid, float *up);
+
+/* Cut to the dongle's own screen, from in front and above the board: the
+ * picture in the picture. */
+static void clash_cut_dongle(void) {
+    float up[3];
+    dongle_screen(clash_now.target, up);
+    clash_now.yaw = rndf() * 25;
+    clash_now.pitch = 10 + 8 * rndf();
+    clash_now.dist = DONGLE_SCREEN_W * (1.7f + 0.3f * rndf());
+    clash_now.focal = 115;
+    clash_now.roll = rndf() * 6 * clash_pace;
+    memset(&clash_drift, 0, sizeof(clash_drift));
+    clash_drift.dist = -clash_now.dist * 0.006f;
+    clash_drift.yaw = rndf() * 0.3f;
+    clash_shot = 50 - 25 * clash_pace;
+}
+
 static void clash_cut(int key, bool hard) {
     const float half = show_bw + show_gap, pace = hard ? 1 : clash_pace;
+    if (!hard && rnd() % 7 == 0) {
+        clash_cut_dongle();
+        return;
+    }
     clash_key_at(key, clash_now.target);
     clash_now.target[0] += rndf() * 25;
     clash_now.target[1] += rndf() * 25;
@@ -3487,6 +3580,7 @@ static void clash_colors(uint16_t *palette) {
 static void clash_start(uint16_t *palette) {
     showroom_start(palette); /* the board's size, the lights, the keys' glow; clash_colors colours it */
     show_glint = -10000; /* no glint sweeping over it */
+    show_live = true;    /* the dongle's screen shows the last frame */
     clash_pace = 0;
     clash_quiet = 1000;
     clash_shot = 0;
@@ -3560,9 +3654,9 @@ static void clash_edges_draw(uint8_t *fb) {
             if ((x > 0 && canvas[i - 1] < id) || (x < FX_W - 1 && canvas[i + 1] < id) ||
                 (y > 0 && canvas[i - FX_W] < id) || (y < FX_H - 1 && canvas[i + FX_W] < id)) {
                 fb[i] = (uint8_t)(CLASH_EDGE + m);
-            } else if ((x < FX_W - 1 && canvas[i + 1] == id && fb[i + 1] != fb[i]) ||
-                       (y < FX_H - 1 && canvas[i + FX_W] == id && fb[i + FX_W] != fb[i])) {
-                /* those to the right and below are not drawn over yet */
+            } else if (id != show_screen_id && ((x < FX_W - 1 && canvas[i + 1] == id && fb[i + 1] != fb[i]) ||
+                       (y < FX_H - 1 && canvas[i + FX_W] == id && fb[i + FX_W] != fb[i]))) {
+                /* those to the right and below are not drawn over yet; not across the dongle's picture */
                 fb[i] = (uint8_t)(CLASH_CREASE + m);
             }
         }
@@ -3685,6 +3779,12 @@ static void clash_label_draw(uint8_t *fb, bool impact) {
 
 static void clash_frame(uint8_t *fb, const struct fx_input *in) {
     show_heat_step(in);
+    /* the last frame, small, for the dongle's screen (it is still in fb) */
+    for (int y = 0; y < THUMB_H; y++) {
+        for (int x = 0; x < THUMB_W; x++) {
+            show_thumb[y][x] = fb[(y * 4 + 2) * FX_W + x * 4 + 2];
+        }
+    }
     const bool was_calm = clash_quiet > CLASH_CALM;
 
     /* the pace: up with each key, and down at once when the keys stop */
