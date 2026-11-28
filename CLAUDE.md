@@ -137,6 +137,11 @@ user's own computer: a cloud session can't see USB drives.
   and the first KB of RAM (`config/prospector_adapter.overlay` keeps it out of
   Zephyr's). Each release has the dongles'
   `.elf`s in `dongle-elf.tar.gz`: `addr2line -ife <dongle>.elf 0x<address>`.
+- A half closes its link itself before sleeping or restarting into its
+  bootloader (`src/half_goodbye.c`, `sys_reboot` wrapped at link time), with a
+  Bluetooth reason the dongle reads as asleep or updating (`fx_link.away`):
+  not counted as a drop, grey or flashing green. Any other loss, a crash
+  included, is a drop as before.
 - Encoder knobs: `encoder_keys` and `ENCODER_TURN_SIGN` in
   `src/dongle_screen_fx.c`, in the order of the dongle overlay's `&sensors`.
 - The animations place keys on a 10x4 grid (the Waterfowl); Debug uses the

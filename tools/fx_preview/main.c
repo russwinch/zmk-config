@@ -365,6 +365,9 @@ int main(int argc, char **argv) {
         /* and from 92% the right half not connected */
         status.half_connected[1] = at < 0.92f;
         debug.half[1].up = status.half_connected[1];
+        /* FX_PREVIEW_AWAY=sleep or update: and it said why */
+        const char *away = getenv("FX_PREVIEW_AWAY");
+        debug.half[1].away = !away ? 0 : !strcmp(away, "sleep") ? FX_AWAY_SLEEP : !strcmp(away, "update") ? FX_AWAY_UPDATE : 0;
         status.profile = at < 0.3f ? 1 : at < 0.88f ? 2 : 3;
         const bool plain = fx_is_debug(fx) || fx_shows_keys(fx);
         if (!plain) {

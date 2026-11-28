@@ -7,6 +7,14 @@ target_sources_ifdef(CONFIG_WATERFOWL_DONGLE_HALF_STATUS app PRIVATE src/dongle_
 target_sources_ifdef(CONFIG_HALF_CHARGING_STATUS app PRIVATE src/half_charging.c)
 target_sources_ifdef(CONFIG_BATTERY_REFRESH_ON_UNPLUG app PRIVATE src/battery_refresh.c)
 target_sources_ifdef(CONFIG_DONGLE_HALF_INFO app PRIVATE src/dongle_half_info.c)
+# A half's goodbye before sleep or its bootloader: sys_reboot is wrapped at
+# link time (src/half_goodbye.c).
+if(CONFIG_HALF_GOODBYE)
+  target_sources(app PRIVATE src/half_goodbye.c)
+  if(CONFIG_RETENTION_BOOT_MODE)
+    zephyr_ld_options(-Wl,--wrap=sys_reboot)
+  endif()
+endif()
 # each half's draw, for the dongle's Debug screen
 if(CONFIG_DONGLE_HALF_INFO AND CONFIG_DONGLE_SCREEN_FX)
   target_sources(app PRIVATE src/dongle_half_drain.c)

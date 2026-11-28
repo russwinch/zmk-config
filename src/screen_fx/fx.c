@@ -1093,8 +1093,27 @@ static void board_fade(const struct fx_input *in) {
     }
 }
 
-/* Whether a half isn't connected: its keys, knobs and rollers then all red. */
-static bool half_down(const struct fx_debug *d, int half) { return !d->half[half].up; }
+/* A half that isn't connected: the colour of all its keys, knobs and
+ * rollers then (red; grey asleep, flashing green while it is updated), or 0
+ * (DBG_BG) when it is connected. */
+#define AWAY_FLASH 30 /* 30ths of a second: green two thirds of it */
+static float away_clock; /* timed in fx_frame */
+static uint8_t half_down(const struct fx_debug *d, int half) {
+    const struct fx_link *link = &d->half[half];
+    return link->up                       ? DBG_BG
+           : link->away == FX_AWAY_SLEEP  ? DBG_LABEL
+           : link->away == FX_AWAY_UPDATE ? ((int)away_clock % AWAY_FLASH < AWAY_FLASH * 2 / 3 ? DBG_GOOD : DBG_DIM)
+                                          : DBG_BAD;
+}
+
+/* And what to say in place of its signal: why it is away, or NULL. */
+static const char *away_word(const struct fx_link *link, uint8_t *color) {
+    if (link->up || !link->away) {
+        return NULL;
+    }
+    *color = link->away == FX_AWAY_SLEEP ? DBG_LABEL : DBG_GOOD;
+    return link->away == FX_AWAY_SLEEP ? "SLEEP" : "UPDATE";
+}
 
 /* A key's colour: white held (orange holding a modifier, violet a layer), glowing after. */
 static uint8_t key_color(const struct fx_debug *d, int key) {
@@ -1114,11 +1133,11 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
         const int kx = left + col * pitch + (col >= board_cols / 2 ? split : 0), ky = top + row * (high + gap);
         const uint64_t bit = 1ull << key;
         const bool held = (d->held & bit) != 0;
-        const bool down = half_down(d, col >= board_cols / 2);
-        const uint8_t color = down ? DBG_BAD : key_color(d, key);
+        const uint8_t down = half_down(d, col >= board_cols / 2);
+        const uint8_t color = down ? down : key_color(d, key);
         const int encoder = key_encoder(key);
         if (down && encoder >= 0) {
-            knob(fb, kx, ky, pitch - gap, high, DBG_BG, DBG_BAD, DBG_BAD, knob_shown[encoder]);
+            knob(fb, kx, ky, pitch - gap, high, DBG_BG, down, down, knob_shown[encoder]);
             continue;
         }
         if (encoder >= 0) {
@@ -1241,6 +1260,12 @@ static void put_col(uint8_t *fb, int col, int y, const char *s, uint8_t color) {
  * couldn't be read (EH no handle for the link, EB no command buffer, E1-E99
  * the radio's or Zephyr's error). */
 static uint8_t signal_text(char *buf, size_t size, const struct fx_link *link) {
+    uint8_t away;
+    const char *word = away_word(link, &away);
+    if (word) {
+        snprintf(buf, size, "%s", word);
+        return away;
+    }
     if (!link->up) {
         snprintf(buf, size, "--");
         return DBG_BAD;
@@ -1469,7 +1494,8 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         const int wide = 5 * (int)strlen(titles[col]) - 1;
         const int left = col == 0 ? DBG_COL_X(0) : col == 2 ? DBG_COL_X(2) + DBG_COL_W - wide
                                                             : DBG_COL_X(1) + (DBG_COL_W - wide) / 2;
-        put(fb, left, title_y, titles[col], links[col]->up || (col == 1 && usb_out) ? DBG_BRIGHT : DBG_BAD);
+        const uint8_t down = col == 1 ? (links[col]->up || usb_out ? DBG_BG : DBG_BAD) : half_down(d, col == 2);
+        put(fb, left, title_y, titles[col], down ? down : DBG_BRIGHT);
     }
     static const char *const labels[] = {"dBm", "DROPS", "%", "V", "mW", "CHG"};
     static const int label_y[] = {DBG_ROW_DBM, DBG_ROW_DROPS, DBG_ROW_LEVEL, DBG_ROW_V, DBG_ROW_MW, DBG_ROW_CHG};
@@ -1858,15 +1884,15 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
     for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
         const struct fx_part *p = &shape->keys[key];
         const bool right = p->kind & FX_PART_RIGHT;
-        const bool down = half_down(d, right);
-        const uint8_t color = down ? DBG_BAD : key_color(d, key);
+        const uint8_t down = half_down(d, right);
+        const uint8_t color = down ? down : key_color(d, key);
         const bool held = (d->held >> key) & 1;
         const int encoder = key_encoder(key);
         const int kind = p->kind & FX_PART_KIND;
         int x, y, wide, high;
         part_rect(v, kind == FX_PART_KEY ? &g : NULL, p, &x, &y, &wide, &high);
         if (kind == FX_PART_DIAL && down) {
-            knob(fb, x, y, wide, wide, DBG_BG, DBG_BAD, DBG_BAD, encoder >= 0 ? knob_shown[encoder] : 0);
+            knob(fb, x, y, wide, wide, DBG_BG, down, down, encoder >= 0 ? knob_shown[encoder] : 0);
             continue;
         }
         if (kind == FX_PART_DIAL) {
@@ -1973,6 +1999,14 @@ static void typist_foot(uint8_t *fb, const struct fx_input *in) {
     const int y = TYPIST_FOOT_Y, inset = fx_corner_inset(y, y + 13) + 1;
     char buf[8];
     for (int half = 0; half < 2; half++) {
+        /* a half away says why in its corner, in place of its level */
+        uint8_t away;
+        const char *word = away_word(&d->half[half], &away);
+        if (word) {
+            const int wide = 5 * (int)strlen(word) - 1;
+            put(fb, half ? FX_W - inset - wide : inset, y + 7, word, away);
+            continue;
+        }
         bool estimate;
         const uint8_t level = half_level(in, half, &estimate);
         const uint8_t color = level ? battery_color(level) : DBG_LABEL;
@@ -2203,7 +2237,10 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
                 put(fb, left + PROFILE_MARK_W + 4, STATUS_SIGNAL_Y, buf, signal_color(links[link]));
             }
         } else if (!links[link]->up) {
-            put(fb, mid - 5, STATUS_SIGNAL_Y, "--", DBG_BAD);
+            uint8_t away;
+            const char *word = away_word(links[link], &away);
+            put(fb, word ? mid - (5 * (int)strlen(word) - 1) / 2 : mid - 5, STATUS_SIGNAL_Y, word ? word : "--",
+                word ? away : DBG_BAD);
         } else if (links[link]->rssi_known) {
             snprintf(buf, sizeof(buf), "%d", links[link]->rssi < -99 ? -99 : links[link]->rssi);
             const int left = mid - (5 * (int)strlen(buf) + 14) / 2;
@@ -3998,6 +4035,7 @@ void fx_start(int fx, uint16_t *palette) {
 
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
     profile_track(in);
+    away_clock = fmodf(away_clock + in->step, AWAY_FLASH * 100);
     if (fx >= 0 && fx < FX_COUNT) {
         effects[fx].frame(fb, in);
     }
