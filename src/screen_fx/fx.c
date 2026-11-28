@@ -207,6 +207,39 @@ static inline int key_row(uint8_t key) { return board_row(key) < 3 ? board_row(k
 /* Where across the screen a key lands: its column. */
 static int key_x(uint8_t key) { return 8 + key_col(key) * 13 + (int)(rnd() % 7); }
 
+/* --- a half that isn't connected -------------------------------------------- */
+
+/*
+ * The same on every screen that draws the board but Showroom (the
+ * screensaver: the halves are mostly asleep then): its keys red when its link dropped; grey when it said
+ * it was going to sleep; flashing green while it is being updated
+ * (fx_status.half_away, src/half_goodbye.c). Typist, Status and Debug also
+ * say SLEEP or UPDATE.
+ */
+enum { HALF_UP, HALF_DROPPED, HALF_ASLEEP, HALF_UPDATING };
+#define AWAY_FLASH 30    /* 30ths of a second: green two thirds of it */
+static float away_clock; /* timed in fx_frame */
+
+/* Why half `half` is away (FX_AWAY_*), or 0: connected, or it didn't say.
+ * Connected is the link being up where the Debug readings are there, else
+ * ZMK's split connection. */
+static uint8_t half_away(const struct fx_input *in, int half) {
+    const bool up = in->debug ? in->debug->half[half].up : in->status == NULL || in->status->half_connected[half];
+    return up || in->status == NULL ? 0 : in->status->half_away[half];
+}
+
+static int half_look(const struct fx_input *in, int half) {
+    const bool up = in->debug ? in->debug->half[half].up : in->status == NULL || in->status->half_connected[half];
+    switch (half_away(in, half)) {
+    case FX_AWAY_SLEEP:
+        return HALF_ASLEEP;
+    case FX_AWAY_UPDATE:
+        return (int)away_clock % AWAY_FLASH < AWAY_FLASH * 2 / 3 ? HALF_UPDATING : HALF_UP;
+    default:
+        return up ? HALF_UP : HALF_DROPPED;
+    }
+}
+
 /* --- text ------------------------------------------------------------------ */
 
 /* X11's "5x7" (misc-fixed, public domain), ' ' to '~': top row first, left
@@ -1093,26 +1126,19 @@ static void board_fade(const struct fx_input *in) {
     }
 }
 
-/* A half that isn't connected: the colour of all its keys, knobs and
- * rollers then (red; grey asleep, flashing green while it is updated), or 0
- * (DBG_BG) when it is connected. */
-#define AWAY_FLASH 30 /* 30ths of a second: green two thirds of it */
-static float away_clock; /* timed in fx_frame */
-static uint8_t half_down(const struct fx_debug *d, int half) {
-    const struct fx_link *link = &d->half[half];
-    return link->up                       ? DBG_BG
-           : link->away == FX_AWAY_SLEEP  ? DBG_LABEL
-           : link->away == FX_AWAY_UPDATE ? ((int)away_clock % AWAY_FLASH < AWAY_FLASH * 2 / 3 ? DBG_GOOD : DBG_DIM)
-                                          : DBG_BAD;
+/* A half's keys, knobs and rollers when it isn't connected (half_look),
+ * as these screens colour them; 0 (DBG_BG) when they are as usual. */
+static uint8_t half_down(const struct fx_input *in, int half) {
+    static const uint8_t color[] = {[HALF_UP] = DBG_BG, [HALF_DROPPED] = DBG_BAD, [HALF_ASLEEP] = DBG_LABEL,
+                                    [HALF_UPDATING] = DBG_GOOD};
+    return color[half_look(in, half)];
 }
 
-/* And what to say in place of its signal: why it is away, or NULL. */
-static const char *away_word(const struct fx_link *link, uint8_t *color) {
-    if (link->up || !link->away) {
-        return NULL;
-    }
-    *color = link->away == FX_AWAY_SLEEP ? DBG_LABEL : DBG_GOOD;
-    return link->away == FX_AWAY_SLEEP ? "SLEEP" : "UPDATE";
+/* And what to say in place of its signal or level: why it is away, or NULL. */
+static const char *away_word(const struct fx_input *in, int half, uint8_t *color) {
+    const uint8_t away = half_away(in, half);
+    *color = away == FX_AWAY_SLEEP ? DBG_LABEL : DBG_GOOD;
+    return away == FX_AWAY_SLEEP ? "SLEEP" : away == FX_AWAY_UPDATE ? "UPDATE" : NULL;
 }
 
 /* A key's colour: white held (orange holding a modifier, violet a layer), glowing after. */
@@ -1133,7 +1159,7 @@ static void board(uint8_t *fb, const struct fx_input *in, int left, int top, int
         const int kx = left + col * pitch + (col >= board_cols / 2 ? split : 0), ky = top + row * (high + gap);
         const uint64_t bit = 1ull << key;
         const bool held = (d->held & bit) != 0;
-        const uint8_t down = half_down(d, col >= board_cols / 2);
+        const uint8_t down = half_down(in, col >= board_cols / 2);
         const uint8_t color = down ? down : key_color(d, key);
         const int encoder = key_encoder(key);
         if (down && encoder >= 0) {
@@ -1260,12 +1286,6 @@ static void put_col(uint8_t *fb, int col, int y, const char *s, uint8_t color) {
  * couldn't be read (EH no handle for the link, EB no command buffer, E1-E99
  * the radio's or Zephyr's error). */
 static uint8_t signal_text(char *buf, size_t size, const struct fx_link *link) {
-    uint8_t away;
-    const char *word = away_word(link, &away);
-    if (word) {
-        snprintf(buf, size, "%s", word);
-        return away;
-    }
     if (!link->up) {
         snprintf(buf, size, "--");
         return DBG_BAD;
@@ -1494,7 +1514,7 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         const int wide = 5 * (int)strlen(titles[col]) - 1;
         const int left = col == 0 ? DBG_COL_X(0) : col == 2 ? DBG_COL_X(2) + DBG_COL_W - wide
                                                             : DBG_COL_X(1) + (DBG_COL_W - wide) / 2;
-        const uint8_t down = col == 1 ? (links[col]->up || usb_out ? DBG_BG : DBG_BAD) : half_down(d, col == 2);
+        const uint8_t down = col == 1 ? (links[col]->up || usb_out ? DBG_BG : DBG_BAD) : half_down(in, col == 2);
         put(fb, left, title_y, titles[col], down ? down : DBG_BRIGHT);
     }
     static const char *const labels[] = {"dBm", "DROPS", "%", "V", "mW", "CHG"};
@@ -1507,7 +1527,13 @@ static void debug_frame(uint8_t *fb, const struct fx_input *in) {
         if (col == 1 && usb_out) {
             put_col(fb, col, DBG_ROW_DBM, "USB", DBG_LABEL); /* no radio to the computer */
         } else {
-            const uint8_t color = signal_text(buf, sizeof(buf), link);
+            uint8_t color;
+            const char *word = col == 1 ? NULL : away_word(in, col == 2, &color);
+            if (word) {
+                snprintf(buf, sizeof(buf), "%s", word);
+            } else {
+                color = signal_text(buf, sizeof(buf), link);
+            }
             put_col(fb, col, DBG_ROW_DBM, buf, color);
         }
         signal_chart(fb, DBG_COL_X(col) + 1, DBG_ROW_DBM + 8, logs[col]);
@@ -1884,7 +1910,7 @@ static void shape_board(uint8_t *fb, const struct fx_input *in, const struct vie
     for (int key = 0; key < shape->n_keys && key < (int)sizeof(debug_heat); key++) {
         const struct fx_part *p = &shape->keys[key];
         const bool right = p->kind & FX_PART_RIGHT;
-        const uint8_t down = half_down(d, right);
+        const uint8_t down = half_down(in, right);
         const uint8_t color = down ? down : key_color(d, key);
         const bool held = (d->held >> key) & 1;
         const int encoder = key_encoder(key);
@@ -2001,7 +2027,7 @@ static void typist_foot(uint8_t *fb, const struct fx_input *in) {
     for (int half = 0; half < 2; half++) {
         /* a half away says why in its corner, in place of its level */
         uint8_t away;
-        const char *word = away_word(&d->half[half], &away);
+        const char *word = away_word(in, half, &away);
         if (word) {
             const int wide = 5 * (int)strlen(word) - 1;
             put(fb, half ? FX_W - inset - wide : inset, y + 7, word, away);
@@ -2238,7 +2264,7 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
             }
         } else if (!links[link]->up) {
             uint8_t away;
-            const char *word = away_word(links[link], &away);
+            const char *word = away_word(in, link, &away);
             put(fb, word ? mid - (5 * (int)strlen(word) - 1) / 2 : mid - 5, STATUS_SIGNAL_Y, word ? word : "--",
                 word ? away : DBG_BAD);
         } else if (links[link]->rssi_known) {
@@ -2382,7 +2408,10 @@ static void status_frame(uint8_t *fb, const struct fx_input *in) {
 #define SHOW_MAT (SHOW_SHADOWED + SHOW_BG_N)  /* the materials, SHOW_BANDS each */
 #define SHOW_BANDS 5
 enum { BAND_DARK, BAND_MID, BAND_LIT, BAND_RIM, BAND_GLINT };
-enum { MAT_CASE, MAT_COVER, MAT_CAP, MAT_EXTRA, MAT_SCREEN, MAT_RUBBER, MAT_GLASS, MAT_DONGLE, MAT_HOT, SHOW_MATS = MAT_HOT + 3 };
+/* MAT_HOT: 3 of them, glowing more; MAT_AWAY: on Board, a half not connected (half_look): dropped, asleep,
+ * updating */
+enum { MAT_CASE, MAT_COVER, MAT_CAP, MAT_EXTRA, MAT_SCREEN, MAT_RUBBER, MAT_GLASS, MAT_DONGLE, MAT_HOT,
+       MAT_AWAY = MAT_HOT + 3, SHOW_MATS = MAT_AWAY + 3 };
 #define SHOW_INK (SHOW_MAT + SHOW_MATS * SHOW_BANDS)
 #define SHOW_PICTURE (SHOW_INK + 1) /* on the way in: what was showing, on the tiles it breaks into */
 #define SHOW_CAPTION (SHOW_PICTURE + 1) /* SHOW_CAPTION_N levels, faded in */
@@ -2447,7 +2476,7 @@ static struct wall_tile {
     uint8_t tile, shade;          /* which, and how lit (256ths, less one) */
 } loose[TILES], wall_now; /* wall_now: the wall still standing, as one tile the size of the picture */
 
-/* The dongle's own screen, in Clash: the last frame, small, a pixel for
+/* The dongle's own screen, in Board: the last frame, small, a pixel for
  * each 4 by 4, found on the screen ray by ray (FILL_PICTURE), so it shows
  * itself, smaller and smaller. Where the screen is: its top left corner,
  * along its top, down its side, and its normal. */
@@ -2767,7 +2796,7 @@ static void show_box(uint8_t *fb, const struct fx_part *p, float hw, float hh, f
 #define DIAL_SIDES 12
 
 /* A dial: a short cylinder, a mark on its top. */
-static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, float z1) {
+static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, float z1, int mat) {
     float foot[DIAL_SIDES][3], top[DIAL_SIDES][3], mid[3];
     for (int i = 0; i < DIAL_SIDES; i++) {
         const float a = (i + 0.5f) * (TWO_PI / DIAL_SIDES);
@@ -2784,11 +2813,11 @@ static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, f
         memcpy(side[2], top[j], sizeof(side[0]));
         memcpy(side[3], top[i], sizeof(side[0]));
         show_normal((const float(*)[3])side, mid, n);
-        show_face(fb, (const float(*)[3])side, 4, n, MAT_EXTRA, FILL_SOLID);
+        show_face(fb, (const float(*)[3])side, 4, n, mat, FILL_SOLID);
     }
     static const float up[3] = {0, 0, 1};
     show_next();
-    show_face(fb, (const float(*)[3])top, DIAL_SIDES, up, MAT_EXTRA, FILL_GLINT);
+    show_face(fb, (const float(*)[3])top, DIAL_SIDES, up, mat, FILL_GLINT);
     float mark[4][3];
     part_point(mark[0], p, -2.5f, -0.25f * r, z1);
     part_point(mark[1], p, 2.5f, -0.25f * r, z1);
@@ -2800,7 +2829,7 @@ static void show_dial(uint8_t *fb, const struct fx_part *p, float r, float z0, f
 #define ROLLER_STEPS 8
 
 /* A roller: the top half of a wheel across the part, standing out of the case. */
-static void show_roller(uint8_t *fb, const struct fx_part *p, float hw, float r) {
+static void show_roller(uint8_t *fb, const struct fx_part *p, float hw, float r, int mat) {
     float axis[3], ring[2][ROLLER_STEPS + 1][3];
     part_point(axis, p, 0, 0, SHOW_PCB);
     for (int k = 0; k <= ROLLER_STEPS; k++) {
@@ -2826,7 +2855,7 @@ static void show_roller(uint8_t *fb, const struct fx_part *p, float hw, float r)
         memcpy(strip[3], ring[0][k + 1], sizeof(strip[0]));
         show_normal((const float(*)[3])strip, axis, n);
         /* ribs: every other strip dark */
-        show_face(fb, (const float(*)[3])strip, 4, n, k & 1 ? MAT_RUBBER : MAT_EXTRA, FILL_SOLID);
+        show_face(fb, (const float(*)[3])strip, 4, n, k & 1 ? MAT_RUBBER : mat, FILL_SOLID);
     }
 }
 
@@ -2838,6 +2867,15 @@ static float show_key_state(const struct fx_input *in, int key, int *mat) {
     return held || heat > 200 ? SHOW_PRESS : 0;
 }
 
+/* A part's material, or on Board its half's when that isn't connected
+ * (half_look). Not on Showroom: as the screensaver, the halves are mostly
+ * asleep. */
+static bool show_halves;
+static int show_away(const struct fx_input *in, const struct fx_part *p, int mat) {
+    const int look = show_halves ? half_look(in, (p->kind & FX_PART_RIGHT) != 0) : HALF_UP;
+    return look == HALF_UP ? mat : MAT_AWAY + look - HALF_DROPPED;
+}
+
 /* Part `p` (key position `key`, or -1 for an extra). */
 static void show_part(uint8_t *fb, const struct fx_input *in, const struct fx_part *p, int key) {
     const float hw = p->w / 2.0f, hh = p->h / 2.0f;
@@ -2845,16 +2883,17 @@ static void show_part(uint8_t *fb, const struct fx_input *in, const struct fx_pa
     case FX_PART_KEY: {
         int mat = p->kind & FX_PART_EXTRA ? MAT_EXTRA : MAT_CAP;
         const float press = show_key_state(in, key, &mat);
+        mat = show_away(in, p, mat);
         const float foot = SHOW_PCB + SHOW_SWITCH - press;
         show_box(fb, p, hw - 14, hh - 14, 0, SHOW_PCB, foot, MAT_RUBBER, false);
         show_box(fb, p, hw - 4, hh - 4, 9, foot, foot + SHOW_CAP, mat, true);
         break;
     }
     case FX_PART_DIAL:
-        show_dial(fb, p, hw - 4, SHOW_PCB, SHOW_PCB + 44);
+        show_dial(fb, p, hw - 4, SHOW_PCB, SHOW_PCB + 44, show_away(in, p, MAT_EXTRA));
         break;
     case FX_PART_ROLLER:
-        show_roller(fb, p, hw - 3, hh);
+        show_roller(fb, p, hw - 3, hh, show_away(in, p, MAT_EXTRA));
         break;
     case FX_PART_SCREEN: {
         static const int8_t corner[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
@@ -3300,6 +3339,7 @@ static void shot_camera(int shot, float u, float *target, float *view) {
 }
 
 static void showroom_start(uint16_t *palette) {
+    show_halves = false;
     for (int i = 0; i < SHOW_BG_N; i++) {
         const int k = i * 256 / (SHOW_BG_N - 1);
         palette[SHOW_BG + i] = color565(mix(showroom_backdrop[0], showroom_backdrop[1], k));
@@ -3456,7 +3496,7 @@ static void showroom_frame(uint8_t *fb, const struct fx_input *in) {
 }
 
 
-/* --- clash: the board in neon, cut like a fight scene as you type ------------ */
+/* --- board: the board in neon, cut like a fight scene as you type ------------ */
 
 /*
  * Showroom's board (its solids, camera and fills) in neon: dark solids
@@ -3473,52 +3513,52 @@ static void showroom_frame(uint8_t *fb, const struct fx_input *in) {
  * speed lines to screentone (dots, bigger nearer the key, and lines
  * across) and back.
  *
- * It is in the theme's colours (clash_colors). The palette is Showroom's
+ * It is in the theme's colours (board_colors). The palette is Showroom's
  * (so its fills draw as they are), coloured differently, and these after it.
  */
-#define CLASH_EDGE (SHOW_CAPTION + SHOW_CAPTION_N) /* each material's edge: SHOW_MATS of them */
-#define CLASH_CREASE (CLASH_EDGE + SHOW_MATS)       /* and where two of its faces meet, dimmer */
-#define CLASH_GLOW (CLASH_CREASE + SHOW_MATS)       /* round a glowing key: 2, nearest first */
-#define CLASH_TRAIL (CLASH_GLOW + 2)                /* streaking behind the edges: CLASH_TRAILS, brightest first */
-#define CLASH_TRAILS 4
-#define CLASH_DARK (CLASH_TRAIL + CLASH_TRAILS) /* the impact frames': ink, */
-#define CLASH_LIGHT (CLASH_DARK + 1)   /* paper, */
-#define CLASH_BRIGHT (CLASH_LIGHT + 1) /* lines on the screentone, */
-#define CLASH_TONE (CLASH_BRIGHT + 1)  /* its dots and the keys pressed, */
-#define CLASH_SHADE (CLASH_TONE + 1)   /* and its shading */
-#define CLASH_FLOOR SHOW_BG      /* the grid: SHOW_BG_N levels, black to lit */
-#define CLASH_SKY SHOW_SHADOWED  /* the horizon's glow: SHOW_BG_N levels, black to brightest */
+#define BOARD_EDGE (SHOW_CAPTION + SHOW_CAPTION_N) /* each material's edge: SHOW_MATS of them */
+#define BOARD_CREASE (BOARD_EDGE + SHOW_MATS)       /* and where two of its faces meet, dimmer */
+#define BOARD_GLOW (BOARD_CREASE + SHOW_MATS)       /* round a glowing key: 2, nearest first */
+#define BOARD_TRAIL (BOARD_GLOW + 2)                /* streaking behind the edges: BOARD_TRAILS, brightest first */
+#define BOARD_TRAILS 4
+#define BOARD_DARK (BOARD_TRAIL + BOARD_TRAILS) /* the impact frames': ink, */
+#define BOARD_LIGHT (BOARD_DARK + 1)   /* paper, */
+#define BOARD_BRIGHT (BOARD_LIGHT + 1) /* lines on the screentone, */
+#define BOARD_TONE (BOARD_BRIGHT + 1)  /* its dots and the keys pressed, */
+#define BOARD_SHADE (BOARD_TONE + 1)   /* and its shading */
+#define BOARD_FLOOR SHOW_BG      /* the grid: SHOW_BG_N levels, black to lit */
+#define BOARD_SKY SHOW_SHADOWED  /* the horizon's glow: SHOW_BG_N levels, black to brightest */
 
-#define CLASH_GRID 120.0f   /* the floor's squares: 3 cm */
-#define CLASH_CALM 24.0f    /* 30ths of a second without a key before it pulls back */
-#define CLASH_IMPACT 10.0f  /* the impact frame's length, 30ths of a second */
-#define CLASH_SHOWN 45.0f   /* and how long the shortcut shows */
-#define CLASH_STREAK 60.0f  /* a shortcut within this of the last adds to the count */
+#define BOARD_GRID 120.0f   /* the floor's squares: 3 cm */
+#define BOARD_CALM 24.0f    /* 30ths of a second without a key before it pulls back */
+#define BOARD_IMPACT 10.0f  /* the impact frame's length, 30ths of a second */
+#define BOARD_SHOWN 45.0f   /* and how long the shortcut shows */
+#define BOARD_STREAK 60.0f  /* a shortcut within this of the last adds to the count */
 
 /* A view: what it looks at, from round the front (yaw, degrees to the
  * right), up (pitch) and how far, the lens, and the tilt (roll, degrees). */
-struct clash_view {
+struct board_view {
     float target[3], yaw, pitch, dist, focal, roll;
 };
-static struct clash_view clash_now, clash_drift; /* where the camera is, and how it moves (a 30th of a second) */
-static float clash_pace;   /* 0..1: how hard the cuts come */
-static float clash_quiet;  /* 30ths of a second since a key */
-static float clash_shot;   /* left of this shot */
-static float clash_pan;    /* the pulled-back view's pan, radians */
-static float clash_impact; /* into the impact frame, or < 0 */
-static float clash_shown;  /* left of the shortcut showing */
-static float clash_since;  /* since the last shortcut */
-static uint8_t clash_count; /* shortcuts one after another */
-static uint8_t clash_aim;   /* the key the camera is on */
-static uint8_t clash_flicker;
-static char clash_label[12];
+static struct board_view board_now, board_drift; /* where the camera is, and how it moves (a 30th of a second) */
+static float board_pace;   /* 0..1: how hard the cuts come */
+static float board_quiet;  /* 30ths of a second since a key */
+static float board_shot;   /* left of this shot */
+static float board_pan;    /* the pulled-back view's pan, radians */
+static float board_impact; /* into the impact frame, or < 0 */
+static float board_shown;  /* left of the shortcut showing */
+static float board_since;  /* since the last shortcut */
+static uint8_t board_count; /* shortcuts one after another */
+static uint8_t board_aim;   /* the key the camera is on */
+static uint8_t board_flicker;
+static char board_label[12];
 
 static int direction(float dx, float dy);
 static uint32_t hash(int x, int y);
 static void big_text(uint8_t *fb, int x, int y, const char *s, uint8_t color);
 
 /* Where key position `key`'s cap is. */
-static void clash_key_at(int key, float *out) {
+static void board_key_at(int key, float *out) {
     if (key < shape->n_keys) {
         part_point(out, &shape->keys[key], 0, 0, SHOW_PCB + SHOW_SWITCH + SHOW_CAP / 2);
     } else {
@@ -3529,13 +3569,13 @@ static void clash_key_at(int key, float *out) {
 }
 
 /* The whole board, from the front, panning slowly. */
-static void clash_wide(struct clash_view *v) {
+static void board_wide(struct board_view *v) {
     const float half = show_bw + show_gap;
     v->target[0] = 0;
     v->target[1] = -show_bd * 0.55f;
     v->target[2] = 20;
-    v->yaw = 26 * sinf(clash_pan);
-    v->pitch = 24 + 6 * sinf(clash_pan * 0.7f);
+    v->yaw = 26 * sinf(board_pan);
+    v->pitch = 24 + 6 * sinf(board_pan * 0.7f);
     v->dist = 1.9f * half;
     v->focal = 150;
     v->roll = 0;
@@ -3547,109 +3587,115 @@ static void dongle_screen(float *mid, float *up);
 
 /* Cut to the dongle's own screen, from in front and above the board: the
  * picture in the picture. */
-static void clash_cut_dongle(void) {
+static void board_cut_dongle(void) {
     float up[3];
-    dongle_screen(clash_now.target, up);
-    clash_now.yaw = rndf() * 25;
-    clash_now.pitch = 10 + 8 * rndf();
-    clash_now.dist = DONGLE_SCREEN_W * (1.7f + 0.3f * rndf());
-    clash_now.focal = 115;
-    clash_now.roll = rndf() * 6 * clash_pace;
-    memset(&clash_drift, 0, sizeof(clash_drift));
-    clash_drift.dist = -clash_now.dist * 0.006f;
-    clash_drift.yaw = rndf() * 0.3f;
-    clash_shot = 50 - 25 * clash_pace;
+    dongle_screen(board_now.target, up);
+    board_now.yaw = rndf() * 25;
+    board_now.pitch = 10 + 8 * rndf();
+    board_now.dist = DONGLE_SCREEN_W * (1.7f + 0.3f * rndf());
+    board_now.focal = 115;
+    board_now.roll = rndf() * 6 * board_pace;
+    memset(&board_drift, 0, sizeof(board_drift));
+    board_drift.dist = -board_now.dist * 0.006f;
+    board_drift.yaw = rndf() * 0.3f;
+    board_shot = 50 - 25 * board_pace;
 }
 
-static void clash_cut(int key, bool hard) {
-    const float half = show_bw + show_gap, pace = hard ? 1 : clash_pace;
+static void board_cut(int key, bool hard) {
+    const float half = show_bw + show_gap, pace = hard ? 1 : board_pace;
     if (!hard && rnd() % 7 == 0) {
-        clash_cut_dongle();
+        board_cut_dongle();
         return;
     }
-    clash_key_at(key, clash_now.target);
-    clash_now.target[0] += rndf() * 25;
-    clash_now.target[1] += rndf() * 25;
+    board_key_at(key, board_now.target);
+    board_now.target[0] += rndf() * 25;
+    board_now.target[1] += rndf() * 25;
     /* from the key's own side of the board, mostly */
-    const float outward = clash_now.target[0] < 0 ? -1 : 1;
-    clash_now.yaw = outward * (25 + 30 * rndf()) + rndf() * 30;
-    clash_now.pitch = hard ? 22 + 6 * rndf() : 34 - 22 * pace + 10 * rndf();
-    clash_now.dist = half * (hard ? 0.7f : 1.25f - 0.8f * pace) * (1 + 0.15f * rndf());
-    clash_now.focal = 115;
-    clash_now.roll = rndf() * (hard ? 16 : 4 + 14 * pace);
-    memset(&clash_drift, 0, sizeof(clash_drift));
-    clash_drift.yaw = rndf() * (0.4f + 1.6f * pace);
-    clash_drift.dist = -clash_now.dist * 0.004f * (1 + pace);
-    clash_drift.roll = rndf() * 0.3f * pace;
-    clash_drift.pitch = rndf() * 0.3f;
-    clash_shot = (60 - 48 * pace) * (0.85f + 0.3f * (rndf() * 0.5f + 0.5f));
-    clash_aim = (uint8_t)key;
+    const float outward = board_now.target[0] < 0 ? -1 : 1;
+    board_now.yaw = outward * (25 + 30 * rndf()) + rndf() * 30;
+    board_now.pitch = hard ? 22 + 6 * rndf() : 34 - 22 * pace + 10 * rndf();
+    board_now.dist = half * (hard ? 0.7f : 1.25f - 0.8f * pace) * (1 + 0.15f * rndf());
+    board_now.focal = 115;
+    board_now.roll = rndf() * (hard ? 16 : 4 + 14 * pace);
+    memset(&board_drift, 0, sizeof(board_drift));
+    board_drift.yaw = rndf() * (0.4f + 1.6f * pace);
+    board_drift.dist = -board_now.dist * 0.004f * (1 + pace);
+    board_drift.roll = rndf() * 0.3f * pace;
+    board_drift.pitch = rndf() * 0.3f;
+    board_shot = (60 - 48 * pace) * (0.85f + 0.3f * (rndf() * 0.5f + 0.5f));
+    board_aim = (uint8_t)key;
 }
 
 static int brightness_of(struct color c) { return c.r * 3 + c.g * 6 + c.b; }
 
-/* Clash in the theme's colours: the solids a little off black (or a light
+/* Board in the theme's colours: the solids a little off black (or a light
  * theme's background), their edges in its text and dim, the grid in its
  * label colour, the horizon, the glow and the pressed keys in its layer
  * colour, the extra keys in its warning colour; the impact frames in its
  * darkest and lightest. */
-static void clash_colors(uint16_t *palette) {
+static void board_colors(uint16_t *palette) {
     const struct scheme *t = scheme;
     const bool light = brightness_of(t->bg) > brightness_of(t->text);
     const struct color black = {0, 0, 0}, base = light ? t->bg : black;
     for (int i = 0; i < SHOW_BG_N; i++) {
         const int k = i * 256 / (SHOW_BG_N - 1);
-        palette[CLASH_FLOOR + i] = color565(mix(base, t->label, k * 3 / 4));
-        palette[CLASH_SKY + i] = color565(mix(base, t->layer, k * (light ? 1 : 3) / 4));
+        palette[BOARD_FLOOR + i] = color565(mix(base, t->label, k * 3 / 4));
+        palette[BOARD_SKY + i] = color565(mix(base, t->layer, k * (light ? 1 : 3) / 4));
     }
     /* each material's five bands, its edge and its creases */
     const struct color edge[MAT_HOT] = {t->dim, t->dim, t->text, t->warn, t->label, t->dim, t->dim, t->label};
     static const uint8_t tone[SHOW_BANDS] = {14, 30, 50, 75, 50};
+    /* and a half not connected: red, grey or green, as the caps are lit */
+    const struct color away[3] = {t->bad, t->label, t->good};
     for (int m = 0; m < SHOW_MATS; m++) {
-        const bool hot = m >= MAT_HOT;
+        const bool hot = m >= MAT_HOT && m < MAT_AWAY, gone = m >= MAT_AWAY;
         const int h = m - MAT_HOT;
         for (int b = 0; b < SHOW_BANDS; b++) {
             const struct color fill =
-                hot ? mix(base, t->layer, 110 + h * 70 + (b == BAND_LIT ? 20 : 0))
-                    : mix(base, m == MAT_EXTRA ? t->warn : t->dim, tone[b] * (m == MAT_CAP ? 3 : 2) / 2);
+                gone  ? mix(base, away[m - MAT_AWAY], 90 + tone[b])
+                : hot ? mix(base, t->layer, 110 + h * 70 + (b == BAND_LIT ? 20 : 0))
+                      : mix(base, m == MAT_EXTRA ? t->warn : t->dim, tone[b] * (m == MAT_CAP ? 3 : 2) / 2);
             palette[SHOW_MAT + m * SHOW_BANDS + b] = color565(fill);
         }
-        const struct color e = hot ? mix(t->layer, t->bright, 60 + h * 60) : edge[m];
-        palette[CLASH_EDGE + m] = color565(e);
-        palette[CLASH_CREASE + m] = color565(mix(base, e, hot ? 200 : 140));
+        const struct color e = gone  ? away[m - MAT_AWAY]
+                               : hot ? mix(t->layer, t->bright, 60 + h * 60)
+                                     : edge[m];
+        palette[BOARD_EDGE + m] = color565(e);
+        palette[BOARD_CREASE + m] = color565(mix(base, e, hot || gone ? 200 : 140));
     }
     palette[SHOW_PICTURE] = color565(mix(base, t->label, 120));
-    palette[CLASH_GLOW] = color565(mix(base, t->layer, 150));
-    palette[CLASH_GLOW + 1] = color565(mix(base, t->layer, 70));
-    for (int i = 0; i < CLASH_TRAILS; i++) {
-        palette[CLASH_TRAIL + i] = color565(mix(base, t->label, 170 - i * 40));
+    palette[BOARD_GLOW] = color565(mix(base, t->layer, 150));
+    palette[BOARD_GLOW + 1] = color565(mix(base, t->layer, 70));
+    for (int i = 0; i < BOARD_TRAILS; i++) {
+        palette[BOARD_TRAIL + i] = color565(mix(base, t->label, 170 - i * 40));
     }
     const struct color paper = light ? t->bg : mix(t->text, t->bright, 128);
-    palette[CLASH_DARK] = color565(light ? t->text : black);
-    palette[CLASH_LIGHT] = color565(paper);
-    palette[CLASH_BRIGHT] = color565(light ? t->bg : t->bright);
-    palette[CLASH_TONE] = color565(t->layer);
-    palette[CLASH_SHADE] = color565(mix(light ? paper : black, t->layer, 70));
+    palette[BOARD_DARK] = color565(light ? t->text : black);
+    palette[BOARD_LIGHT] = color565(paper);
+    palette[BOARD_BRIGHT] = color565(light ? t->bg : t->bright);
+    palette[BOARD_TONE] = color565(t->layer);
+    palette[BOARD_SHADE] = color565(mix(light ? paper : black, t->layer, 70));
 }
 
-static void clash_start(uint16_t *palette) {
-    showroom_start(palette); /* the board's size, the lights, the keys' glow; clash_colors colours it */
+static void board_start(uint16_t *palette) {
+    showroom_start(palette); /* the board's size, the lights, the keys' glow; board_colors colours it */
+    show_halves = true;      /* each half as half_look has it */
     show_glint = -10000; /* no glint sweeping over it */
     show_live = true;    /* the dongle's screen shows the last frame */
-    clash_pace = 0;
-    clash_quiet = 1000;
-    clash_shot = 0;
-    clash_pan = 0;
-    clash_impact = -1;
-    clash_shown = 0;
-    clash_since = 1000;
-    clash_count = 0;
-    clash_wide(&clash_now);
-    memset(&clash_drift, 0, sizeof(clash_drift));
+    board_pace = 0;
+    board_quiet = 1000;
+    board_shot = 0;
+    board_pan = 0;
+    board_impact = -1;
+    board_shown = 0;
+    board_since = 1000;
+    board_count = 0;
+    board_wide(&board_now);
+    memset(&board_drift, 0, sizeof(board_drift));
 }
 
 /* The floor's grid, fading into the distance, and the glow on the horizon. */
-static void clash_floor(uint8_t *fb) {
+static void board_floor(uint8_t *fb) {
     const float far = 9000;
     for (int y = 0; y < FX_H; y++) {
         const float sy = FX_H / 2 - (y + 0.5f);
@@ -3662,20 +3708,20 @@ static void clash_floor(uint8_t *fb) {
             }
             const float rise = ray[2] / cam.focal; /* near enough how far above the horizon */
             int glow = (int)((1 - fabsf(rise) * 7) * (SHOW_BG_N - 1));
-            uint8_t c = glow > 0 ? (uint8_t)(CLASH_SKY + glow) : CLASH_SKY;
+            uint8_t c = glow > 0 ? (uint8_t)(BOARD_SKY + glow) : BOARD_SKY;
             if (ray[2] < 0) {
                 const float t = -cam.pos[2] / ray[2]; /* a pixel's width, there */
                 const float depth = t * cam.focal;
                 if (depth < far) {
-                    float gx = (cam.pos[0] + t * ray[0]) / CLASH_GRID + 1000.5f;
-                    float gy = (cam.pos[1] + t * ray[1]) / CLASH_GRID + 1000.5f;
-                    gx = fabsf(gx - (float)(int)gx - 0.5f) * CLASH_GRID;
-                    gy = fabsf(gy - (float)(int)gy - 0.5f) * CLASH_GRID;
+                    float gx = (cam.pos[0] + t * ray[0]) / BOARD_GRID + 1000.5f;
+                    float gy = (cam.pos[1] + t * ray[1]) / BOARD_GRID + 1000.5f;
+                    gx = fabsf(gx - (float)(int)gx - 0.5f) * BOARD_GRID;
+                    gy = fabsf(gy - (float)(int)gy - 0.5f) * BOARD_GRID;
                     const float width = 0.55f * t + 1.5f;
                     if (gx < width || gy < width) {
                         const int level = (int)((1 - depth / far) * (1 - depth / far) * (SHOW_BG_N - 1) * 0.75f);
                         if (level > glow) {
-                            c = (uint8_t)(CLASH_FLOOR + level);
+                            c = (uint8_t)(BOARD_FLOOR + level);
                         }
                     }
                 }
@@ -3685,19 +3731,19 @@ static void clash_floor(uint8_t *fb) {
     }
 }
 
-static inline uint8_t clash_mat(uint8_t c) {
+static inline uint8_t board_mat(uint8_t c) {
     return c >= SHOW_MAT && c < SHOW_INK ? (uint8_t)((c - SHOW_MAT) / SHOW_BANDS) : MAT_GLASS;
 }
 
-static inline bool clash_hot_at(uint8_t c) {
+static inline bool board_hot_at(uint8_t c) {
     return (c >= SHOW_MAT + MAT_HOT * SHOW_BANDS && c < SHOW_INK) ||
-           (c >= CLASH_EDGE + MAT_HOT && c < CLASH_EDGE + SHOW_MATS) ||
-           (c >= CLASH_CREASE + MAT_HOT && c < CLASH_CREASE + SHOW_MATS);
+           (c >= BOARD_EDGE + MAT_HOT && c < BOARD_EDGE + SHOW_MATS) ||
+           (c >= BOARD_CREASE + MAT_HOT && c < BOARD_CREASE + SHOW_MATS);
 }
 
 /* The edges: round each solid (on its pixels next to one drawn before it,
  * as show_ink), and dimmer where two of its faces meet. */
-static void clash_edges_draw(uint8_t *fb) {
+static void board_edges_draw(uint8_t *fb) {
     for (int y = 0; y < FX_H; y++) {
         for (int x = 0; x < FX_W; x++) {
             const int i = y * FX_W + x;
@@ -3705,37 +3751,37 @@ static void clash_edges_draw(uint8_t *fb) {
             if (!id) {
                 continue;
             }
-            const uint8_t m = clash_mat(fb[i]);
+            const uint8_t m = board_mat(fb[i]);
             if ((x > 0 && canvas[i - 1] < id) || (x < FX_W - 1 && canvas[i + 1] < id) ||
                 (y > 0 && canvas[i - FX_W] < id) || (y < FX_H - 1 && canvas[i + FX_W] < id)) {
-                fb[i] = (uint8_t)(CLASH_EDGE + m);
+                fb[i] = (uint8_t)(BOARD_EDGE + m);
             } else if (id != show_screen_id && ((x < FX_W - 1 && canvas[i + 1] == id && fb[i + 1] != fb[i]) ||
                        (y < FX_H - 1 && canvas[i + FX_W] == id && fb[i + FX_W] != fb[i]))) {
                 /* those to the right and below are not drawn over yet; not across the dongle's picture */
-                fb[i] = (uint8_t)(CLASH_CREASE + m);
+                fb[i] = (uint8_t)(BOARD_CREASE + m);
             }
         }
     }
 }
 
 /* The glow round a pressed key: on the floor and the case beside it. */
-static void clash_glow(uint8_t *fb) {
+static void board_glow(uint8_t *fb) {
     for (int pass = 0; pass < 2; pass++) {
-        const uint8_t to = (uint8_t)(CLASH_GLOW + pass);
+        const uint8_t to = (uint8_t)(BOARD_GLOW + pass);
         for (int y = 0; y < FX_H; y++) {
             for (int x = 0; x < FX_W; x++) {
                 const int i = y * FX_W + x;
                 const uint8_t c = fb[i];
                 const bool dark = !canvas[i] || (c >= SHOW_MAT && c < SHOW_MAT + 2 * SHOW_BANDS);
-                if (!dark || c == CLASH_GLOW) {
+                if (!dark || c == BOARD_GLOW) {
                     continue;
                 }
-#define CLASH_NEAR(j) (pass ? fb[j] == CLASH_GLOW : clash_hot_at(fb[j]))
-                if ((x > 0 && CLASH_NEAR(i - 1)) || (x < FX_W - 1 && CLASH_NEAR(i + 1)) ||
-                    (y > 0 && CLASH_NEAR(i - FX_W)) || (y < FX_H - 1 && CLASH_NEAR(i + FX_W))) {
+#define BOARD_NEAR(j) (pass ? fb[j] == BOARD_GLOW : board_hot_at(fb[j]))
+                if ((x > 0 && BOARD_NEAR(i - 1)) || (x < FX_W - 1 && BOARD_NEAR(i + 1)) ||
+                    (y > 0 && BOARD_NEAR(i - FX_W)) || (y < FX_H - 1 && BOARD_NEAR(i + FX_W))) {
                     fb[i] = to;
                 }
-#undef CLASH_NEAR
+#undef BOARD_NEAR
             }
         }
     }
@@ -3743,18 +3789,18 @@ static void clash_glow(uint8_t *fb) {
 
 /* Streaks behind the bright edges, `length` pixels the way the picture is
  * moving from (`way` 1: they trail to the right). */
-static void clash_trails(uint8_t *fb, int length, int way) {
+static void board_trails(uint8_t *fb, int length, int way) {
     for (int y = 0; y < FX_H; y++) {
         int left = 0;
         for (int k = 0; k < FX_W; k++) {
             const int x = way > 0 ? k : FX_W - 1 - k, i = y * FX_W + x;
             const uint8_t c = fb[i];
-            if (c >= CLASH_EDGE && c < CLASH_EDGE + SHOW_MATS) {
+            if (c >= BOARD_EDGE && c < BOARD_EDGE + SHOW_MATS) {
                 left = length;
             } else if (left > 0) {
                 if (!canvas[i]) {
-                    const int level = (length - left) * CLASH_TRAILS / length;
-                    fb[i] = (uint8_t)(CLASH_TRAIL + level);
+                    const int level = (length - left) * BOARD_TRAILS / length;
+                    fb[i] = (uint8_t)(BOARD_TRAIL + level);
                 }
                 left--;
             }
@@ -3763,7 +3809,7 @@ static void clash_trails(uint8_t *fb, int length, int way) {
 }
 
 /* Whether pixel i (at x, y) is on the edge of its solid. */
-static inline bool clash_rim(int x, int y, int i) {
+static inline bool board_rim(int x, int y, int i) {
     const uint8_t id = canvas[i];
     return (x > 0 && canvas[i - 1] < id) || (x < FX_W - 1 && canvas[i + 1] < id) ||
            (y > 0 && canvas[i - FX_W] < id) || (y < FX_H - 1 && canvas[i + FX_W] < id);
@@ -3773,8 +3819,8 @@ static inline bool clash_rim(int x, int y, int i) {
  * board drawn in ink on paper, shaded with dots where it is dark, with
  * speed lines slanting across; or else screentone, the board dark with
  * bright edges on dots that grow nearer the key, lines straight across. */
-static void clash_impact_draw(uint8_t *fb, float cx, float cy, bool ink) {
-    const int seed = clash_flicker;
+static void board_impact_draw(uint8_t *fb, float cx, float cy, bool ink) {
+    const int seed = board_flicker;
     for (int y = 0; y < FX_H; y++) {
         for (int x = 0; x < FX_W; x++) {
             const int i = y * FX_W + x;
@@ -3782,14 +3828,14 @@ static void clash_impact_draw(uint8_t *fb, float cx, float cy, bool ink) {
             if (canvas[i]) {
                 const bool dark = c < SHOW_MAT + 2 * SHOW_BANDS ||
                                   (c >= SHOW_MAT && c < SHOW_INK && (c - SHOW_MAT) % SHOW_BANDS == BAND_DARK);
-                if (clash_hot_at(c)) {
-                    fb[i] = CLASH_TONE;
-                } else if (clash_rim(x, y, i)) {
-                    fb[i] = ink ? CLASH_DARK : CLASH_BRIGHT;
+                if (board_hot_at(c)) {
+                    fb[i] = BOARD_TONE;
+                } else if (board_rim(x, y, i)) {
+                    fb[i] = ink ? BOARD_DARK : BOARD_BRIGHT;
                 } else if (ink) {
-                    fb[i] = dark && !(x & 1) && !(y & 1) ? CLASH_DARK : CLASH_LIGHT;
+                    fb[i] = dark && !(x & 1) && !(y & 1) ? BOARD_DARK : BOARD_LIGHT;
                 } else {
-                    fb[i] = (x + y) & 1 && c < SHOW_MAT + 2 * SHOW_BANDS ? CLASH_SHADE : CLASH_DARK;
+                    fb[i] = (x + y) & 1 && c < SHOW_MAT + 2 * SHOW_BANDS ? BOARD_SHADE : BOARD_DARK;
                 }
                 continue;
             }
@@ -3798,41 +3844,41 @@ static void clash_impact_draw(uint8_t *fb, float cx, float cy, bool ink) {
                 const uint32_t h = hash((x + y * 2) / 3, seed);
                 const bool line = h % 4 == 0 && dx * dx + dy * dy > 18 * 18 &&
                                   (x - y + 200 + (int)((h >> 8) % 100)) % 90 < 50;
-                fb[i] = line ? CLASH_DARK : CLASH_LIGHT;
+                fb[i] = line ? BOARD_DARK : BOARD_LIGHT;
             } else {
                 /* a dot in each 4 by 4, bigger nearer the key */
                 const float mx = (x & ~3) + 2 - cx, my = (y & ~3) + 2 - cy;
                 const float r = 2.9f - sqrtf(mx * mx + my * my) / 26, ox = (x & 3) - 1.5f, oy = (y & 3) - 1.5f;
                 const uint32_t h = hash(y, seed);
                 const bool line = h % 5 == 0 && (x + (int)((h >> 8) % 200)) % 140 < 50 + (int)((h >> 16) % 60);
-                fb[i] = line ? CLASH_BRIGHT : r > 0 && ox * ox + oy * oy < r * r ? CLASH_TONE : CLASH_DARK;
+                fb[i] = line ? BOARD_BRIGHT : r > 0 && ox * ox + oy * oy < r * r ? BOARD_TONE : BOARD_DARK;
             }
         }
     }
 }
 
 /* The shortcut, big, on a plate at the top, and the count beside it. */
-static void clash_label_draw(uint8_t *fb, bool impact) {
+static void board_label_draw(uint8_t *fb, bool impact) {
     char count[5] = "";
-    if (clash_count > 1) {
-        snprintf(count, sizeof(count), "x%u", clash_count > 99 ? 99 : clash_count);
+    if (board_count > 1) {
+        snprintf(count, sizeof(count), "x%u", board_count > 99 ? 99 : board_count);
     }
-    const int len = (int)strlen(clash_label), n = (int)strlen(count);
+    const int len = (int)strlen(board_label), n = (int)strlen(count);
     const int w = len * 10 - 2 + (n ? 4 + n * 6 - 1 : 0), x = (FX_W - w) / 2, y = 16; /* under the frame rate, if that shows */
-    const uint8_t rim = impact ? CLASH_LIGHT : CLASH_EDGE + MAT_HOT + 2;
+    const uint8_t rim = impact ? BOARD_LIGHT : BOARD_EDGE + MAT_HOT + 2;
     for (int py = y - 4; py <= y + 17; py++) {
         for (int px = x - 5; px <= x + w + 4; px++) {
             const bool edge = py == y - 4 || py == y + 17 || px == x - 5 || px == x + w + 4;
-            plot(fb, px, py, edge ? rim : CLASH_DARK);
+            plot(fb, px, py, edge ? rim : BOARD_DARK);
         }
     }
-    big_text(fb, x, y, clash_label, CLASH_LIGHT);
+    big_text(fb, x, y, board_label, BOARD_LIGHT);
     for (int k = 0; k < n; k++) {
-        glyph(fb, x + len * 10 + 2 + k * 6, y + 7, count[k], CLASH_EDGE + MAT_CAP);
+        glyph(fb, x + len * 10 + 2 + k * 6, y + 7, count[k], BOARD_EDGE + MAT_CAP);
     }
 }
 
-static void clash_frame(uint8_t *fb, const struct fx_input *in) {
+static void board_frame(uint8_t *fb, const struct fx_input *in) {
     show_heat_step(in);
     /* the last frame, small, for the dongle's screen (it is still in fb) */
     for (int y = 0; y < THUMB_H; y++) {
@@ -3840,67 +3886,67 @@ static void clash_frame(uint8_t *fb, const struct fx_input *in) {
             show_thumb[y][x] = fb[(y * 4 + 2) * FX_W + x * 4 + 2];
         }
     }
-    const bool was_calm = clash_quiet > CLASH_CALM;
+    const bool was_calm = board_quiet > BOARD_CALM;
 
     /* the pace: up with each key, and down at once when the keys stop */
-    clash_quiet += in->step;
-    clash_since += in->step;
+    board_quiet += in->step;
+    board_since += in->step;
     if (in->n_keys) {
         /* how fast, from the gap since the last key: 10 a second (120 wpm) flat out, 2 (20 wpm) not at all */
-        const float gap = clash_quiet / in->n_keys, speed = clampf(1 - (gap - 3) / 12, 0, 1);
-        clash_pace += (speed - clash_pace) * 0.3f;
-        clash_quiet = 0;
-    } else if (clash_quiet > CLASH_CALM) {
-        clash_pace = clampf(clash_pace - 0.06f * in->step, 0, 1);
+        const float gap = board_quiet / in->n_keys, speed = clampf(1 - (gap - 3) / 12, 0, 1);
+        board_pace += (speed - board_pace) * 0.3f;
+        board_quiet = 0;
+    } else if (board_quiet > BOARD_CALM) {
+        board_pace = clampf(board_pace - 0.06f * in->step, 0, 1);
     }
 
     /* a shortcut: the impact frame, on its key */
     if (in->combo_mods) {
-        clash_count = clash_since < CLASH_STREAK ? clash_count + 1 : 1;
-        clash_since = 0;
-        clash_impact = 0;
-        clash_shown = CLASH_SHOWN;
+        board_count = board_since < BOARD_STREAK ? board_count + 1 : 1;
+        board_since = 0;
+        board_impact = 0;
+        board_shown = BOARD_SHOWN;
         static const char mod_glyph[4] = {FX_GLYPH_CTRL, FX_GLYPH_ALT, FX_GLYPH_SHIFT, FX_GLYPH_GUI};
         static const uint8_t mod_bit[4] = {0x11, 0x44, 0x22, 0x88}; /* HID bits, left and right */
         int n = 0;
         for (int i = 0; i < 4; i++) {
             if (in->combo_mods & mod_bit[i]) {
-                clash_label[n++] = mod_glyph[i];
+                board_label[n++] = mod_glyph[i];
             }
         }
-        snprintf(clash_label + n, sizeof(clash_label) - n, "%s", in->combo_key);
-        clash_cut(in->n_keys ? in->keys[in->n_keys - 1] : clash_aim, true);
-        clash_shot += CLASH_IMPACT;
-    } else if (in->n_keys && (was_calm || clash_shot <= 0)) {
-        clash_cut(in->keys[in->n_keys - 1], false);
+        snprintf(board_label + n, sizeof(board_label) - n, "%s", in->combo_key);
+        board_cut(in->n_keys ? in->keys[in->n_keys - 1] : board_aim, true);
+        board_shot += BOARD_IMPACT;
+    } else if (in->n_keys && (was_calm || board_shot <= 0)) {
+        board_cut(in->keys[in->n_keys - 1], false);
     }
-    clash_shot -= in->step;
+    board_shot -= in->step;
 
     /* the camera: drifting in its shot, or easing back to the whole board */
     const float s = in->step;
-    if (clash_quiet > CLASH_CALM) {
-        clash_pan += 0.006f * s;
-        struct clash_view wide;
-        clash_wide(&wide);
+    if (board_quiet > BOARD_CALM) {
+        board_pan += 0.006f * s;
+        struct board_view wide;
+        board_wide(&wide);
         const float k = 1 - powf(0.955f, s), slow = powf(0.8f, s);
         for (int c = 0; c < 3; c++) {
-            clash_now.target[c] += (wide.target[c] - clash_now.target[c]) * k;
+            board_now.target[c] += (wide.target[c] - board_now.target[c]) * k;
         }
-        clash_now.yaw += (wide.yaw - clash_now.yaw) * k + clash_drift.yaw * s;
-        clash_now.pitch += (wide.pitch - clash_now.pitch) * k;
-        clash_now.dist += (wide.dist - clash_now.dist) * k;
-        clash_now.focal += (wide.focal - clash_now.focal) * k;
-        clash_now.roll += (wide.roll - clash_now.roll) * k;
-        clash_drift.yaw *= slow;
+        board_now.yaw += (wide.yaw - board_now.yaw) * k + board_drift.yaw * s;
+        board_now.pitch += (wide.pitch - board_now.pitch) * k;
+        board_now.dist += (wide.dist - board_now.dist) * k;
+        board_now.focal += (wide.focal - board_now.focal) * k;
+        board_now.roll += (wide.roll - board_now.roll) * k;
+        board_drift.yaw *= slow;
     } else {
-        clash_now.yaw += clash_drift.yaw * s;
-        clash_now.pitch = clampf(clash_now.pitch + clash_drift.pitch * s, 6, 70);
-        clash_now.dist += clash_drift.dist * s;
-        clash_now.roll += clash_drift.roll * s;
+        board_now.yaw += board_drift.yaw * s;
+        board_now.pitch = clampf(board_now.pitch + board_drift.pitch * s, 6, 70);
+        board_now.dist += board_drift.dist * s;
+        board_now.roll += board_drift.roll * s;
     }
-    show_camera(clash_now.target, clash_now.yaw, clash_now.pitch, clash_now.dist, clash_now.focal);
-    if (clash_now.roll) {
-        const float a = clash_now.roll * (TWO_PI / 360), c = cosf(a), sn = sinf(a);
+    show_camera(board_now.target, board_now.yaw, board_now.pitch, board_now.dist, board_now.focal);
+    if (board_now.roll) {
+        const float a = board_now.roll * (TWO_PI / 360), c = cosf(a), sn = sinf(a);
         for (int i = 0; i < 3; i++) {
             const float r = cam.r[i], u = cam.u[i];
             cam.r[i] = r * c + u * sn;
@@ -3908,35 +3954,35 @@ static void clash_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    clash_floor(fb);
+    board_floor(fb);
     memset(canvas, 0, PIXELS);
     show_id = 0;
     show_dongle(fb);
     show_half(fb, in, cam.pos[0] > 0 ? 1 : -1);
     show_half(fb, in, cam.pos[0] > 0 ? -1 : 1);
 
-    const bool impact = clash_impact >= 0 && clash_impact < CLASH_IMPACT;
+    const bool impact = board_impact >= 0 && board_impact < BOARD_IMPACT;
     if (impact) {
         float at[3], c[3];
-        clash_key_at(clash_aim, at);
+        board_key_at(board_aim, at);
         to_cam(at, c);
         const float cx = c[2] > 1 ? FX_W / 2 + cam.focal * c[0] / c[2] : FX_W / 2;
         const float cy = c[2] > 1 ? FX_H / 2 - cam.focal * c[1] / c[2] : FX_H / 2;
-        clash_flicker++;
-        clash_impact_draw(fb, cx, cy, (int)(clash_impact / 2) % 2 == 0);
-        clash_impact += s;
+        board_flicker++;
+        board_impact_draw(fb, cx, cy, (int)(board_impact / 2) % 2 == 0);
+        board_impact += s;
     } else {
-        clash_impact = -1;
-        clash_edges_draw(fb);
-        clash_glow(fb);
-        const float swing = fabsf(clash_drift.yaw);
-        if (clash_quiet <= CLASH_CALM && swing > 0.8f) {
-            clash_trails(fb, (int)clampf(swing * 3, 2, 8), clash_drift.yaw > 0 ? 1 : -1);
+        board_impact = -1;
+        board_edges_draw(fb);
+        board_glow(fb);
+        const float swing = fabsf(board_drift.yaw);
+        if (board_quiet <= BOARD_CALM && swing > 0.8f) {
+            board_trails(fb, (int)clampf(swing * 3, 2, 8), board_drift.yaw > 0 ? 1 : -1);
         }
     }
-    if (clash_shown > 0) {
-        clash_label_draw(fb, impact);
-        clash_shown -= s;
+    if (board_shown > 0) {
+        board_label_draw(fb, impact);
+        board_shown -= s;
     }
 }
 
@@ -3964,7 +4010,7 @@ static const struct {
     {"STATUS", status_start, status_frame, debug_colors, NULL, {0}, .keys = true},
     {"TYPIST", keys_start, keys_frame, debug_colors, NULL, {0}, .keys = true},
     {"TERMINAL", term_start, term_frame, term_colors, NULL, {.font = FX_FONT_PIXEL, .drop = CORNER_DROP}},
-    {"CLASH", clash_start, clash_frame, clash_colors, NULL, {.dots = true, .drop = CORNER_DROP}},
+    {"BOARD", board_start, board_frame, board_colors, NULL, {.dots = true, .drop = CORNER_DROP}},
     {"WARP", warp_start, warp_frame, NULL, &warp_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_HYPERSPACE},
     {"CODE", code_start, code_frame, NULL, &code_text, {.font = FX_FONT_PIXEL, .dots = true, .drop = CORNER_DROP}, .saver = FX_TR_MELT},
     {"LIFE", life_start, life_frame, NULL, &life_text, {.dots = true, .drop = CORNER_DROP}, .saver = FX_TR_INFECT},
@@ -4035,7 +4081,7 @@ void fx_start(int fx, uint16_t *palette) {
 
 void fx_frame(int fx, uint8_t *fb, const struct fx_input *in) {
     profile_track(in);
-    away_clock = fmodf(away_clock + in->step, AWAY_FLASH * 100);
+    away_clock = fmodf(away_clock + in->step, AWAY_FLASH * 100); /* half_look's flashing */
     if (fx >= 0 && fx < FX_COUNT) {
         effects[fx].frame(fb, in);
     }

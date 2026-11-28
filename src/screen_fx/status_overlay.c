@@ -357,6 +357,8 @@ unsigned overlay_update(const struct fx_status *status, uint32_t ms) {
         drawn.battery[1] = status->battery[1];
         drawn.half_connected[0] = status->half_connected[0];
         drawn.half_connected[1] = status->half_connected[1];
+        drawn.half_away[0] = status->half_away[0];
+        drawn.half_away[1] = status->half_away[1];
         drawn.charging[0] = status->charging[0];
         drawn.charging[1] = status->charging[1];
         drawn.bolt_off[0] = status->bolt_off[0];
