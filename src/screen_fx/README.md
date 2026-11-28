@@ -21,10 +21,8 @@ The screen, theme and brightness are remembered once left for 30 seconds.
 | 1 | Debug | a page of readings for chasing faults: [below](#debug) |
 | 2 | Status | the board's keys, batteries, signal and connections at a glance: [below](#status) |
 | 3 | Typist | your typing speed, and the board as it is, its keys lighting as you type: [below](#typist) |
-| 4 | Thermal | the board through a heat camera; from 50 wpm the keys catch fire |
-| 5 | Tracker | a motion tracker: contacts close in with typing speed |
-| 6 | Terminal | what you type, fading out (passwords included, while it is showing) |
-| 7 | Clash | the board in 3D, in neon, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame and shows its keys, with a count when they come one after another |
+| 4 | Terminal | what you type, fading out (passwords included, while it is showing) |
+| 5 | Clash | the board in 3D, in neon, filmed like a fight scene: as you type the camera cuts from key to key, closer and quicker the faster you go, and the moment you stop it slows and pulls back. A shortcut (a key with Ctrl, Alt or Cmd) flashes an impact frame and shows its keys, with a count when they come one after another |
 
 After 15 minutes without a key, or when the lock key is let go, a
 screensaver takes over: **Warp** (stars to light speed), **Code** (an alien
@@ -50,7 +48,7 @@ backspaces, five to a word, over the last 10 seconds.
 
 ## Colour themes
 
-Typist, Status, Debug, Tracker and Terminal take the theme's colours; the name
+Typist, Status, Debug and Terminal take the theme's colours; the name
 shows for a moment when it changes. Every theme keeps green, amber and red
 for good, weak and lost.
 

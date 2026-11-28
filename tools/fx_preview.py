@@ -7,7 +7,7 @@ draw, without flashing anything:
 
     tools/fx_preview.py              # every animation -> fx_preview_out/*.gif
     tools/fx_preview.py --fps 30     # what a faster screen link would give
-    tools/fx_preview.py --saver thermal  # the screensaver coming over Thermal, and going
+    tools/fx_preview.py --saver terminal  # the screensaver coming over Terminal, and going
     tools/fx_preview.py --power typist # the panel going off and coming on, on Typist
     tools/fx_preview.py --themes     # every colour theme -> fx_preview_out/themes.png
     tools/fx_preview.py --stills     # a still of each screen -> fx_preview_out/<n>_<name>.png,

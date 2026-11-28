@@ -3,8 +3,8 @@
  * one place to change them in. Red, green, blue, each 0..255; the panel
  * shows 5, 6 and 5 bits of them.
  *
- * - the colour themes: Keys, Debug, Tracker and Terminal
- * - Thermal's and the three screensavers' own colours, which no theme
+ * - the colour themes: Typist, Status, Debug and Terminal
+ * - Clash's and the screensavers' own colours, which no theme
  *   touches, and those of the status text over them
  * - the four colours every animation has
  *
@@ -23,7 +23,7 @@ struct color {
 /* --- the colour themes ------------------------------------------------------ */
 
 /*
- * The Keys, Debug, Tracker and Terminal screens are drawn in the colours of
+ * The Typist, Status, Debug and Terminal screens are drawn in the colours of
  * the theme that is set (the Config layer's Theme key steps through them).
  *
  * To add one, add a line: its name (15 letters at most, in the animations'
@@ -41,8 +41,7 @@ struct color {
  *   text    the readings
  *   bright  a key held down, headings, the newest of anything
  *
- * Tracker runs from bg through dim and text up to nearly bright; Terminal
- * is bg, and what is typed flashes bright, then is text, and fades out
+ * Terminal is bg, and what is typed flashes bright, then is text, and fades out
  * through dim. On a light theme bright is the darkest of them.
  *
  *   glow    a key just let go (it fades from this to dim), the level meters
@@ -145,12 +144,6 @@ struct stop {
     uint8_t at, r, g, b;
 };
 
-/* Thermal: cold to hot, as a heat camera shows it; the flames run on from red to white */
-static const struct stop thermal_stops[] = {
-    {0, 0, 0, 35},      {45, 0, 25, 150},   {95, 0, 160, 130}, {140, 150, 225, 0},
-    {175, 255, 210, 0}, {215, 255, 35, 0},  {251, 255, 245, 235}
-};
-
 /* Warp: four colours of 63 brightness levels each, from black: the stars, then three for the comets */
 static const struct stop warp_stops[] = {
     {0, 0, 0, 0},   {22, 30, 50, 140},   {50, 170, 200, 255},  {62, 255, 255, 255}, /* stars */
@@ -181,14 +174,12 @@ static const struct stop life_stops[] = {
  * levels and the Bluetooth profile's number, `dim` that number when the
  * computer isn't connected, `accent` the wireless symbol when it is and
  * `search` when it isn't (it pulses), `low` a battery that is nearly flat.
- * Over Tracker and Terminal they are the theme's text, label and bad.
+ * Over Terminal they are the theme's text, label and bad.
  */
 struct text_colors {
     struct color ink, dim, accent, search, low;
 };
 
-static const struct text_colors thermal_text = {
-    {255, 255, 255}, {170, 170, 170}, {255, 255, 255}, {190, 190, 190}, {255, 60, 60}};
 static const struct text_colors warp_text = {
     {255, 255, 255}, {160, 160, 160}, {40, 240, 230}, {208, 208, 208}, {255, 70, 50}};
 static const struct text_colors code_text = {

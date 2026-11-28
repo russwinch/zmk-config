@@ -28,8 +28,8 @@
  *
  * The screen chosen with the keys is kept in ZMK's settings, by name, and
  * shown again after a restart (see "the chosen screen" below). So is the
- * colour theme, which the &scr_theme key steps through: the Keys, Status, Debug,
- * Tracker and Terminal screens are drawn in its colours (colors.h has the list), and its
+ * colour theme, which the &scr_theme key steps through: the Typist, Status, Debug
+ * and Terminal screens are drawn in its colours (colors.h has the list), and its
  * name shows for a moment when it is turned to.
  *
  * Some of the animations are screensavers instead (fx_saver_way_in): the

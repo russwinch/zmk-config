@@ -112,20 +112,18 @@ sending keys after connecting, reset it
 The dongle's screens, as this commit draws them (redrawn by the "Draw screens"
 workflow); what each shows: [`src/screen_fx/README.md`](src/screen_fx/README.md).
 
-| <img src="docs/screens/4_thermal.png" width="260" alt="Thermal"> | <img src="docs/screens/5_tracker.png" width="260" alt="Tracker"> | <img src="docs/screens/6_terminal.png" width="260" alt="Terminal"> |
-| :---: | :---: | :---: |
-| Thermal | Tracker | Terminal |
-| <img src="docs/screens/8_warp.png" width="260" alt="Warp"> | <img src="docs/screens/9_code.png" width="260" alt="Code"> | <img src="docs/screens/10_life.png" width="260" alt="Life"> |
-| Warp (screensaver) | Code (screensaver) | Life (screensaver) |
+| <img src="docs/screens/4_terminal.png" width="195" alt="Terminal"> | <img src="docs/screens/6_warp.png" width="195" alt="Warp"> | <img src="docs/screens/7_code.png" width="195" alt="Code"> | <img src="docs/screens/8_life.png" width="195" alt="Life"> |
+| :---: | :---: | :---: | :---: |
+| Terminal | Warp (screensaver) | Code (screensaver) | Life (screensaver) |
 
 The screens that draw the board, on each board's dongle:
 
 | | Debug | Status | Typist | Clash | Showroom (screensaver) |
 | --- | :---: | :---: | :---: | :---: | :---: |
-| Urchin | <img src="docs/screens/1_debug_urchin.png" width="150" alt="Debug, Urchin"> | <img src="docs/screens/2_status_urchin.png" width="150" alt="Status, Urchin"> | <img src="docs/screens/3_typist_urchin.png" width="150" alt="Typist, Urchin"> | <img src="docs/screens/7_clash_urchin.png" width="150" alt="Clash, Urchin"> | <img src="docs/screens/11_showroom_urchin.png" width="150" alt="Showroom, Urchin"> |
-| Forager | <img src="docs/screens/1_debug_forager.png" width="150" alt="Debug, Forager"> | <img src="docs/screens/2_status_forager.png" width="150" alt="Status, Forager"> | <img src="docs/screens/3_typist_forager.png" width="150" alt="Typist, Forager"> | <img src="docs/screens/7_clash_forager.png" width="150" alt="Clash, Forager"> | <img src="docs/screens/11_showroom_forager.png" width="150" alt="Showroom, Forager"> |
-| Aurora Corne | <img src="docs/screens/1_debug_corne.png" width="150" alt="Debug, Aurora Corne"> | <img src="docs/screens/2_status_corne.png" width="150" alt="Status, Aurora Corne"> | <img src="docs/screens/3_typist_corne.png" width="150" alt="Typist, Aurora Corne"> | <img src="docs/screens/7_clash_corne.png" width="150" alt="Clash, Aurora Corne"> | <img src="docs/screens/11_showroom_corne.png" width="150" alt="Showroom, Aurora Corne"> |
-| Waterfowl | <img src="docs/screens/1_debug_waterfowl.png" width="150" alt="Debug, Waterfowl"> | <img src="docs/screens/2_status_waterfowl.png" width="150" alt="Status, Waterfowl"> | <img src="docs/screens/3_typist_waterfowl.png" width="150" alt="Typist, Waterfowl"> | <img src="docs/screens/7_clash_waterfowl.png" width="150" alt="Clash, Waterfowl"> | <img src="docs/screens/11_showroom_waterfowl.png" width="150" alt="Showroom, Waterfowl"> |
+| Urchin | <img src="docs/screens/1_debug_urchin.png" width="150" alt="Debug, Urchin"> | <img src="docs/screens/2_status_urchin.png" width="150" alt="Status, Urchin"> | <img src="docs/screens/3_typist_urchin.png" width="150" alt="Typist, Urchin"> | <img src="docs/screens/5_clash_urchin.png" width="150" alt="Clash, Urchin"> | <img src="docs/screens/9_showroom_urchin.png" width="150" alt="Showroom, Urchin"> |
+| Forager | <img src="docs/screens/1_debug_forager.png" width="150" alt="Debug, Forager"> | <img src="docs/screens/2_status_forager.png" width="150" alt="Status, Forager"> | <img src="docs/screens/3_typist_forager.png" width="150" alt="Typist, Forager"> | <img src="docs/screens/5_clash_forager.png" width="150" alt="Clash, Forager"> | <img src="docs/screens/9_showroom_forager.png" width="150" alt="Showroom, Forager"> |
+| Aurora Corne | <img src="docs/screens/1_debug_corne.png" width="150" alt="Debug, Aurora Corne"> | <img src="docs/screens/2_status_corne.png" width="150" alt="Status, Aurora Corne"> | <img src="docs/screens/3_typist_corne.png" width="150" alt="Typist, Aurora Corne"> | <img src="docs/screens/5_clash_corne.png" width="150" alt="Clash, Aurora Corne"> | <img src="docs/screens/9_showroom_corne.png" width="150" alt="Showroom, Aurora Corne"> |
+| Waterfowl | <img src="docs/screens/1_debug_waterfowl.png" width="150" alt="Debug, Waterfowl"> | <img src="docs/screens/2_status_waterfowl.png" width="150" alt="Status, Waterfowl"> | <img src="docs/screens/3_typist_waterfowl.png" width="150" alt="Typist, Waterfowl"> | <img src="docs/screens/5_clash_waterfowl.png" width="150" alt="Clash, Waterfowl"> | <img src="docs/screens/9_showroom_waterfowl.png" width="150" alt="Showroom, Waterfowl"> |
 
 ### The left half's nice!view
 
