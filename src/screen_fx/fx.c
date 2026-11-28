@@ -3822,11 +3822,13 @@ static inline bool board_hot_at(uint8_t c) {
 #define LOOK_HOT 1  /* a glowing key's (board_hot_at) */
 #define LOOK_DARK 2 /* the case's or the cover's, which the glow shows on */
 static uint8_t board_look[256];
+static uint8_t board_mat_of[256]; /* board_mat's, looked up */
 
 static void board_looks(void) {
     for (int c = 0; c < 256; c++) {
         board_look[c] = (board_hot_at((uint8_t)c) ? LOOK_HOT : 0) |
                         (c >= SHOW_MAT && c < SHOW_MAT + 2 * SHOW_BANDS ? LOOK_DARK : 0);
+        board_mat_of[c] = board_mat((uint8_t)c);
     }
 }
 
@@ -3835,32 +3837,45 @@ static int hot_x0, hot_x1, hot_y0, hot_y1;
 
 /* The edges: round each solid (on its pixels next to one drawn before it,
  * as show_ink), and dimmer where two of its faces meet. And where the
- * glowing keys are, for board_glow. */
+ * glowing keys are, for board_glow. Off the picture's sides a pixel's
+ * neighbour is itself, which is never an edge or a crease. */
 static void board_edges_draw(uint8_t *fb) {
     hot_x0 = hot_y0 = FX_W + FX_H;
     hot_x1 = hot_y1 = -1;
+    const uint8_t screen_id = show_screen_id;
     for (int y = 0; y < draw_h; y++) {
+        uint8_t *const f = fb + y * FX_W;
+        const uint8_t *const c = canvas + y * FX_W;
+        const int up = y > 0 ? -FX_W : 0, down = y < draw_h - 1 ? FX_W : 0;
+        bool hot = false;
         for (int x = 0; x < draw_w; x++) {
-            const int i = y * FX_W + x;
-            const uint8_t id = canvas[i];
+            /* empty floor four at a time (rows start 4-byte aligned) */
+            if (!(x & 3) && x + 4 <= draw_w && !*(const uint32_t *)(c + x)) {
+                x += 3;
+                continue;
+            }
+            const uint8_t id = c[x];
             if (!id) {
                 continue;
             }
-            const uint8_t m = board_mat(fb[i]);
-            if ((x > 0 && canvas[i - 1] < id) || (x < draw_w - 1 && canvas[i + 1] < id) ||
-                (y > 0 && canvas[i - FX_W] < id) || (y < draw_h - 1 && canvas[i + FX_W] < id)) {
-                fb[i] = (uint8_t)(BOARD_EDGE + m);
-            } else if (id != show_screen_id && ((x < draw_w - 1 && canvas[i + 1] == id && fb[i + 1] != fb[i]) ||
-                       (y < draw_h - 1 && canvas[i + FX_W] == id && fb[i + FX_W] != fb[i]))) {
+            const int left = x > 0 ? -1 : 0, right = x < draw_w - 1 ? 1 : 0;
+            const uint8_t was = f[x];
+            if (c[x + left] < id || c[x + right] < id || c[x + up] < id || c[x + down] < id) {
+                f[x] = (uint8_t)(BOARD_EDGE + board_mat_of[was]);
+            } else if (id != screen_id && ((c[x + right] == id && f[x + right] != was) ||
+                                           (c[x + down] == id && f[x + down] != was))) {
                 /* those to the right and below are not drawn over yet; not across the dongle's picture */
-                fb[i] = (uint8_t)(BOARD_CREASE + m);
+                f[x] = (uint8_t)(BOARD_CREASE + board_mat_of[was]);
             }
-            if (board_look[fb[i]] & LOOK_HOT) {
+            if (board_look[f[x]] & LOOK_HOT) {
+                hot = true;
                 hot_x0 = x < hot_x0 ? x : hot_x0;
                 hot_x1 = x > hot_x1 ? x : hot_x1;
-                hot_y0 = y < hot_y0 ? y : hot_y0;
-                hot_y1 = y > hot_y1 ? y : hot_y1;
             }
+        }
+        if (hot) {
+            hot_y0 = y < hot_y0 ? y : hot_y0;
+            hot_y1 = y;
         }
     }
 }
