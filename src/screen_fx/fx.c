@@ -3723,11 +3723,40 @@ static void board_start(uint16_t *palette) {
     memset(&board_drift, 0, sizeof(board_drift));
 }
 
+#define FLOOR_FAR 9000.0f /* where the grid has faded out */
+#define FLOOR_SPAN 8       /* pixels worked out in perspective, the rest in between */
+
+/* A pixel of the floor: `rise` near enough how far above the horizon it is,
+ * and on the floor (rise < 0) `t` a pixel's width there and (gx, gy) where
+ * it is in grid squares (+ 1000.5, so never below 0). */
+static inline __attribute__((always_inline)) uint8_t floor_pixel(float rise, float t, float gx, float gy) {
+    const int glow = (int)((1 - fabsf(rise) * 7) * (SHOW_BG_N - 1));
+    uint8_t c = glow > 0 ? (uint8_t)(BOARD_SKY + glow) : BOARD_SKY;
+    if (rise < 0) {
+        const float depth = t * cam.focal;
+        if (depth < FLOOR_FAR) {
+            const float fx = fabsf(gx - (float)(int)gx - 0.5f) * BOARD_GRID;
+            const float fy = fabsf(gy - (float)(int)gy - 0.5f) * BOARD_GRID;
+            const float width = 0.55f * t + 1.5f;
+            if (fx < width || fy < width) {
+                const float near = 1 - depth * (1 / FLOOR_FAR);
+                const int level = (int)(near * near * (SHOW_BG_N - 1) * 0.75f);
+                if (level > glow) {
+                    c = (uint8_t)(BOARD_FLOOR + level);
+                }
+            }
+        }
+    }
+    return c;
+}
+
 /* The floor's grid, fading into the distance, and the glow on the horizon:
- * where no solid is (drawn after them). The ray moves by cam.r a pixel, so
- * a pixel takes one division. */
+ * where no solid is (drawn after them). The ray moves by cam.r a pixel. It
+ * is worked out in perspective every FLOOR_SPAN pixels and in a straight
+ * line between (as games did), where a span is all below the horizon; a
+ * span the horizon crosses, every pixel. */
 static void board_floor(uint8_t *fb) {
-    const float far = 9000, per_far = 1 / far, per_grid = 1 / BOARD_GRID, per_focal = 1 / cam.focal;
+    const float per_grid = 1 / BOARD_GRID, per_focal = 1 / cam.focal, h = cam.pos[2];
     for (int y = 0; y < draw_h; y++) {
         const float sy = draw_h * 0.5f - (y + 0.5f), sx0 = 0.5f - draw_w * 0.5f;
         /* the ray through this row's first pixel, the lens's length on: a step across it is a pixel */
@@ -3737,32 +3766,42 @@ static void board_floor(uint8_t *fb) {
         }
         uint8_t *row = fb + y * FX_W;
         const uint8_t *ids = canvas + y * FX_W;
-        for (int x = 0; x < draw_w; x++, ray[0] += cam.r[0], ray[1] += cam.r[1], ray[2] += cam.r[2]) {
-            if (ids[x]) {
-                continue;
+        for (int x0 = 0; x0 < draw_w; x0 += FLOOR_SPAN) {
+            const int x1 = x0 + FLOOR_SPAN < draw_w ? x0 + FLOOR_SPAN : draw_w; /* the next span's first */
+            const int n = x1 - x0;
+            float a[3], b[3];
+            for (int c = 0; c < 3; c++) {
+                a[c] = ray[c] + cam.r[c] * x0;
+                b[c] = ray[c] + cam.r[c] * x1;
             }
-            const float rise = ray[2] * per_focal; /* near enough how far above the horizon */
-            int glow = (int)((1 - fabsf(rise) * 7) * (SHOW_BG_N - 1));
-            uint8_t c = glow > 0 ? (uint8_t)(BOARD_SKY + glow) : BOARD_SKY;
-            if (ray[2] < 0) {
-                const float t = -cam.pos[2] / ray[2]; /* a pixel's width, there */
-                const float depth = t * cam.focal;
-                if (depth < far) {
-                    float gx = (cam.pos[0] + t * ray[0]) * per_grid + 1000.5f;
-                    float gy = (cam.pos[1] + t * ray[1]) * per_grid + 1000.5f;
-                    gx = fabsf(gx - (float)(int)gx - 0.5f) * BOARD_GRID;
-                    gy = fabsf(gy - (float)(int)gy - 0.5f) * BOARD_GRID;
-                    const float width = 0.55f * t + 1.5f;
-                    if (gx < width || gy < width) {
-                        const float near = 1 - depth * per_far;
-                        const int level = (int)(near * near * (SHOW_BG_N - 1) * 0.75f);
-                        if (level > glow) {
-                            c = (uint8_t)(BOARD_FLOOR + level);
+            if (a[2] < 0 && b[2] < 0) {
+                const float ta = -h / a[2], tb = -h / b[2];
+                {
+                    /* in perspective at both ends, in a straight line between */
+                    const float per_n = 1.0f / n;
+                    float t = ta, gx = (cam.pos[0] + ta * a[0]) * per_grid + 1000.5f,
+                          gy = (cam.pos[1] + ta * a[1]) * per_grid + 1000.5f, rise = a[2] * per_focal;
+                    const float dt = (tb - ta) * per_n,
+                                dgx = ((cam.pos[0] + tb * b[0]) * per_grid + 1000.5f - gx) * per_n,
+                                dgy = ((cam.pos[1] + tb * b[1]) * per_grid + 1000.5f - gy) * per_n,
+                                drise = cam.r[2] * per_focal;
+                    for (int x = x0; x < x1; x++, t += dt, gx += dgx, gy += dgy, rise += drise) {
+                        if (!ids[x]) {
+                            row[x] = floor_pixel(rise, t, gx, gy);
                         }
                     }
+                    continue;
                 }
             }
-            row[x] = c;
+            /* a span the horizon crosses (or above it): every pixel */
+            for (int x = x0; x < x1; x++, a[0] += cam.r[0], a[1] += cam.r[1], a[2] += cam.r[2]) {
+                if (ids[x]) {
+                    continue;
+                }
+                const float t = a[2] < 0 ? -h / a[2] : 0;
+                row[x] = floor_pixel(a[2] * per_focal, t, (cam.pos[0] + t * a[0]) * per_grid + 1000.5f,
+                                     (cam.pos[1] + t * a[1]) * per_grid + 1000.5f);
+            }
         }
     }
 }
