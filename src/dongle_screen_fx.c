@@ -91,6 +91,7 @@
 
 #include "dongle_backlight.h"
 #include "dongle_wpm.h"
+#include "half_goodbye.h"
 #if IS_ENABLED(CONFIG_DONGLE_HALF_INFO)
 #include "dongle_half_info.h"
 #endif
@@ -705,9 +706,11 @@ static void readings_cb(struct k_work *work) {
         memcpy(readings.half_reads, half_reads, sizeof(half_reads));
         memcpy(readings.half_err, half_err, sizeof(half_err));
         /* this second in the histories */
+        /* a half away (asleep, updating) is a gap in them, not trouble */
+        const bool away[3] = {debug.half[0].away && !link[0].up, debug.half[1].away && !link[1].up, false};
         for (int i = 0; i < 3 && active; i++) {
             memmove(readings.signal_log[i], readings.signal_log[i] + 1, FX_HISTORY - 1);
-            readings.signal_log[i][FX_HISTORY - 1] = i == 2 && usb_out ? 0
+            readings.signal_log[i][FX_HISTORY - 1] = (i == 2 && usb_out) || away[i] ? 0
                                                      : !link[i].up     ? FX_SIGNAL_DOWN
                                                      : link[i].rssi_known ? (int8_t)CLAMP(link[i].rssi, -127, -1)
                                                                           : 0;
@@ -725,7 +728,7 @@ static void readings_cb(struct k_work *work) {
             }
         }
         for (int i = 0; i < 3; i++) {
-            const int8_t now = !active                ? FX_CONN_IDLE
+            const int8_t now = !active || away[i]     ? FX_CONN_IDLE
                                : i == 2 && usb_out ? (usb_state == ZMK_USB_CONN_HID ? FX_CONN_USB : FX_SIGNAL_DOWN)
                                : !link[i].up          ? FX_SIGNAL_DOWN
                                : link[i].rssi_known   ? (int8_t)CLAMP(link[i].rssi, -127, -2)
@@ -1824,6 +1827,7 @@ static void link_connected(struct bt_conn *conn, uint8_t err) {
     if (half >= 0) {
         K_SPINLOCK(&debug_lock) {
             half_conn[half] = conn;
+            debug.half[half].away = 0;
         }
     }
 }
@@ -1840,7 +1844,16 @@ static void link_disconnected(struct bt_conn *conn, uint8_t reason) {
                 link = &debug.host;
             }
         }
+        /* a half that said it was going to sleep or into its bootloader
+         * (src/half_goodbye.c) is away, not dropped */
+        const uint8_t away = link == NULL || link == &debug.host ? 0
+                             : reason == HALF_GOODBYE_SLEEP      ? FX_AWAY_SLEEP
+                             : reason == HALF_GOODBYE_UPDATE     ? FX_AWAY_UPDATE
+                                                                 : 0;
         if (link != NULL) {
+            link->away = away;
+        }
+        if (link != NULL && !away) {
             link->drops = MIN(link->drops + 1, UINT16_MAX);
             link->reason = reason;
         }

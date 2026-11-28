@@ -122,6 +122,10 @@ static inline int8_t fx_conn_worse(int8_t a, int8_t b) {
 #define FX_RSSI_ERR_HANDLE 254
 #define FX_RSSI_ERR_BUFFER 255
 
+/* fx_link.away: why a half is down, when it said (src/half_goodbye.c) */
+#define FX_AWAY_SLEEP 1  /* asleep: shown grey */
+#define FX_AWAY_UPDATE 2 /* in its bootloader, being updated: flashing green */
+
 /* A Bluetooth link: to a half, or to the computer. */
 struct fx_link {
     bool up;
@@ -130,6 +134,7 @@ struct fx_link {
     uint8_t rssi_err;  /* up, but its signal couldn't be read: why (fx.c's debug_link), else 0 */
     uint16_t drops;    /* times it has been lost since power-up */
     uint8_t reason;    /* Bluetooth's reason for the last loss (0: none yet) */
+    uint8_t away;      /* a half down that said why: FX_AWAY_*, else 0 (not counted in drops) */
 };
 
 struct fx_event {

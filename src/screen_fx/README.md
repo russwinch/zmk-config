@@ -44,6 +44,11 @@ A bolt means the half is on USB power; while charging, the Typist, Status and
 Debug screens show the dongle's estimate of its level (ZMK's own reads near
 100 from the charger).
 
+A half that isn't connected is red on Typist, Status and Debug, unless it
+said why as it went: grey and `SLEEP` when it went to sleep, flashing green
+and `UPDATE` while the Keyboard Writer app (or a bootloader key) updates it.
+Neither counts as a drop.
+
 The typing speed is counted as a typing test does: characters less
 backspaces, five to a word, over the last 10 seconds.
 
@@ -66,8 +71,8 @@ They are one line each in `colors.h`.
 | --- | --- |
 | lights along the top | the typing speed, a light per 8 wpm: green, red, then violet from 88 |
 | under them | the typing speed, big |
-| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer; all of a half red while it isn't connected. Encoders are knobs that turn with them, the Waterfowl's rollers rolling sideways |
-| bottom left, bottom right | each half's battery, its signal's bars (green, amber, red) beside it |
+| the board | drawn as it is, as in the README: keys white while held and glowing after, orange holding a modifier, violet holding a layer; all of a half red while it isn't connected (grey asleep, flashing green updating). Encoders are knobs that turn with them, the Waterfowl's rollers rolling sideways |
+| bottom left, bottom right | each half's battery, its signal's bars (green, amber, red) beside it; `SLEEP` or `UPDATE` instead while it is away |
 | bottom middle | the waves and the profile number (green when connected, white when paired, dim when free) or `USB` (green: listening, amber: computer asleep); after you switch profile, the new one flashes here for 3 s, even over USB |
 
 ## Status
@@ -76,8 +81,8 @@ Laid out like a racing car's steering wheel display.
 
 | Part | Shows |
 | --- | --- |
-| signals along the top | each link's dBm (`--` in red when down); in the middle the waves and the profile number (coloured as on Typist) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
-| connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: a dim line while all was well, and only trouble in colour, taller the worse: a short amber line for a weak signal, a taller red one for a red signal, a full-height red one where the link was down; a gap where the keyboard was idle (the halves may have been asleep) |
+| signals along the top | each link's dBm (`--` in red when down, a half's `SLEEP` in grey or `UPDATE` in green when it said why); in the middle the waves and the profile number (coloured as on Typist) and the computer's dBm, or over USB `USB` (green when ready, amber when the computer sleeps); after you switch profile, the new one flashes there for 3 s |
+| connection strips | under each Bluetooth link (none for the computer over USB), its last 40 minutes, a minute a step: a dim line while all was well, and only trouble in colour, taller the worse: a short amber line for a weak signal, a taller red one for a red signal, a full-height red one where the link was down; a gap where the keyboard was idle (the halves may have been asleep) or a half was asleep or updating |
 | the keys | as they are on the board, lit as on Typist |
 | between the halves | only if something has gone wrong, one a line, worst at the top: `HANG` or `CRSH` (the dongle restarted), `CH` charging state failed, `UE` USB reports not taken, `DR` the computer's link dropped, the dongle's temperature from 60 °C |
 | over each battery | `DR` and how often that half's link has dropped, if it has |
@@ -97,13 +102,13 @@ speed is on Typist, the battery levels on Typist and Status.
 | `MEM 62% UE3` | LVGL memory used; only if there are any, `UE` and the USB reports the computer didn't take |
 | `L3 NAV ⌃⌥⇧⌘` | the top layer and its name; the modifiers, lit while held |
 | last line | the last key, keycode or encoder event, with the ms since the one before |
-| key map | every key, lit while held; all of a half red while it isn't connected. A key that doesn't light isn't reaching the dongle |
+| key map | every key, lit while held; all of a half red while it isn't connected (grey asleep, flashing green updating). A key that doesn't light isn't reaching the dongle |
 
 | Row | Shows |
 | --- | --- |
-| `dBm` | signal: green above -85 (all is well), amber to -90 (packets start going missing: move the dongle closer), red below (the link is about to drop). `E` and a code when the radio wouldn't say; `USB` while typing over it |
+| `dBm` | signal: green above -85 (all is well), amber to -90 (packets start going missing: move the dongle closer), red below (the link is about to drop). `E` and a code when the radio wouldn't say; `USB` while typing over it; a half's `SLEEP` or `UPDATE` while it is away |
 | chart under `dBm` | the signal's last 30 minutes, a column a minute (the weakest in it): weak minutes solid amber or red, a full red column where the link was down, full over USB, nothing while idle |
-| `DROPS` | times the link was lost since the dongle started, then why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
+| `DROPS` | times the link was lost since the dongle started (not a half going to sleep or being updated), then why the last: `08` went silent, `13` the other end closed it, `16` the dongle did, `3E` never got going |
 | `%` | the battery's level: amber at 15 or under, red at 10; the dongle's estimate while charging (ZMK's reads high), a bolt while on USB power |
 | `V` | the battery's volts, to the millivolt (dim while charging: the charger's); the dongle's own 3.3 V supply |
 | chart under `V` | the last 30 minutes of them, a column a minute, scaled to fit (at least 60 mV top to bottom) |
