@@ -37,6 +37,11 @@ target_sources_ifdef(CONFIG_WATERFOWL_HALF_STATUS_SCREEN app PRIVATE
 # all whichever status screen layout is chosen
 target_sources_ifdef(CONFIG_DONGLE_SCREEN_FX app PRIVATE
   src/dongle_screen_fx.c src/screen_fx/fx.c src/screen_fx/status_overlay.c)
+# The animations and the frame sending for speed rather than size (ZMK builds
+# -Os): the frame rate is what they are short of, not flash.
+if(CONFIG_DONGLE_SCREEN_FX)
+  set_source_files_properties(src/dongle_screen_fx.c src/screen_fx/fx.c PROPERTIES COMPILE_OPTIONS -O2)
+endif()
 # the CI run that built it, as the Debug screen shows it: the release Keyboard
 # Writer lists for it is build-<that number>
 if(DEFINED ENV{GITHUB_RUN_NUMBER})
