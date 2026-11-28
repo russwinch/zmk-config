@@ -10,6 +10,27 @@
 - If `main` has moved on, rebase the branch onto it first and wait for the
   build again.
 
+## Commits
+
+Each build's release, which Keyboard Writer lists, is titled with its newest
+commit's subject, so write that line for the person picking a build:
+
+- Say what changes on the keyboard or dongle, area first: "Board: dials and
+  rollers turn", "Keymap: Esc on the left thumb", "Waterfowl: rollers scroll
+  faster". Under about 70 characters; no file or function names, no "fix
+  stuff", "updates", "WIP".
+- The body: why, what to look out for, and anything the flasher must know
+  (which devices, a settings reset).
+- One change a commit (a fix apart from a feature), so a build that breaks
+  can be found by stepping back through them.
+- No merge commits: their "Merge branch ..." subject says nothing. When a
+  push is refused because a workflow ("Draw keymap", "Draw screens")
+  committed in the meantime, `git pull --rebase origin <branch>` and push
+  again: that only replays your own unpushed commits on top of the
+  workflow's; never merge, never force-push.
+- Cloud sessions work on a branch with a made-up name (`claude/<words>`). The
+  release title leaves such a name out, so the subject has to say it all.
+
 ## Repo notes
 
 - The keymap lives in `config/keymap.dtsi`; each `config/<shield>.keymap` only
