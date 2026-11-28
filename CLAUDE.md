@@ -159,7 +159,9 @@ user's own computer: a cloud session can't see USB drives.
 - Board reuses Showroom's solids, camera and palette layout (coloured
   from the theme in `board_colors`, its own entries after Showroom's), and
   swaps the backdrop, ink and glint for its floor, edges and glow. The
-  dongle's screen shows a 35x30 copy of the last frame (`FILL_PICTURE`). Shortcuts
+  dongle's screen shows a 35x30 copy of the last frame (`FILL_PICTURE`), its
+  own screen blank in it and held during a shot of the dongle. The floor is
+  drawn after the solids, only where none is. Shortcuts
   reach it as `fx_input`'s `combo_mods`/`combo_key`, filled in
   `src/dongle_screen_fx.c` (`shortcut`).
 - Themes: one line each in `src/screen_fx/colors.h`. Dark ones are on pure

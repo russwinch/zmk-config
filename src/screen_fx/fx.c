@@ -2556,34 +2556,40 @@ static void part_point(float *out, const struct fx_part *p, float u, float v, fl
 
 enum { FILL_SOLID, FILL_GLINT, FILL_FLOOR_SHADOW, FILL_TOP_SHADOW, FILL_PICTURE };
 
-/* What the dongle's screen shows at pixel (x, y): where the ray through it
- * meets the screen, in show_thumb. */
-static uint8_t show_picture_at(int x, int y) {
+/* What the dongle's screen shows along row y from x0 to x1: where the ray
+ * through each pixel meets the screen, in show_thumb. The ray moves by
+ * cam.r a pixel, so all but one division is worked out once for the row. */
+static void show_picture_row(uint8_t *row, int x0, int x1, int y) {
     float d[3], o[3];
     for (int c = 0; c < 3; c++) {
-        d[c] = cam.f[c] * cam.focal + cam.r[c] * (x + 0.5f - FX_W / 2) + cam.u[c] * (FX_H / 2 - (y + 0.5f));
+        d[c] = cam.f[c] * cam.focal + cam.r[c] * (x0 + 0.5f - FX_W / 2) + cam.u[c] * (FX_H / 2 - (y + 0.5f));
         o[c] = show_scr_o[c] - cam.pos[c];
     }
-    const float across = dot3(d, show_scr_n);
-    if (across > -1e-6f && across < 1e-6f) {
-        return show_thumb[0][0];
+    const float xx = THUMB_W / dot3(show_scr_x, show_scr_x), yy = THUMB_H / dot3(show_scr_y, show_scr_y);
+    const float on = dot3(o, show_scr_n), ox = dot3(o, show_scr_x) * xx, oy = dot3(o, show_scr_y) * yy;
+    float across = dot3(d, show_scr_n), dx = dot3(d, show_scr_x) * xx, dy = dot3(d, show_scr_y) * yy;
+    const float across_step = dot3(cam.r, show_scr_n), dx_step = dot3(cam.r, show_scr_x) * xx,
+                dy_step = dot3(cam.r, show_scr_y) * yy;
+    for (int x = x0; x <= x1; x++) {
+        if (across > -1e-6f && across < 1e-6f) {
+            row[x] = show_thumb[0][0];
+        } else {
+            const float t = on / across;
+            const int tx = (int)clampf(t * dx - ox, 0, THUMB_W - 0.001f);
+            const int ty = (int)clampf(t * dy - oy, 0, THUMB_H - 0.001f);
+            row[x] = show_thumb[ty][tx];
+        }
+        across += across_step;
+        dx += dx_step;
+        dy += dy_step;
     }
-    const float t = dot3(o, show_scr_n) / across;
-    float p[3];
-    for (int c = 0; c < 3; c++) {
-        p[c] = t * d[c] - o[c];
-    }
-    const float u = dot3(p, show_scr_x) / dot3(show_scr_x, show_scr_x);
-    const float v = dot3(p, show_scr_y) / dot3(show_scr_y, show_scr_y);
-    const int tx = (int)(clampf(u, 0, 0.999f) * THUMB_W), ty = (int)(clampf(v, 0, 0.999f) * THUMB_H);
-    return show_thumb[ty][tx];
 }
 
 /* Fill the face whose points, in the camera's space, are `pts`: in `color`,
  * marking the canvas with show_id; or as `mode` says. */
 static void show_fill(uint8_t *fb, float (*pts)[3], int n, uint8_t color, uint8_t mode, uint8_t from_id) {
     /* off the near side (static: there is one display thread, and its stack is small) */
-    static float clipped[SHOW_PTS + 4][3], xy[SHOW_PTS + 4][2];
+    static float clipped[SHOW_PTS + 4][3], xy[SHOW_PTS + 5][2];
     int m = 0;
     for (int i = 0; i < n; i++) {
         const float *a = pts[i], *b = pts[(i + 1) % n];
@@ -2604,10 +2610,19 @@ static void show_fill(uint8_t *fb, float (*pts)[3], int n, uint8_t color, uint8_
     }
     float top = FX_H, bottom = -1;
     for (int i = 0; i < m; i++) {
-        xy[i][0] = FX_W / 2 + cam.focal * clipped[i][0] / clipped[i][2];
-        xy[i][1] = FX_H / 2 - cam.focal * clipped[i][1] / clipped[i][2];
+        const float per_z = cam.focal / clipped[i][2];
+        xy[i][0] = FX_W / 2 + clipped[i][0] * per_z;
+        xy[i][1] = FX_H / 2 - clipped[i][1] * per_z;
         top = xy[i][1] < top ? xy[i][1] : top;
         bottom = xy[i][1] > bottom ? xy[i][1] : bottom;
+    }
+    /* each edge's x across a row down it, once, not on every row it crosses */
+    static float slope[SHOW_PTS + 4];
+    xy[m][0] = xy[0][0];
+    xy[m][1] = xy[0][1];
+    for (int i = 0; i < m; i++) {
+        const float dy = xy[i + 1][1] - xy[i][1];
+        slope[i] = dy != 0 ? (xy[i + 1][0] - xy[i][0]) / dy : 0;
     }
     const uint8_t glint = color + (BAND_GLINT - (color - SHOW_MAT) % SHOW_BANDS);
     for (int y = top < 0 ? 0 : (int)top; y < FX_H && y <= (int)bottom; y++) {
@@ -2615,9 +2630,9 @@ static void show_fill(uint8_t *fb, float (*pts)[3], int n, uint8_t color, uint8_
         float xs[32];
         int k = 0;
         for (int i = 0; i < m && k < 32; i++) {
-            const float *a = xy[i], *b = xy[(i + 1) % m];
+            const float *a = xy[i], *b = xy[i + 1];
             if ((a[1] <= yc) != (b[1] <= yc)) {
-                const float x = a[0] + (yc - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+                const float x = a[0] + (yc - a[1]) * slope[i];
                 int j = k++;
                 for (; j > 0 && xs[j - 1] > x; j--) {
                     xs[j] = xs[j - 1];
@@ -2629,33 +2644,48 @@ static void show_fill(uint8_t *fb, float (*pts)[3], int n, uint8_t color, uint8_
             int x0 = (int)ceilf(xs[c] - 0.5f), x1 = (int)floorf(xs[c + 1] - 0.5f);
             x0 = x0 < 0 ? 0 : x0;
             x1 = x1 >= FX_W ? FX_W - 1 : x1;
+            if (x1 < x0) {
+                continue;
+            }
             uint8_t *row = fb + y * FX_W, *ids = canvas + y * FX_W;
-            for (int x = x0; x <= x1; x++) {
-                switch (mode) {
-                case FILL_FLOOR_SHADOW:
+            switch (mode) {
+            case FILL_FLOOR_SHADOW:
+                for (int x = x0; x <= x1; x++) {
                     if (ids[x] == 0 && row[x] >= SHOW_BG && row[x] < SHOW_SHADOWED) {
                         row[x] += SHOW_BG_N;
                     }
-                    break;
-                case FILL_TOP_SHADOW:
+                }
+                break;
+            case FILL_TOP_SHADOW:
+                for (int x = x0; x <= x1; x++) {
                     if (ids[x] >= from_id && row[x] >= SHOW_MAT && row[x] < SHOW_MAT + 2 * SHOW_BANDS) {
                         row[x] -= (row[x] - SHOW_MAT) % SHOW_BANDS; /* the case or the cover, in shadow */
                     }
-                    break;
-                case FILL_PICTURE:
-                    row[x] = show_picture_at(x, y);
-                    ids[x] = show_id;
-                    break;
-                case FILL_GLINT: {
-                    const float g = x + y * 0.5f - show_glint;
-                    row[x] = g >= 0 && g < 5 ? glint : color;
-                    ids[x] = show_id;
-                    break;
                 }
-                default:
-                    row[x] = color;
-                    ids[x] = show_id;
+                break;
+            case FILL_PICTURE:
+                show_picture_row(row, x0, x1, y);
+                memset(ids + x0, show_id, x1 - x0 + 1);
+                break;
+            case FILL_GLINT: {
+                memset(row + x0, color, x1 - x0 + 1);
+                memset(ids + x0, show_id, x1 - x0 + 1);
+                /* the glint's band: x + y / 2 - show_glint from 0 to 5 */
+                const float from = show_glint - y * 0.5f;
+                if (from + 6 >= x0 && from - 1 <= x1) {
+                    const int g0 = (int)from - 1 > x0 ? (int)from - 1 : x0, g1 = (int)from + 6 < x1 ? (int)from + 6 : x1;
+                    for (int x = g0; x <= g1; x++) {
+                        const float g = x + y * 0.5f - show_glint;
+                        if (g >= 0 && g < 5) {
+                            row[x] = glint;
+                        }
+                    }
                 }
+                break;
+            }
+            default:
+                memset(row + x0, color, x1 - x0 + 1);
+                memset(ids + x0, show_id, x1 - x0 + 1);
             }
         }
     }
@@ -3551,6 +3581,7 @@ static float board_since;  /* since the last shortcut */
 static uint8_t board_count; /* shortcuts one after another */
 static uint8_t board_aim;   /* the key the camera is on */
 static uint8_t board_flicker;
+static bool board_on_dongle; /* the shot is of the dongle's screen */
 static char board_label[12];
 
 static int direction(float dx, float dy);
@@ -3599,6 +3630,7 @@ static void board_cut_dongle(void) {
     board_drift.dist = -board_now.dist * 0.006f;
     board_drift.yaw = rndf() * 0.3f;
     board_shot = 50 - 25 * board_pace;
+    board_on_dongle = true;
 }
 
 static void board_cut(int key, bool hard) {
@@ -3624,6 +3656,7 @@ static void board_cut(int key, bool hard) {
     board_drift.pitch = rndf() * 0.3f;
     board_shot = (60 - 48 * pace) * (0.85f + 0.3f * (rndf() * 0.5f + 0.5f));
     board_aim = (uint8_t)key;
+    board_on_dongle = false;
 }
 
 static int brightness_of(struct color c) { return c.r * 3 + c.g * 6 + c.b; }
@@ -3677,9 +3710,13 @@ static void board_colors(uint16_t *palette) {
     palette[BOARD_SHADE] = color565(mix(light ? paper : black, t->layer, 70));
 }
 
+static void board_looks(void);
+
 static void board_start(uint16_t *palette) {
     showroom_start(palette); /* the board's size, the lights, the keys' glow; board_colors colours it */
     show_halves = true;      /* each half as half_look has it */
+    board_looks();
+    show_screen_id = 0; /* the canvas is another screen's until the first frame */
     show_glint = -10000; /* no glint sweeping over it */
     show_live = true;    /* the dongle's screen shows the last frame */
     board_pace = 0;
@@ -3687,6 +3724,7 @@ static void board_start(uint16_t *palette) {
     board_shot = 0;
     board_pan = 0;
     board_impact = -1;
+    board_on_dongle = false;
     board_shown = 0;
     board_since = 1000;
     board_count = 0;
@@ -3694,39 +3732,46 @@ static void board_start(uint16_t *palette) {
     memset(&board_drift, 0, sizeof(board_drift));
 }
 
-/* The floor's grid, fading into the distance, and the glow on the horizon. */
+/* The floor's grid, fading into the distance, and the glow on the horizon:
+ * where no solid is (drawn after them). The ray moves by cam.r a pixel, so
+ * a pixel takes one division. */
 static void board_floor(uint8_t *fb) {
-    const float far = 9000;
+    const float far = 9000, per_far = 1 / far, per_grid = 1 / BOARD_GRID, per_focal = 1 / cam.focal;
     for (int y = 0; y < FX_H; y++) {
-        const float sy = FX_H / 2 - (y + 0.5f);
-        for (int x = 0; x < FX_W; x++) {
-            const float sx = x + 0.5f - FX_W / 2;
-            /* the ray through this pixel, the lens's length on: a step across it is a pixel */
-            float ray[3];
-            for (int c = 0; c < 3; c++) {
-                ray[c] = cam.f[c] * cam.focal + cam.r[c] * sx + cam.u[c] * sy;
+        const float sy = FX_H / 2 - (y + 0.5f), sx0 = 0.5f - FX_W / 2;
+        /* the ray through this row's first pixel, the lens's length on: a step across it is a pixel */
+        float ray[3];
+        for (int c = 0; c < 3; c++) {
+            ray[c] = cam.f[c] * cam.focal + cam.r[c] * sx0 + cam.u[c] * sy;
+        }
+        uint8_t *row = fb + y * FX_W;
+        const uint8_t *ids = canvas + y * FX_W;
+        for (int x = 0; x < FX_W; x++, ray[0] += cam.r[0], ray[1] += cam.r[1], ray[2] += cam.r[2]) {
+            if (ids[x]) {
+                continue;
             }
-            const float rise = ray[2] / cam.focal; /* near enough how far above the horizon */
+            const float rise = ray[2] * per_focal; /* near enough how far above the horizon */
             int glow = (int)((1 - fabsf(rise) * 7) * (SHOW_BG_N - 1));
             uint8_t c = glow > 0 ? (uint8_t)(BOARD_SKY + glow) : BOARD_SKY;
             if (ray[2] < 0) {
                 const float t = -cam.pos[2] / ray[2]; /* a pixel's width, there */
                 const float depth = t * cam.focal;
                 if (depth < far) {
-                    float gx = (cam.pos[0] + t * ray[0]) / BOARD_GRID + 1000.5f;
-                    float gy = (cam.pos[1] + t * ray[1]) / BOARD_GRID + 1000.5f;
+                    float gx = (cam.pos[0] + t * ray[0]) * per_grid + 1000.5f;
+                    float gy = (cam.pos[1] + t * ray[1]) * per_grid + 1000.5f;
                     gx = fabsf(gx - (float)(int)gx - 0.5f) * BOARD_GRID;
                     gy = fabsf(gy - (float)(int)gy - 0.5f) * BOARD_GRID;
                     const float width = 0.55f * t + 1.5f;
                     if (gx < width || gy < width) {
-                        const int level = (int)((1 - depth / far) * (1 - depth / far) * (SHOW_BG_N - 1) * 0.75f);
+                        const float near = 1 - depth * per_far;
+                        const int level = (int)(near * near * (SHOW_BG_N - 1) * 0.75f);
                         if (level > glow) {
                             c = (uint8_t)(BOARD_FLOOR + level);
                         }
                     }
                 }
             }
-            fb[y * FX_W + x] = c;
+            row[x] = c;
         }
     }
 }
@@ -3741,9 +3786,27 @@ static inline bool board_hot_at(uint8_t c) {
            (c >= BOARD_CREASE + MAT_HOT && c < BOARD_CREASE + SHOW_MATS);
 }
 
+/* What each colour is to the edges and the glow (board_looks): */
+#define LOOK_HOT 1  /* a glowing key's (board_hot_at) */
+#define LOOK_DARK 2 /* the case's or the cover's, which the glow shows on */
+static uint8_t board_look[256];
+
+static void board_looks(void) {
+    for (int c = 0; c < 256; c++) {
+        board_look[c] = (board_hot_at((uint8_t)c) ? LOOK_HOT : 0) |
+                        (c >= SHOW_MAT && c < SHOW_MAT + 2 * SHOW_BANDS ? LOOK_DARK : 0);
+    }
+}
+
+/* Where the glowing keys are, from board_edges_draw: x0 > x1 when none are. */
+static int hot_x0, hot_x1, hot_y0, hot_y1;
+
 /* The edges: round each solid (on its pixels next to one drawn before it,
- * as show_ink), and dimmer where two of its faces meet. */
+ * as show_ink), and dimmer where two of its faces meet. And where the
+ * glowing keys are, for board_glow. */
 static void board_edges_draw(uint8_t *fb) {
+    hot_x0 = hot_y0 = FX_W + FX_H;
+    hot_x1 = hot_y1 = -1;
     for (int y = 0; y < FX_H; y++) {
         for (int x = 0; x < FX_W; x++) {
             const int i = y * FX_W + x;
@@ -3760,23 +3823,36 @@ static void board_edges_draw(uint8_t *fb) {
                 /* those to the right and below are not drawn over yet; not across the dongle's picture */
                 fb[i] = (uint8_t)(BOARD_CREASE + m);
             }
+            if (board_look[fb[i]] & LOOK_HOT) {
+                hot_x0 = x < hot_x0 ? x : hot_x0;
+                hot_x1 = x > hot_x1 ? x : hot_x1;
+                hot_y0 = y < hot_y0 ? y : hot_y0;
+                hot_y1 = y > hot_y1 ? y : hot_y1;
+            }
         }
     }
 }
 
-/* The glow round a pressed key: on the floor and the case beside it. */
+/* The glow round a pressed key: on the floor and the case beside it, two
+ * pixels out from where the glowing keys are. */
 static void board_glow(uint8_t *fb) {
+    if (hot_x1 < hot_x0) {
+        return;
+    }
     for (int pass = 0; pass < 2; pass++) {
         const uint8_t to = (uint8_t)(BOARD_GLOW + pass);
-        for (int y = 0; y < FX_H; y++) {
-            for (int x = 0; x < FX_W; x++) {
+        const int x0 = hot_x0 > 1 + pass ? hot_x0 - 1 - pass : 0, y0 = hot_y0 > 1 + pass ? hot_y0 - 1 - pass : 0;
+        const int x1 = hot_x1 + 1 + pass < FX_W ? hot_x1 + 1 + pass : FX_W - 1;
+        const int y1 = hot_y1 + 1 + pass < FX_H ? hot_y1 + 1 + pass : FX_H - 1;
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x <= x1; x++) {
                 const int i = y * FX_W + x;
                 const uint8_t c = fb[i];
-                const bool dark = !canvas[i] || (c >= SHOW_MAT && c < SHOW_MAT + 2 * SHOW_BANDS);
+                const bool dark = !canvas[i] || (board_look[c] & LOOK_DARK);
                 if (!dark || c == BOARD_GLOW) {
                     continue;
                 }
-#define BOARD_NEAR(j) (pass ? fb[j] == BOARD_GLOW : board_hot_at(fb[j]))
+#define BOARD_NEAR(j) (pass ? fb[j] == BOARD_GLOW : (board_look[fb[j]] & LOOK_HOT))
                 if ((x > 0 && BOARD_NEAR(i - 1)) || (x < FX_W - 1 && BOARD_NEAR(i + 1)) ||
                     (y > 0 && BOARD_NEAR(i - FX_W)) || (y < FX_H - 1 && BOARD_NEAR(i + FX_W))) {
                     fb[i] = to;
@@ -3880,10 +3956,16 @@ static void board_label_draw(uint8_t *fb, bool impact) {
 
 static void board_frame(uint8_t *fb, const struct fx_input *in) {
     show_heat_step(in);
-    /* the last frame, small, for the dongle's screen (it is still in fb) */
-    for (int y = 0; y < THUMB_H; y++) {
-        for (int x = 0; x < THUMB_W; x++) {
-            show_thumb[y][x] = fb[(y * 4 + 2) * FX_W + x * 4 + 2];
+    /* the last frame, small, for the dongle's screen (it is still in fb, and
+     * which solid each pixel was in canvas): one picture deep, not a mirror
+     * in a mirror. Its own screen in it is blank, and in a shot of the
+     * dongle it keeps the last picture from before. */
+    if (!board_on_dongle) {
+        for (int y = 0; y < THUMB_H; y++) {
+            for (int x = 0; x < THUMB_W; x++) {
+                const int i = (y * 4 + 2) * FX_W + x * 4 + 2;
+                show_thumb[y][x] = show_screen_id && canvas[i] == show_screen_id ? SHOW_PICTURE : fb[i];
+            }
         }
     }
     const bool was_calm = board_quiet > BOARD_CALM;
@@ -3925,6 +4007,7 @@ static void board_frame(uint8_t *fb, const struct fx_input *in) {
     /* the camera: drifting in its shot, or easing back to the whole board */
     const float s = in->step;
     if (board_quiet > BOARD_CALM) {
+        board_on_dongle = false; /* pulling back */
         board_pan += 0.006f * s;
         struct board_view wide;
         board_wide(&wide);
@@ -3954,7 +4037,6 @@ static void board_frame(uint8_t *fb, const struct fx_input *in) {
         }
     }
 
-    board_floor(fb);
     memset(canvas, 0, PIXELS);
     show_id = 0;
     show_dongle(fb);
@@ -3962,6 +4044,9 @@ static void board_frame(uint8_t *fb, const struct fx_input *in) {
     show_half(fb, in, cam.pos[0] > 0 ? -1 : 1);
 
     const bool impact = board_impact >= 0 && board_impact < BOARD_IMPACT;
+    if (!impact) {
+        board_floor(fb); /* round the solids: the impact frame draws its own */
+    }
     if (impact) {
         float at[3], c[3];
         board_key_at(board_aim, at);
