@@ -1413,30 +1413,41 @@ static void frame_cb(struct k_work *work) {
         slot_frames = slot_ms = 0;
     }
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
-    /* frames a second, then the last frame's time drawing it and waiting
-     * for the one before to be sent, ms; under it, its stages' (Board's),
-     * and the last sending's: all of it, the CPU's work, the wait on SPI */
-    static uint32_t fps_from, fps_frames, wait_us;
+    /* frames a second, then each frame's time drawing it and waiting for
+     * the one before to be sent, ms; under it, its stages' (Board's), and
+     * the sending's: all of it, the CPU's work, the wait on SPI. Averaged
+     * over a second and changing once a second, so that they can be read. */
+    enum { T_DRAW, T_WAIT, T_SEND, T_SPI, TIMES };
+    static uint32_t fps_from, fps_frames, wait_us, sum_us[TIMES], avg_ms[TIMES];
     static uint8_t fps_shown;
     const uint32_t drawn = k_uptime_get_32();
+    sum_us[T_DRAW] += (drawn - now) * 1000;
+    sum_us[T_WAIT] += wait_us;
+    sum_us[T_SEND] += sent_us;
+    sum_us[T_SPI] += sent_spi_us;
     fps_frames++;
     if (drawn - fps_from >= 1000) {
         fps_shown = (uint8_t)MIN(fps_frames * 1000 / (drawn - fps_from), 99);
+        for (int i = 0; i < TIMES; i++) {
+            avg_ms[i] = MIN((sum_us[i] / fps_frames + 500) / 1000, 99);
+            sum_us[i] = 0;
+        }
         fps_from = drawn;
         fps_frames = 0;
     }
     if (!plain) {
         char text[28];
-        snprintf(text, sizeof(text), "%uFPS DRAW%u WAIT%u", fps_shown, (unsigned)MIN(drawn - now, 999),
-                 (unsigned)MIN((wait_us + 500) / 1000, 999));
+        snprintf(text, sizeof(text), "%2uFPS DRAW%2u WAIT%2u", fps_shown, (unsigned)avg_ms[T_DRAW],
+                 (unsigned)avg_ms[T_WAIT]);
         fx_draw_rate(frame, 0, text);
         fx_stage_text(text, sizeof(text));
         int line = 1;
         if (text[0]) {
             fx_draw_rate(frame, line++, text);
         }
-        snprintf(text, sizeof(text), "SEND%u CPU%u SPI%u", (unsigned)((sent_us + 500) / 1000),
-                 (unsigned)((sent_us - sent_spi_us + 500) / 1000), (unsigned)((sent_spi_us + 500) / 1000));
+        snprintf(text, sizeof(text), "SEND%2u CPU%2u SPI%2u", (unsigned)avg_ms[T_SEND],
+                 (unsigned)(avg_ms[T_SEND] > avg_ms[T_SPI] ? avg_ms[T_SEND] - avg_ms[T_SPI] : 0),
+                 (unsigned)avg_ms[T_SPI]);
         fx_draw_rate(frame, line, text);
     }
 #endif

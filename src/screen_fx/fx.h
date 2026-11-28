@@ -339,9 +339,9 @@ void fx_draw_notice(uint8_t *fb, const char *title, const char *detail);
  * for measuring: the frame rate (DONGLE_SCREEN_FX_FRAME_RATE). */
 void fx_draw_rate(uint8_t *fb, int line, const char *text);
 
-/* For measuring too: a clock in microseconds, and then the last frame's
- * time in each of its stages, in ms, as text ("" for a screen that doesn't
- * time them). Without a clock nothing is timed. */
+/* For measuring too: a clock in microseconds, and then the time in each of
+ * the frame's stages, in ms averaged over a second, as text ("" for a screen
+ * that doesn't time them). Without a clock nothing is timed. */
 void fx_set_clock(uint32_t (*us)(void));
 void fx_stage_text(char *text, int size);
 

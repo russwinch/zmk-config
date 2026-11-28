@@ -2316,12 +2316,30 @@ static void stage(const char *name) {
     }
 }
 
+/* Each stage's ms, averaged over a second and only changing once a second,
+ * each number two wide, so that they can be read. */
 void fx_stage_text(char *text, int size) {
+    static uint32_t sum_us[STAGES], frames, from, avg_ms[STAGES];
+    static int shown;
+    for (int i = 0; i < n_stages; i++) {
+        sum_us[i] += stage_us[i];
+    }
+    frames++;
+    const uint32_t now = fx_clock ? fx_clock() : 0;
+    if (n_stages != shown || now - from >= 1000000) {
+        for (int i = 0; i < STAGES; i++) {
+            avg_ms[i] = frames ? (sum_us[i] / frames + 500) / 1000 : 0;
+            sum_us[i] = 0;
+        }
+        frames = 0;
+        from = now;
+        shown = n_stages;
+    }
     int at = 0;
     text[0] = 0;
     for (int i = 0; i < n_stages && at < size; i++) {
-        at += snprintf(text + at, size - at, "%s%s%u", i ? " " : "", stage_name[i],
-                       (unsigned)((stage_us[i] + 500) / 1000));
+        at += snprintf(text + at, size - at, "%s%s%2u", i ? " " : "", stage_name[i],
+                       (unsigned)(avg_ms[i] > 99 ? 99 : avg_ms[i]));
     }
 }
 
