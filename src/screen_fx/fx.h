@@ -13,7 +13,60 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+
+/* memset and memcpy a word at a time: the C library the dongle is built
+ * with has them a byte at a time (built for size), which the animations'
+ * rows and whole frames feel. The compiler is kept from turning these
+ * loops back into calls to those. */
+__attribute__((optimize("no-tree-loop-distribute-patterns"))) static inline void *fx_fill(void *to, int value,
+                                                                                          size_t n) {
+    uint8_t *p = (uint8_t *)to;
+    for (; n && ((uintptr_t)p & 3); n--) {
+        *p++ = (uint8_t)value;
+    }
+    const uint32_t w = (uint8_t)value * 0x01010101u;
+    uint32_t *q = (uint32_t *)p;
+    for (; n >= 16; n -= 16, q += 4) {
+        q[0] = q[1] = q[2] = q[3] = w;
+    }
+    for (; n >= 4; n -= 4) {
+        *q++ = w;
+    }
+    for (p = (uint8_t *)q; n; n--) {
+        *p++ = (uint8_t)value;
+    }
+    return to;
+}
+
+__attribute__((optimize("no-tree-loop-distribute-patterns"))) static inline void *fx_copy(void *to, const void *from,
+                                                                                          size_t n) {
+    uint8_t *d = (uint8_t *)to;
+    const uint8_t *s = (const uint8_t *)from;
+    if ((((uintptr_t)d ^ (uintptr_t)s) & 3) == 0) {
+        for (; n && ((uintptr_t)d & 3); n--) {
+            *d++ = *s++;
+        }
+        uint32_t *dw = (uint32_t *)d;
+        const uint32_t *sw = (const uint32_t *)s;
+        for (; n >= 16; n -= 16, dw += 4, sw += 4) {
+            dw[0] = sw[0];
+            dw[1] = sw[1];
+            dw[2] = sw[2];
+            dw[3] = sw[3];
+        }
+        for (; n >= 4; n -= 4) {
+            *dw++ = *sw++;
+        }
+        d = (uint8_t *)dw;
+        s = (const uint8_t *)sw;
+    }
+    for (; n; n--) {
+        *d++ = *s++;
+    }
+    return to;
+}
 
 #define FX_W 140
 #define FX_H 120

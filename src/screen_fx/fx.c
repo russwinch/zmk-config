@@ -16,6 +16,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/* the word-at-a-time ones throughout (fx.h) */
+#define memset fx_fill
+#define memcpy fx_copy
+
 #define PIXELS (FX_W * FX_H)
 #define TWO_PI 6.2831853f
 
@@ -3817,23 +3821,44 @@ static void board_floor(uint8_t *fb) {
                 b[c] = ray[c] + cam.r[c] * x1;
             }
             if (a[2] < 0 && b[2] < 0) {
-                const float ta = -h / a[2], tb = -h / b[2];
-                {
-                    /* in perspective at both ends, in a straight line between */
-                    const float per_n = 1.0f / n;
-                    float t = ta, gx = (cam.pos[0] + ta * a[0]) * per_grid + 1000.5f,
-                          gy = (cam.pos[1] + ta * a[1]) * per_grid + 1000.5f, rise = a[2] * per_focal;
-                    const float dt = (tb - ta) * per_n,
-                                dgx = ((cam.pos[0] + tb * b[0]) * per_grid + 1000.5f - gx) * per_n,
-                                dgy = ((cam.pos[1] + tb * b[1]) * per_grid + 1000.5f - gy) * per_n,
-                                drise = cam.r[2] * per_focal;
-                    for (int x = x0; x < x1; x++, t += dt, gx += dgx, gy += dgy, rise += drise) {
-                        if (!ids[x]) {
-                            row[x] = floor_pixel(rise, t, gx, gy);
+                /* in perspective at both ends, in a straight line between:
+                 * floor_pixel, with where a pixel is in its square in
+                 * 1/65536ths (wrapping round from one square to the next) */
+                const float ta = -h / a[2], tb = -h / b[2], per_n = 1.0f / n;
+                const float gx = (cam.pos[0] + ta * a[0]) * per_grid + 0.5f, gy = (cam.pos[1] + ta * a[1]) * per_grid + 0.5f;
+                const float dgx = ((cam.pos[0] + tb * b[0]) * per_grid + 0.5f - gx) * per_n,
+                            dgy = ((cam.pos[1] + tb * b[1]) * per_grid + 0.5f - gy) * per_n, dt = (tb - ta) * per_n;
+                /* the line's half width there, in the same units */
+                const float to_frac = 65536 * per_grid;
+                uint32_t fx = (uint32_t)(int32_t)((gx - (float)floor_int(gx)) * 65536),
+                         fy = (uint32_t)(int32_t)((gy - (float)floor_int(gy)) * 65536),
+                         w = (uint32_t)(int32_t)fminf((0.55f * ta + 1.5f) * to_frac, 1e9f);
+                /* a step bigger than these only ever leads past FLOOR_FAR, where they aren't used */
+                const uint32_t dfx = (uint32_t)(int32_t)fmaxf(fminf(dgx * 65536, 1e9f), -1e9f),
+                               dfy = (uint32_t)(int32_t)fmaxf(fminf(dgy * 65536, 1e9f), -1e9f),
+                               dw = (uint32_t)(int32_t)fmaxf(fminf(0.55f * dt * to_frac, 1e9f), -1e9f);
+                /* the horizon's glow, before it is cut to a level; the grid's far end */
+                float glow = (1 + a[2] * per_focal * 7) * (SHOW_BG_N - 1), t = ta;
+                const float dglow = cam.r[2] * per_focal * 7 * (SHOW_BG_N - 1), t_far = FLOOR_FAR / cam.focal;
+                for (int x = x0; x < x1; x++, t += dt, fx += dfx, fy += dfy, w += dw, glow += dglow) {
+                    if (ids[x]) {
+                        continue;
+                    }
+                    const int g = (int)glow;
+                    uint8_t c = g > 0 ? (uint8_t)(BOARD_SKY + g) : BOARD_SKY;
+                    if (t < t_far) {
+                        const int32_t ox = (int32_t)(fx & 0xffff) - 0x8000, oy = (int32_t)(fy & 0xffff) - 0x8000;
+                        if ((ox < 0 ? -ox : ox) < (int32_t)w || (oy < 0 ? -oy : oy) < (int32_t)w) {
+                            const float near = 1 - t * cam.focal * (1 / FLOOR_FAR);
+                            const int level = (int)(near * near * (SHOW_BG_N - 1) * 0.75f);
+                            if (level > g) {
+                                c = (uint8_t)(BOARD_FLOOR + level);
+                            }
                         }
                     }
-                    continue;
+                    row[x] = c;
                 }
+                continue;
             }
             /* a span the horizon crosses (or above it): every pixel */
             for (int x = x0; x < x1; x++, a[0] += cam.r[0], a[1] += cam.r[1], a[2] += cam.r[2]) {

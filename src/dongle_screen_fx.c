@@ -1015,7 +1015,7 @@ static void show_frame(void) {
         send_band[b].x1 = x1;
         send_band[b].text = text;
     }
-    memcpy(shown, frame, PIXELS);
+    fx_copy(shown, frame, PIXELS);
     redraw_all = false;
     text_x0 = FX_W;
     text_x1 = -1;
