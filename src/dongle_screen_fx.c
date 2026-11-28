@@ -13,7 +13,8 @@
  * A frame is 140x120 palette indexes, sent doubled (280x240) in bands of 16
  * panel rows. Only the part of a band that changed since the last frame is
  * sent: the SPI link is what limits the frame rate (a whole frame takes
- * about 35 ms at 32 MHz, config/prospector_adapter.overlay).
+ * about 35 ms at 32 MHz, config/prospector_adapter.overlay). The sending
+ * runs on a thread of its own, while the next frame is drawn.
  *
  * The pictures need about 60 KB, which the dongle doesn't have free. LVGL's
  * drawing buffers are bigger than that and sit unused while it is parked on
@@ -880,9 +881,108 @@ static void panel_write(int x, int y, const struct display_buffer_descriptor *de
 #endif
 }
 
-/* Send what changed in the frame (or all of it) to the panel. */
+/*
+ * Sending a frame. The SPI link takes ~37 ms a frame, most of it waiting on
+ * the panel, so the frame is sent from a thread of its own while the
+ * display queue draws the next one. What it sends is `shown` (copied from
+ * the frame first), so the next frame can be drawn into `frame`
+ * meanwhile. Anything else that touches `shown`, the palette, the status
+ * text, `band` or the panel (LVGL included: our memory is its buffer)
+ * waits for it first (wait_sent).
+ */
+#define BANDS (FX_H / BAND_ROWS)
+#define SEND_STACK 1024
+
+static struct {
+    int16_t x0, x1; /* the frame columns to send, none if x1 < x0 */
+    bool text;      /* with the status text over them */
+} send_band[BANDS];
+
+static K_SEM_DEFINE(send_go, 0, 1);
+static K_SEM_DEFINE(send_idle, 1, 1);
+static K_THREAD_STACK_DEFINE(send_stack, SEND_STACK);
+static struct k_thread send_thread;
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+/* the last frame's sending, microseconds: all of it, and the part on SPI */
+static uint32_t sent_us, sent_spi_us;
+#endif
+
+/* Until the frame being sent is out. */
+static void wait_sent(void) {
+    k_sem_take(&send_idle, K_FOREVER);
+    k_sem_give(&send_idle);
+}
+
+static void send_bands(void) {
+    for (int b = 0; b < BANDS; b++) {
+        const int x0 = send_band[b].x0, x1 = send_band[b].x1, top = b * BAND_ROWS;
+        if (x1 < x0) {
+            continue;
+        }
+        const int width = (x1 - x0 + 1) * 2;
+        uint16_t *out = band;
+        for (int y = top; y < top + BAND_ROWS; y++) {
+            const uint8_t *in = &shown[y * FX_W + x0];
+            /* each pixel twice across and twice down: one 32-bit word (the
+             * same colour twice) into each of the two rows. band is 4-byte
+             * aligned and width is even, so both rows are too */
+            uint32_t *row0 = (uint32_t *)out, *row1 = (uint32_t *)(out + width);
+            for (int x = 0; x < width / 2; x++) {
+                const uint32_t c = palette[in[x]];
+                row0[x] = row1[x] = c | c << 16;
+            }
+            if (send_band[b].text) {
+                overlay_blend_row(out, x0 * 2, y * 2, width);
+                overlay_blend_row(out + width, x0 * 2, y * 2 + 1, width);
+            }
+            out += width * 2;
+        }
+
+        const struct display_buffer_descriptor desc = {
+            .buf_size = width * BAND_ROWS * 2 * sizeof(*band),
+            .width = width,
+            .height = BAND_ROWS * 2,
+            .pitch = width,
+        };
+        panel_write(x0 * 2, top * 2, &desc);
+    }
+}
+
+static void send_loop(void *a, void *b, void *c) {
+    for (;;) {
+        k_sem_take(&send_go, K_FOREVER);
+#if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
+        const uint32_t from = clock_us();
+        spi_us = 0;
+        send_bands();
+        sent_us = clock_us() - from;
+        sent_spi_us = spi_us;
+#else
+        send_bands();
+#endif
+        k_sem_give(&send_idle);
+    }
+}
+
+/* Started once, just above the display queue's priority so that it gets
+ * the CPU back as soon as SPI is done with a band. */
+static void start_sending(void) {
+    static bool started;
+    if (started) {
+        return;
+    }
+    started = true;
+    const int prio = k_thread_priority_get(&zmk_display_work_q()->thread) - 1;
+    k_thread_create(&send_thread, send_stack, K_THREAD_STACK_SIZEOF(send_stack), send_loop, NULL, NULL, NULL,
+                    prio, 0, K_NO_WAIT);
+    k_thread_name_set(&send_thread, "screen_fx_send");
+}
+
+/* Send what changed in the frame (or all of it) to the panel, from the
+ * sending thread: only after wait_sent. */
 static void show_frame(void) {
-    for (int top = 0; top < FX_H; top += BAND_ROWS) {
+    for (int b = 0; b < BANDS; b++) {
+        const int top = b * BAND_ROWS;
         int x0 = 0, x1 = FX_W - 1;
         const bool text = overlay && !plain && top <= overlay_frame_row1() && top + BAND_ROWS > overlay_frame_row0();
 
@@ -910,42 +1010,17 @@ static void show_frame(void) {
                 x0 = MIN(x0, text_x0);
                 x1 = MAX(x1, text_x1);
             }
-            if (x1 < x0) {
-                continue;
-            }
         }
-
-        const int width = (x1 - x0 + 1) * 2;
-        uint16_t *out = band;
-        for (int y = top; y < top + BAND_ROWS; y++) {
-            const uint8_t *in = &frame[y * FX_W + x0];
-            /* each pixel twice across and twice down: one 32-bit word (the
-             * same colour twice) into each of the two rows. band is 4-byte
-             * aligned and width is even, so both rows are too */
-            uint32_t *row0 = (uint32_t *)out, *row1 = (uint32_t *)(out + width);
-            for (int x = 0; x < width / 2; x++) {
-                const uint32_t c = palette[in[x]];
-                row0[x] = row1[x] = c | c << 16;
-            }
-            if (text) {
-                overlay_blend_row(out, x0 * 2, y * 2, width);
-                overlay_blend_row(out + width, x0 * 2, y * 2 + 1, width);
-            }
-            out += width * 2;
-        }
-
-        const struct display_buffer_descriptor desc = {
-            .buf_size = width * BAND_ROWS * 2 * sizeof(*band),
-            .width = width,
-            .height = BAND_ROWS * 2,
-            .pitch = width,
-        };
-        panel_write(x0 * 2, top * 2, &desc);
+        send_band[b].x0 = x0;
+        send_band[b].x1 = x1;
+        send_band[b].text = text;
     }
     memcpy(shown, frame, PIXELS);
     redraw_all = false;
     text_x0 = FX_W;
     text_x1 = -1;
+    k_sem_take(&send_idle, K_FOREVER);
+    k_sem_give(&send_go);
 }
 
 /* The transition the frame is shown through, if it is: the panel going off
@@ -1031,6 +1106,7 @@ static void show_transition(const struct fx_transition *tr) {
 /* Send the frame: through the transition, if one is showing. */
 static void present(uint32_t now) {
     struct fx_transition tr;
+    wait_sent();
     if (stage_transition(now, &tr)) {
         show_transition(&tr);
     } else {
@@ -1057,6 +1133,7 @@ static bool borrow_memory(void) {
         LOG_ERR("screen fx: no LVGL buffer of %u bytes to borrow", (unsigned int)needed);
         return false;
     }
+    start_sending();
     frame = buf->data;
     shown = frame + PIXELS;
     fx_set_canvas(shown + PIXELS);
@@ -1235,6 +1312,10 @@ static void frame_cb(struct k_work *work) {
         return;
     }
     atomic_inc(&frames_begun);
+    if (start_pending || saver != SAVER_OFF || power != POWER_STEADY) {
+        /* these change `shown`, the palette or the panel's owner */
+        wait_sent();
+    }
 
     if (start_pending) {
         if (!borrow_memory()) {
@@ -1314,18 +1395,6 @@ static void frame_cb(struct k_work *work) {
         debug_shown.fps = fps;
         debug_shown.frame_ms = frame_ms;
         in.debug = &debug_shown;
-    } else if (overlay) {
-        /* the text is only worked out again when it changes, and only the
-         * parts of it that look different are sent again */
-        const unsigned changed = overlay_update(&status, now);
-        for (int area = 0; area < OVERLAY_AREAS; area++) {
-            if (changed & BIT(area)) {
-                int x, width;
-                overlay_area_span(area, &x, &width);
-                text_x0 = MIN(text_x0, MAX(x, 0) / 2);
-                text_x1 = MAX(text_x1, MIN(x + width - 1, PANEL_W - 1) / 2);
-            }
-        }
     }
 
     fx_frame(screen - 1, frame, &in);
@@ -1344,10 +1413,10 @@ static void frame_cb(struct k_work *work) {
         slot_frames = slot_ms = 0;
     }
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
-    /* frames a second, then the last frame's time drawing it and sending it,
-     * ms; under it, its stages' (Board's), and the sending's: the CPU's work,
-     * the wait on SPI */
-    static uint32_t fps_from, fps_frames, sent_ms, send_cpu_us, send_spi_us;
+    /* frames a second, then the last frame's time drawing it and waiting
+     * for the one before to be sent, ms; under it, its stages' (Board's),
+     * and the last sending's: all of it, the CPU's work, the wait on SPI */
+    static uint32_t fps_from, fps_frames, wait_us;
     static uint8_t fps_shown;
     const uint32_t drawn = k_uptime_get_32();
     fps_frames++;
@@ -1358,15 +1427,16 @@ static void frame_cb(struct k_work *work) {
     }
     if (!plain) {
         char text[28];
-        snprintf(text, sizeof(text), "%uFPS %u+%uMS", fps_shown, (unsigned)MIN(drawn - now, 999), (unsigned)MIN(sent_ms, 999));
+        snprintf(text, sizeof(text), "%uFPS DRAW%u WAIT%u", fps_shown, (unsigned)MIN(drawn - now, 999),
+                 (unsigned)MIN((wait_us + 500) / 1000, 999));
         fx_draw_rate(frame, 0, text);
         fx_stage_text(text, sizeof(text));
         int line = 1;
         if (text[0]) {
             fx_draw_rate(frame, line++, text);
         }
-        snprintf(text, sizeof(text), "SEND CPU%u SPI%u", (unsigned)((send_cpu_us + 500) / 1000),
-                 (unsigned)((send_spi_us + 500) / 1000));
+        snprintf(text, sizeof(text), "SEND%u CPU%u SPI%u", (unsigned)((sent_us + 500) / 1000),
+                 (unsigned)((sent_us - sent_spi_us + 500) / 1000), (unsigned)((sent_spi_us + 500) / 1000));
         fx_draw_rate(frame, line, text);
     }
 #endif
@@ -1382,16 +1452,28 @@ static void frame_cb(struct k_work *work) {
         static const char *const names[DONGLE_BACKLIGHT_LEVELS] = {"LOW", "MEDIUM", "HIGH"};
         fx_draw_notice(frame, names[dongle_backlight_level()], "BRIGHTNESS");
     }
+    /* the last frame has to be out before the status text over it changes */
 #if IS_ENABLED(CONFIG_DONGLE_SCREEN_FX_FRAME_RATE)
-    const uint32_t sending = k_uptime_get_32(), sending_us = clock_us();
-    spi_us = 0;
-    present(now);
-    sent_ms = k_uptime_get_32() - sending;
-    send_spi_us = spi_us;
-    send_cpu_us = clock_us() - sending_us - spi_us;
+    const uint32_t waiting = clock_us();
+    wait_sent();
+    wait_us = clock_us() - waiting;
 #else
-    present(now);
+    wait_sent();
 #endif
+    if (!plain && overlay) {
+        /* the text is only worked out again when it changes, and only the
+         * parts of it that look different are sent again */
+        const unsigned changed = overlay_update(&status, now);
+        for (int area = 0; area < OVERLAY_AREAS; area++) {
+            if (changed & BIT(area)) {
+                int x, width;
+                overlay_area_span(area, &x, &width);
+                text_x0 = MIN(text_x0, MAX(x, 0) / 2);
+                text_x1 = MAX(text_x1, MIN(x + width - 1, PANEL_W - 1) / 2);
+            }
+        }
+    }
+    present(now);
     first_picture();
     frames_since++;
     const uint32_t took = k_uptime_get_32() - now;
@@ -1445,6 +1527,8 @@ static bool leave_module_screen(void) {
 
 static void apply_cb(struct k_work *work) {
     const int want = atomic_get(&wanted_screen);
+
+    wait_sent(); /* LVGL may take its buffer, our memory, back */
 
     const bool dropped = atomic_set(&saver_drop, 0);
     if (dropped) {
@@ -1507,6 +1591,7 @@ static void theme_cb(struct k_work *work) {
     if (screen == 0 || start_pending || frame == NULL) {
         return; /* nothing of ours showing yet: begin_animation sets the theme too */
     }
+    wait_sent();
     if (fx_recolor(screen - 1, native_palette)) {
         for (int i = 0; i < 256; i++) {
             palette[i] = sys_cpu_to_be16(native_palette[i]);
